@@ -1,0 +1,6 @@
+secrets.h
+build/
+.vscode/
+*.tmp
+*.bak
+*.log
