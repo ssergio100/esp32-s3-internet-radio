@@ -17,7 +17,15 @@ void iniciarAudio(int volume) {
         PIN_MAX98357A_DIN
     );
 
-    audio.setVolumeSteps(100);
+    // audio.setVolumeSteps(100);
+     int volumeAudio = map(
+        volume,
+        VOLUME_MINIMO,
+        VOLUME_MAXIMO,
+        0,
+        21
+    );
+    
     audio.setVolume(volume);
 
     Serial.printf(
@@ -57,7 +65,16 @@ bool tocarRadio(
 }
 
 void alterarVolumeAudio(int volume) {
-    audio.setVolume(volume);
+
+    int volumeAudio = map(
+        volume,
+        VOLUME_MINIMO,
+        VOLUME_MAXIMO,
+        0,
+        21
+    );
+
+    audio.setVolume(volumeAudio);
 }
 
 // Callbacks usados pela biblioteca Audio
@@ -80,4 +97,20 @@ void audio_showstreamtitle(const char* info) {
 void audio_bitrate(const char* info) {
     Serial.print("Bitrate: ");
     Serial.println(info);
+}
+
+uint8_t obterPercentualBufferAudio() {
+    uint32_t tamanhoTotal =
+        audio.getInBufferSize();
+
+    if (tamanhoTotal == 0) {
+        return 0;
+    }
+
+    uint32_t preenchido =
+        audio.inBufferFilled();
+
+    return static_cast<uint8_t>(
+        preenchido * 100UL / tamanhoTotal
+    );
 }

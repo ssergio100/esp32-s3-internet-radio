@@ -1,0 +1,20 @@
+[
+    {
+        "id": 1,
+        "nome": "Antena 1",
+        "url": "https://antenaone.crossradio.com.br/stream/1",
+        "estrelas": 5
+    },
+    {
+        "id": 2,
+        "nome": "Alpha FM",
+        "url": "https://e-spo-104.fabricahost.com.br/alphafmsp",
+        "estrelas": 4
+    },
+    {
+        "id": 3,
+        "nome": "Schilling",
+        "url": "https://radio.loficafe.net/listen/chilling/radio.mp3",
+        "estrelas": 5
+    }
+]

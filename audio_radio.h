@@ -14,4 +14,6 @@ bool tocarRadio(
 
 void alterarVolumeAudio(int volume);
 
+uint8_t obterPercentualBufferAudio();
+
 #endif

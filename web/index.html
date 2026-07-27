@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Rádio Web</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 24px;
+            background: #eef1f5;
+            color: #263238;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1050px;
+            margin: 0 auto;
+        }
+
+        .cabecalho {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        .cabecalho h1 {
+            margin: 0;
+            font-size: 26px;
+        }
+
+        .cabecalho p {
+            margin: 5px 0 0;
+            color: #68757d;
+            font-size: 14px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-nova {
+            flex-shrink: 0;
+            padding: 12px 18px;
+            background: #1976d2;
+            color: white;
+            font-weight: bold;
+        }
+
+        .btn-nova:hover {
+            background: #125ea9;
+        }
+
+        .painel {
+            overflow: hidden;
+            background: white;
+            border-radius: 9px;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, 0.08);
+        }
+
+        .tabela-responsiva {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e6e9ec;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #f8f9fa;
+            color: #546168;
+            font-size: 13px;
+            text-transform: uppercase;
+        }
+
+        th:nth-child(1) {
+            width: 25%;
+        }
+
+        th:nth-child(2) {
+            width: 50%;
+        }
+
+        th:nth-child(3) {
+            width: 15%;
+            text-align: center;
+        }
+
+        th:nth-child(4) {
+            width: 10%;
+            text-align: center;
+        }
+
+        td:nth-child(3),
+        td:nth-child(4) {
+            text-align: center;
+        }
+
+        tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .radio-nome {
+            font-weight: bold;
+        }
+
+        .radio-url {
+            display: block;
+            max-width: 500px;
+            overflow: hidden;
+            color: #607d8b;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .estrelas-tabela {
+            color: #f5a623;
+            font-size: 19px;
+            white-space: nowrap;
+        }
+
+        .estrela-vazia {
+            color: #d6dadd;
+        }
+
+        .btn-excluir {
+            padding: 8px 12px;
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .btn-excluir:hover {
+            background: #ffcdd2;
+        }
+
+        .lista-vazia {
+            padding: 45px 20px;
+            color: #7b878d;
+            text-align: center;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(20, 30, 35, 0.65);
+        }
+
+        .modal.aberto {
+            display: flex;
+        }
+
+        .modal-conteudo {
+            width: 100%;
+            max-width: 500px;
+            overflow: hidden;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25);
+        }
+
+        .modal-cabecalho {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 19px 22px;
+            border-bottom: 1px solid #e6e9ec;
+        }
+
+        .modal-cabecalho h2 {
+            margin: 0;
+            font-size: 21px;
+        }
+
+        .btn-fechar {
+            padding: 4px 8px;
+            background: transparent;
+            color: #68757d;
+            font-size: 26px;
+            line-height: 1;
+        }
+
+        .modal-corpo {
+            padding: 22px;
+        }
+
+        .campo {
+            margin-bottom: 18px;
+        }
+
+        .campo label {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .campo input {
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid #cfd6da;
+            border-radius: 6px;
+            outline: none;
+            font-size: 15px;
+        }
+
+        .campo input:focus {
+            border-color: #1976d2;
+            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.12);
+        }
+
+        .seletor-estrelas {
+            display: flex;
+            gap: 5px;
+        }
+
+        .seletor-estrelas button {
+            padding: 0;
+            background: transparent;
+            color: #d6dadd;
+            font-size: 32px;
+            line-height: 1;
+        }
+
+        .seletor-estrelas button.ativa {
+            color: #f5a623;
+        }
+
+        .modal-rodape {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 16px 22px;
+            background: #f8f9fa;
+            border-top: 1px solid #e6e9ec;
+        }
+
+        .btn-cancelar,
+        .btn-adicionar {
+            padding: 10px 17px;
+        }
+
+        .btn-cancelar {
+            background: #e4e8ea;
+            color: #37474f;
+        }
+
+        .btn-adicionar {
+            background: #1976d2;
+            color: white;
+            font-weight: bold;
+        }
+
+        .btn-adicionar:hover {
+            background: #125ea9;
+        }
+
+        @media (max-width: 650px) {
+            body {
+                padding: 15px;
+            }
+
+            .cabecalho {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .btn-nova {
+                width: 100%;
+            }
+
+            th,
+            td {
+                padding: 12px 10px;
+            }
+
+            .radio-url {
+                max-width: 190px;
+            }
+
+            .texto-excluir {
+                display: none;
+            }
+
+            .btn-excluir::after {
+                content: "Excluir";
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <header class="cabecalho">
+            <div>
+                <h1>Rádios cadastradas</h1>
+                <p id="quantidadeRadios">Nenhuma rádio cadastrada</p>
+            </div>
+
+            <button type="button" class="btn-nova" id="btnNovaRadio">
+                + Nova rádio
+            </button>
+        </header>
+
+        <section class="painel">
+            <div class="tabela-responsiva">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>URL</th>
+                            <th>Estrelas</th>
+                            <th>Excluir</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="corpoTabela"></tbody>
+                </table>
+            </div>
+
+            <div class="lista-vazia" id="listaVazia">
+                Nenhuma rádio cadastrada.
+            </div>
+        </section>
+    </main>
+
+    <div class="modal" id="modalRadio">
+        <div class="modal-conteudo">
+            <form id="formRadio">
+                <div class="modal-cabecalho">
+                    <h2>Nova rádio</h2>
+
+                    <button
+                        type="button"
+                        class="btn-fechar"
+                        id="btnFecharModal"
+                        aria-label="Fechar"
+                    >
+                        &times;
+                    </button>
+                </div>
+
+                <div class="modal-corpo">
+                    <div class="campo">
+                        <label for="nome">Nome</label>
+
+                        <input
+                            type="text"
+                            id="nome"
+                            maxlength="50"
+                            required
+                            autocomplete="off"
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label for="url">URL da transmissão</label>
+
+                        <input
+                            type="url"
+                            id="url"
+                            placeholder="https://..."
+                            required
+                            autocomplete="off"
+                        >
+                    </div>
+
+                    <div class="campo">
+                        <label>Avaliação</label>
+
+                        <div class="seletor-estrelas" id="seletorEstrelas">
+                            <button type="button" data-valor="1">★</button>
+                            <button type="button" data-valor="2">★</button>
+                            <button type="button" data-valor="3">★</button>
+                            <button type="button" data-valor="4">★</button>
+                            <button type="button" data-valor="5">★</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-rodape">
+                    <button
+                        type="button"
+                        class="btn-cancelar"
+                        id="btnCancelar"
+                    >
+                        Cancelar
+                    </button>
+
+                    <button type="submit" class="btn-adicionar">
+                        Adicionar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+   <script>
+    const corpoTabela = document.getElementById("corpoTabela");
+    const listaVazia = document.getElementById("listaVazia");
+    const quantidadeRadios = document.getElementById("quantidadeRadios");
+
+    const modalRadio = document.getElementById("modalRadio");
+    const formRadio = document.getElementById("formRadio");
+    const campoNome = document.getElementById("nome");
+    const campoUrl = document.getElementById("url");
+
+    const botoesEstrelas = document.querySelectorAll(
+        "#seletorEstrelas button"
+    );
+
+    let estrelasSelecionadas = 3;
+    let radios = [];
+
+    function escaparHtml(texto) {
+        const elemento = document.createElement("div");
+        elemento.textContent = texto;
+
+        return elemento.innerHTML;
+    }
+
+    function criarTextoEstrelas(quantidade) {
+        let html = "";
+
+        for (let i = 1; i <= 5; i++) {
+            if (i <= quantidade) {
+                html += "<span>★</span>";
+            } else {
+                html += '<span class="estrela-vazia">★</span>';
+            }
+        }
+
+        return html;
+    }
+
+    function renderizarRadios() {
+        corpoTabela.innerHTML = "";
+
+        listaVazia.style.display =
+            radios.length === 0 ? "block" : "none";
+
+        if (radios.length === 1) {
+            quantidadeRadios.textContent = "1 rádio cadastrada";
+        } else if (radios.length > 1) {
+            quantidadeRadios.textContent =
+                radios.length + " rádios cadastradas";
+        } else {
+            quantidadeRadios.textContent =
+                "Nenhuma rádio cadastrada";
+        }
+
+        radios.forEach(function (radio) {
+            const linha = document.createElement("tr");
+
+            linha.innerHTML = `
+                <td>
+                    <span class="radio-nome">
+                        ${escaparHtml(radio.nome)}
+                    </span>
+                </td>
+
+                <td>
+                    <span
+                        class="radio-url"
+                        title="${escaparHtml(radio.url)}"
+                    >
+                        ${escaparHtml(radio.url)}
+                    </span>
+                </td>
+
+                <td>
+                    <span class="estrelas-tabela">
+                        ${criarTextoEstrelas(radio.estrelas)}
+                    </span>
+                </td>
+
+                <td>
+                    <button
+                        type="button"
+                        class="btn-excluir"
+                        data-id="${radio.id}"
+                    >
+                        <span class="texto-excluir">
+                            Excluir
+                        </span>
+                    </button>
+                </td>
+            `;
+
+            corpoTabela.appendChild(linha);
+        });
+    }
+
+    async function carregarRadios() {
+        quantidadeRadios.textContent = "Carregando rádios...";
+
+        try {
+            const resposta = await fetch("/api/radios");
+
+            if (!resposta.ok) {
+                throw new Error("Falha ao carregar as rádios");
+            }
+
+            radios = await resposta.json();
+
+            if (!Array.isArray(radios)) {
+                radios = [];
+            }
+
+            renderizarRadios();
+        } catch (erro) {
+            radios = [];
+            renderizarRadios();
+
+            quantidadeRadios.textContent =
+                "Não foi possível carregar as rádios";
+
+            alert(erro.message);
+        }
+    }
+
+    function abrirModal() {
+        formRadio.reset();
+
+        estrelasSelecionadas = 3;
+        atualizarSeletorEstrelas();
+
+        modalRadio.classList.add("aberto");
+        campoNome.focus();
+    }
+
+    function fecharModal() {
+        modalRadio.classList.remove("aberto");
+    }
+
+    function atualizarSeletorEstrelas() {
+        botoesEstrelas.forEach(function (botao) {
+            const valor = Number(botao.dataset.valor);
+
+            botao.classList.toggle(
+                "ativa",
+                valor <= estrelasSelecionadas
+            );
+        });
+    }
+
+    async function adicionarRadio(nome, url) {
+        const resposta = await fetch("/api/radios", {
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                nome: nome,
+                url: url,
+                estrelas: estrelasSelecionadas
+            })
+        });
+
+        if (!resposta.ok) {
+            const dados = await resposta.json().catch(function () {
+                return {};
+            });
+
+            throw new Error(
+                dados.erro ||
+                "Não foi possível adicionar a rádio"
+            );
+        }
+    }
+
+    async function excluirRadio(id) {
+        const radio = radios.find(function (item) {
+            return Number(item.id) === id;
+        });
+
+        if (!radio) {
+            return;
+        }
+
+        const confirmado = confirm(
+            'Excluir a rádio "' + radio.nome + '"?'
+        );
+
+        if (!confirmado) {
+            return;
+        }
+
+        try {
+            const resposta = await fetch(
+                "/api/radios?id=" + id,
+                {
+                    method: "DELETE"
+                }
+            );
+
+            if (!resposta.ok) {
+                const dados = await resposta.json().catch(function () {
+                    return {};
+                });
+
+                throw new Error(
+                    dados.erro ||
+                    "Não foi possível excluir a rádio"
+                );
+            }
+
+            await carregarRadios();
+        } catch (erro) {
+            alert(erro.message);
+        }
+    }
+
+    document
+        .getElementById("btnNovaRadio")
+        .addEventListener("click", abrirModal);
+
+    document
+        .getElementById("btnFecharModal")
+        .addEventListener("click", fecharModal);
+
+    document
+        .getElementById("btnCancelar")
+        .addEventListener("click", fecharModal);
+
+    botoesEstrelas.forEach(function (botao) {
+        botao.addEventListener("click", function () {
+            estrelasSelecionadas = Number(
+                botao.dataset.valor
+            );
+
+            atualizarSeletorEstrelas();
+        });
+    });
+
+    formRadio.addEventListener(
+        "submit",
+        async function (evento) {
+            evento.preventDefault();
+
+            const nome = campoNome.value.trim();
+            const url = campoUrl.value.trim();
+
+            if (!nome || !url) {
+                return;
+            }
+
+            const botaoAdicionar = formRadio.querySelector(
+                ".btn-adicionar"
+            );
+
+            botaoAdicionar.disabled = true;
+            botaoAdicionar.textContent = "Adicionando...";
+
+            try {
+                await adicionarRadio(nome, url);
+
+                fecharModal();
+                await carregarRadios();
+            } catch (erro) {
+                alert(erro.message);
+            } finally {
+                botaoAdicionar.disabled = false;
+                botaoAdicionar.textContent = "Adicionar";
+            }
+        }
+    );
+
+    corpoTabela.addEventListener("click", function (evento) {
+        const botao = evento.target.closest(".btn-excluir");
+
+        if (!botao) {
+            return;
+        }
+
+        excluirRadio(Number(botao.dataset.id));
+    });
+
+    modalRadio.addEventListener("click", function (evento) {
+        if (evento.target === modalRadio) {
+            fecharModal();
+        }
+    });
+
+    document.addEventListener("keydown", function (evento) {
+        if (evento.key === "Escape") {
+            fecharModal();
+        }
+    });
+
+    atualizarSeletorEstrelas();
+    carregarRadios();
+</script>
+</body>
+</html>

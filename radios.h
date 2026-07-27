@@ -1,3 +1,4 @@
+
 #ifndef RADIOS_H
 #define RADIOS_H
 
@@ -7,6 +8,8 @@ struct Radio {
     const char* nome;
     const char* url;
 };
+
+bool carregarRadios();
 
 int obterQuantidadeRadios();
 

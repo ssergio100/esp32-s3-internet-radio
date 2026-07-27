@@ -1,12 +1,13 @@
 #include <Arduino.h>
-
+#include <time.h>
 #include "configuracao.h"
-#include "secrets.h"
 #include "radios.h"
 #include "display_radio.h"
 #include "wifi_radio.h"
 #include "audio_radio.h"
 #include "controles.h"
+#include <WiFi.h>
+#include "servidor_web.h"
 
 enum class ModoControle {
     VOLUME,
@@ -48,6 +49,8 @@ void processarModoSelecaoRadio(
 void verificarTelaVolume();
 void verificarConfirmacaoRadio();
 
+void atualizarLedBuffer();
+
 // =====================================================
 // Setup
 // =====================================================
@@ -63,6 +66,25 @@ void setup() {
         return;
     }
 
+    if (!iniciarServidorWeb()) {
+        mostrarMensagem(
+            "Erro no armazenamento"
+        );
+
+        return;
+    }
+
+    carregarRadios();
+
+    
+
+    configTime(
+        -3 * 3600,
+        0,
+        "pool.ntp.org",
+        "time.nist.gov"
+    );
+
     iniciarAudio(volume);
 
     radioAtual = 0;
@@ -77,14 +99,22 @@ void setup() {
 
 void loop() {
     processarAudio();
+    processarDisplay();
+    processarServidorWeb();
 
-    EventoEncoder evento =
-        lerControles();
+    EventoEncoder evento = lerControles();
 
     processarEventoEncoder(evento);
 
     verificarTelaVolume();
+    
     verificarConfirmacaoRadio();
+
+    // verificarBufferAudio();
+
+    atualizarLedBuffer();
+
+    status();
 }
 
 // =====================================================
@@ -100,40 +130,25 @@ void processarEventoEncoder(
 
     if (evento == EventoEncoder::CLIQUE) {
         if (modoControle == ModoControle::VOLUME) {
-            modoControle =
-                ModoControle::SELECAO_RADIO;
+            modoControle = ModoControle::SELECAO_RADIO;
 
-            radioSelecionada =
-                radioAtual;
+            telaVolumeAtiva = false;
 
-            radioAguardandoConfirmacao =
-                false;
+            radioSelecionada = radioAtual;
+            radioAguardandoConfirmacao = false;
 
-            exibirRadio(
-                radioSelecionada
-            );
+            exibirRadio(radioSelecionada);
 
-            Serial.println(
-                "Modo: seleção de rádio"
-            );
-
+            Serial.println("Modo: seleção de rádio");
         } else {
-            modoControle =
-                ModoControle::VOLUME;
+            modoControle = ModoControle::VOLUME;
 
-            radioSelecionada =
-                radioAtual;
+            radioSelecionada = radioAtual;
+            radioAguardandoConfirmacao = false;
 
-            radioAguardandoConfirmacao =
-                false;
+            exibirRadio(radioAtual);
 
-            exibirRadio(
-                radioAtual
-            );
-
-            Serial.println(
-                "Modo: volume"
-            );
+            Serial.println("Modo: volume");
         }
 
         return;
@@ -184,7 +199,7 @@ void processarModoVolume(
         millis();
 
     Serial.printf(
-        "Volume: %d%%\n",
+        "Volume: %d\n",
         volume
     );
 }
@@ -287,22 +302,25 @@ void verificarConfirmacaoRadio() {
 // =====================================================
 
 void verificarTelaVolume() {
+    if (modoControle != ModoControle::VOLUME) {
+        telaVolumeAtiva = false;
+        return;
+    }
+
     if (!telaVolumeAtiva) {
         return;
     }
 
     if (
         millis() - ultimaAlteracaoVolume <
-            TEMPO_TELA_VOLUME_MS
+        TEMPO_TELA_VOLUME_MS
     ) {
         return;
     }
 
     telaVolumeAtiva = false;
 
-    exibirRadio(
-        radioAtual
-    );
+    exibirRadio(radioAtual);
 }
 
 // =====================================================
@@ -366,4 +384,94 @@ void exibirRadio(int indice) {
         indice,
         obterQuantidadeRadios()
     );
+}
+
+void verificarBufferAudio() {
+    static unsigned long ultimaVerificacao = 0;
+    static uint8_t menorBuffer = 100;
+
+    if (millis() - ultimaVerificacao < 250) {
+        return;
+    }
+
+    ultimaVerificacao = millis();
+
+    uint8_t percentual =
+        obterPercentualBufferAudio();
+
+    if (percentual < menorBuffer) {
+        menorBuffer = percentual;
+    }
+
+    Serial.printf(
+        "Buffer: %u%% | mínimo: %u%%\n",
+        percentual,
+        menorBuffer
+    );
+}
+
+void status(){
+
+    static unsigned long ultimaAtualizacaoStatus = 0;
+
+    if (millis() - ultimaAtualizacaoStatus < 1000) {
+        return;
+    }
+    ultimaAtualizacaoStatus = millis();
+
+    Serial.printf("Temperatura: %.1f °C\n", temperatureRead());
+    Serial.printf("RAM livre: %u KB\n", ESP.getFreeHeap() / 1024);
+    Serial.printf("Menor RAM livre: %u KB\n", ESP.getMinFreeHeap() / 1024);
+    Serial.printf("PSRAM livre: %u KB\n", ESP.getFreePsram() / 1024);
+    Serial.printf("Sinal Wi-Fi: %d dBm\n", WiFi.RSSI());
+}
+
+void atualizarLedBuffer() {
+    static unsigned long ultimaAtualizacao = 0;
+
+    if (millis() - ultimaAtualizacao < 250) {
+        return;
+    }
+
+    ultimaAtualizacao = millis();
+
+    uint8_t buffer =
+        obterPercentualBufferAudio();
+
+    if (buffer == 0) {
+        // Rádio fora ou sem receber áudio
+        rgbLedWrite(
+            PIN_LED_RGB,
+            0,
+            0,
+            0
+        );
+
+    } else if (buffer <= 5) {
+        // Buffer crítico: vermelho
+        rgbLedWrite(
+            PIN_LED_RGB,
+            BRILHO_LED_RGB,
+            0,
+            0
+        );
+
+    } else if (buffer <= 15) {
+        // Buffer baixo: amarelo
+        rgbLedWrite(
+            PIN_LED_RGB,
+            BRILHO_LED_RGB,
+            BRILHO_LED_RGB,
+            0
+        );
+
+    } else {
+        // Buffer normal: verde
+        rgbLedWrite(
+            PIN_LED_RGB,
+            0,
+            BRILHO_LED_RGB,
+            0
+        );
+    }
 }

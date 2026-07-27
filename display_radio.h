@@ -5,9 +5,9 @@
 
 bool iniciarDisplay();
 
-void mostrarMensagem(
-    const String& mensagem
-);
+void mostrarConfiguracaoWifi();
+
+void mostrarMensagem(const String& mensagem);
 
 void mostrarNomeRadio(
     const String& nome,
@@ -15,8 +15,12 @@ void mostrarNomeRadio(
     int quantidadeRadios
 );
 
-void mostrarVolume(
-    int volume
-);
+void mostrarVolume(int volume);
+
+/*
+ * Deve ser chamada continuamente no loop().
+ * Atualiza o relógio e movimenta o nome da estação.
+ */
+void processarDisplay();
 
 #endif
