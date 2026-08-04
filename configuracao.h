@@ -33,10 +33,17 @@ constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
 constexpr int VOLUME_PADRAO = 10;
 
+// Tarefas de audio
+constexpr int NUCLEO_DECODIFICADOR_AUDIO = 0;
+constexpr int NUCLEO_SERVICO_AUDIO = 1;
+constexpr uint32_t PILHA_SERVICO_AUDIO_BYTES = 12288;
+constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
+
 // Tempos
 constexpr unsigned long TEMPO_TELA_VOLUME_MS = 2000;
-constexpr unsigned long TEMPO_CONFIRMAR_RADIO_MS = 1000;
-constexpr unsigned long DEBOUNCE_ENCODER_MS = 250;
+constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
+constexpr unsigned long TEMPO_VALIDAR_BOTAO_MS = 30;
+constexpr unsigned long DEBOUNCE_ENCODER_MS = 200;
 
 
 #endif

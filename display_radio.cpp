@@ -9,7 +9,6 @@
 
 namespace {
 
-    
     Adafruit_SSD1306 display(
         DISPLAY_LARGURA,
         DISPLAY_ALTURA,
@@ -22,6 +21,7 @@ namespace {
     enum class TelaDisplay {
         MENSAGEM,
         RADIO,
+        SELECAO_RADIO,
         VOLUME
     };
 
@@ -175,8 +175,9 @@ bool iniciarDisplay() {
     return true;
 }
 
-void mostrarMensagem( const String& mensagem ) 
-{
+void mostrarMensagem(
+    const String& mensagem
+) {
     if (!disponivel) {
         return;
     }
@@ -211,6 +212,68 @@ void mostrarNomeRadio(
     ultimoMinutoExibido = -1;
 
     desenharTelaRadio();
+}
+
+void mostrarSelecaoRadio(
+    const String& nome,
+    int indiceSelecionado,
+    int quantidadeRadios
+) {
+    if (!disponivel) {
+        return;
+    }
+
+    telaAtual = TelaDisplay::SELECAO_RADIO;
+
+    prepararTela();
+
+    escreverCentralizado(
+        "<  ESTACOES  >",
+        2,
+        1
+    );
+
+    display.setTextSize(2);
+
+    int16_t x1;
+    int16_t y1;
+    uint16_t largura;
+    uint16_t altura;
+
+    display.getTextBounds(
+        nome,
+        0,
+        0,
+        &x1,
+        &y1,
+        &largura,
+        &altura
+    );
+
+    if (largura <= DISPLAY_LARGURA - 4) {
+        escreverCentralizado(
+            nome,
+            22,
+            2
+        );
+    } else {
+        escreverCentralizado(
+            nome,
+            27,
+            1
+        );
+    }
+
+    escreverCentralizado(
+        String(indiceSelecionado + 1) +
+            "/" +
+            String(quantidadeRadios) +
+            "  Clique: OK",
+        54,
+        1
+    );
+
+    display.display();
 }
 
 void mostrarVolume(
