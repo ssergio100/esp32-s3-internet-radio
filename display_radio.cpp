@@ -31,8 +31,20 @@ namespace {
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
 
+    constexpr int MARGEM_NOME_RADIO = 2;
+    constexpr int POSICAO_Y_NOME_RADIO = 24;
+    constexpr uint8_t TAMANHO_NOME_RADIO = 2;
+    constexpr unsigned long INTERVALO_ROLAGEM_MS = 50;
+    constexpr int ESPACO_ENTRE_NOMES = 24;
+
+    bool rolagemNomeAtiva = false;
+    int posicaoXNomeRadio = MARGEM_NOME_RADIO;
+    uint16_t larguraNomeRadio = 0;
+    unsigned long ultimaMovimentacaoNome = 0;
+
     unsigned long ultimaAtualizacaoRelogio = 0;
     int ultimoMinutoExibido = -1;
+    String dataHoraAtual = "--/--/---- --:--";
 
     void escreverCentralizado(
         const String& texto,
@@ -74,79 +86,96 @@ namespace {
     void prepararTela() {
         display.clearDisplay();
         display.setTextColor(SSD1306_WHITE);
+        display.setTextWrap(false);
     }
 
     String obterDataHora() {
-    struct tm horario;
+        struct tm horario;
 
-    if (!getLocalTime(&horario, 10)) {
-        return "--/--/---- --:--";
+        if (!getLocalTime(&horario, 10)) {
+            return "--/--/---- --:--";
+        }
+
+        char texto[17];
+
+        strftime(
+            texto,
+            sizeof(texto),
+            "%d/%m/%Y %H:%M",
+            &horario
+        );
+
+        return String(texto);
     }
 
-    char texto[17];
+    void reiniciarRolagemNome() {
+        display.setTextSize(TAMANHO_NOME_RADIO);
 
-    strftime(
-        texto,
-        sizeof(texto),
-        "%d/%m/%Y %H:%M",
-        &horario
-    );
+        int16_t x1;
+        int16_t y1;
+        uint16_t altura;
 
-    return String(texto);
-}
-
-
-
-void desenharTelaRadio() {
-    prepararTela();
-
-    escreverCentralizado(
-        obterDataHora(),
-        2,
-        1
-    );
-
-    display.setTextSize(2);
-
-    int16_t x1;
-    int16_t y1;
-    uint16_t largura;
-    uint16_t altura;
-
-    display.getTextBounds(
-        nomeRadioAtual,
-        0,
-        0,
-        &x1,
-        &y1,
-        &largura,
-        &altura
-    );
-
-    if (largura <= DISPLAY_LARGURA - 4) {
-        escreverCentralizado(
+        display.getTextBounds(
             nomeRadioAtual,
-            24,
-            2
+            0,
+            0,
+            &x1,
+            &y1,
+            &larguraNomeRadio,
+            &altura
         );
-    } else {
+
+        if (
+            larguraNomeRadio <=
+            DISPLAY_LARGURA - 2 * MARGEM_NOME_RADIO
+        ) {
+            posicaoXNomeRadio =
+                (DISPLAY_LARGURA - larguraNomeRadio) / 2;
+            rolagemNomeAtiva = false;
+        } else {
+            posicaoXNomeRadio = MARGEM_NOME_RADIO;
+            rolagemNomeAtiva = true;
+        }
+
+        ultimaMovimentacaoNome = millis();
+    }
+
+    void desenharTelaRadio() {
+        prepararTela();
+
         escreverCentralizado(
-            nomeRadioAtual,
-            29,
+            dataHoraAtual,
+            2,
             1
         );
+
+        display.setTextSize(TAMANHO_NOME_RADIO);
+        display.setCursor(
+            posicaoXNomeRadio,
+            POSICAO_Y_NOME_RADIO
+        );
+        display.print(nomeRadioAtual);
+
+        if (rolagemNomeAtiva) {
+            display.setCursor(
+                posicaoXNomeRadio +
+                    larguraNomeRadio +
+                    ESPACO_ENTRE_NOMES,
+                POSICAO_Y_NOME_RADIO
+            );
+            display.print(nomeRadioAtual);
+        }
+
+        escreverCentralizado(
+            String(indiceRadioAtual + 1) +
+                "/" +
+                String(quantidadeRadiosAtual),
+            54,
+            1
+        );
+
+        display.display();
     }
-
-    escreverCentralizado(
-        String(indiceRadioAtual + 1) +
-            "/" +
-            String(quantidadeRadiosAtual),
-        54,
-        1
-    );
-
-    display.display();
-}
 
 }
 
@@ -204,12 +233,23 @@ void mostrarNomeRadio(
         return;
     }
 
+    bool radioMudou =
+        nomeRadioAtual != nome ||
+        indiceRadioAtual != indiceAtual;
+
     nomeRadioAtual = nome;
     indiceRadioAtual = indiceAtual;
     quantidadeRadiosAtual = quantidadeRadios;
 
     telaAtual = TelaDisplay::RADIO;
     ultimoMinutoExibido = -1;
+    dataHoraAtual = obterDataHora();
+
+    if (radioMudou || larguraNomeRadio == 0) {
+        reiniciarRolagemNome();
+    } else {
+        ultimaMovimentacaoNome = millis();
+    }
 
     desenharTelaRadio();
 }
@@ -369,23 +409,46 @@ void processarDisplay() {
         return;
     }
 
-    if (millis() - ultimaAtualizacaoRelogio < 1000) {
-        return;
+    unsigned long agora = millis();
+    bool precisaRedesenhar = false;
+
+    if (agora - ultimaAtualizacaoRelogio >= 1000) {
+        ultimaAtualizacaoRelogio = agora;
+
+        struct tm horario;
+
+        if (
+            getLocalTime(&horario, 10) &&
+            horario.tm_min != ultimoMinutoExibido
+        ) {
+            ultimoMinutoExibido = horario.tm_min;
+            dataHoraAtual = obterDataHora();
+            precisaRedesenhar = true;
+        }
     }
 
-    ultimaAtualizacaoRelogio = millis();
+    if (
+        rolagemNomeAtiva &&
+        agora - ultimaMovimentacaoNome >=
+            INTERVALO_ROLAGEM_MS
+    ) {
+        ultimaMovimentacaoNome = agora;
+        posicaoXNomeRadio--;
 
-    struct tm horario;
+        int comprimentoCiclo =
+            larguraNomeRadio + ESPACO_ENTRE_NOMES;
 
-    if (!getLocalTime(&horario, 10)) {
-        return;
+        if (
+            posicaoXNomeRadio <=
+            MARGEM_NOME_RADIO - comprimentoCiclo
+        ) {
+            posicaoXNomeRadio += comprimentoCiclo;
+        }
+
+        precisaRedesenhar = true;
     }
 
-    if (horario.tm_min == ultimoMinutoExibido) {
-        return;
+    if (precisaRedesenhar) {
+        desenharTelaRadio();
     }
-
-    ultimoMinutoExibido = horario.tm_min;
-
-    desenharTelaRadio();
 }
