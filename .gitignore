@@ -1,4 +1,5 @@
 secrets.h
+AGENTS.md
 build/
 .vscode/
 *.tmp

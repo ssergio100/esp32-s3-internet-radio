@@ -17,12 +17,97 @@ AiEsp32RotaryEncoder encoder(
 
 long valorAnterior = 0;
 
-bool botaoAnterior = false;
+volatile bool bordaBotaoPendente = false;
+
+portMUX_TYPE muxBotao =
+    portMUX_INITIALIZER_UNLOCKED;
 
 unsigned long ultimoClique = 0;
+unsigned long inicioValidacaoBotao = 0;
+
+bool validandoBotao = false;
+bool aguardandoSolturaBotao = false;
 
 void IRAM_ATTR encoderISR() {
     encoder.readEncoder_ISR();
+}
+
+void IRAM_ATTR botaoISR() {
+    portENTER_CRITICAL_ISR(&muxBotao);
+    bordaBotaoPendente = true;
+    portEXIT_CRITICAL_ISR(&muxBotao);
+}
+
+bool consumirBordaBotao() {
+    bool pendente;
+
+    portENTER_CRITICAL(&muxBotao);
+    pendente = bordaBotaoPendente;
+    bordaBotaoPendente = false;
+    portEXIT_CRITICAL(&muxBotao);
+
+    return pendente;
+}
+
+bool detectarCliqueConfirmado() {
+    unsigned long agora = millis();
+    bool bordaDetectada =
+        consumirBordaBotao();
+
+    if (
+        aguardandoSolturaBotao
+    ) {
+        if (
+            digitalRead(PIN_ENCODER_SW) ==
+            HIGH
+        ) {
+            aguardandoSolturaBotao = false;
+        }
+
+        return false;
+    }
+
+    if (
+        bordaDetectada &&
+        !validandoBotao
+    ) {
+        validandoBotao = true;
+        inicioValidacaoBotao = agora;
+    }
+
+    if (!validandoBotao) {
+        return false;
+    }
+
+    if (
+        digitalRead(PIN_ENCODER_SW) ==
+        HIGH
+    ) {
+        validandoBotao = false;
+
+        return false;
+    }
+
+    if (
+        agora - inicioValidacaoBotao <
+        TEMPO_VALIDAR_BOTAO_MS
+    ) {
+        return false;
+    }
+
+    validandoBotao = false;
+    aguardandoSolturaBotao = true;
+
+    if (
+        agora - ultimoClique <
+        DEBOUNCE_ENCODER_MS
+    ) {
+        return false;
+    }
+
+    ultimoClique = agora;
+
+    return true;
 }
 
 }
@@ -32,6 +117,12 @@ void iniciarControles() {
 
     encoder.setup(
         encoderISR
+    );
+
+    attachInterrupt(
+        digitalPinToInterrupt(PIN_ENCODER_SW),
+        botaoISR,
+        FALLING
     );
 
     // Limite amplo. Depois controlamos volume
@@ -47,29 +138,16 @@ void iniciarControles() {
     encoder.disableAcceleration();
 
     valorAnterior = encoder.readEncoder();
-
-    botaoAnterior =
-        encoder.isEncoderButtonDown();
+    ultimoClique =
+        millis() - DEBOUNCE_ENCODER_MS;
 
     Serial.println("Encoder inicializado.");
 }
 
 EventoEncoder lerControles() {
-    bool botaoAtual =
-        encoder.isEncoderButtonDown();
-
-    if (
-        botaoAtual &&
-        !botaoAnterior &&
-        millis() - ultimoClique >= DEBOUNCE_ENCODER_MS
-    ) {
-        ultimoClique = millis();
-        botaoAnterior = botaoAtual;
-
+    if (detectarCliqueConfirmado()) {
         return EventoEncoder::CLIQUE;
     }
-
-    botaoAnterior = botaoAtual;
 
     if (!encoder.encoderChanged()) {
         return EventoEncoder::NENHUM;

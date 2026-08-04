@@ -9,6 +9,15 @@ struct Radio {
     const char* url;
 };
 
+constexpr size_t QUANTIDADE_MAXIMA_RADIOS = 50;
+constexpr size_t TAMANHO_MAXIMO_NOME_RADIO = 63;
+constexpr size_t TAMANHO_MAXIMO_URL_RADIO = 511;
+
+bool dadosRadioValidos(
+    const char* nome,
+    const char* url
+);
+
 bool carregarRadios();
 
 int obterQuantidadeRadios();

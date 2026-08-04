@@ -5,12 +5,16 @@
 
 namespace {
 
-constexpr int MAXIMO_RADIOS = 50;
+const char* ARQUIVO_RADIOS =
+    "/radios.json";
 
-Radio radios[MAXIMO_RADIOS];
+const char* ARQUIVO_RADIOS_BACKUP =
+    "/radios.bak";
 
-String nomes[MAXIMO_RADIOS];
-String urls[MAXIMO_RADIOS];
+Radio radios[QUANTIDADE_MAXIMA_RADIOS];
+
+String nomes[QUANTIDADE_MAXIMA_RADIOS];
+String urls[QUANTIDADE_MAXIMA_RADIOS];
 
 int quantidadeRadios = 0;
 
@@ -36,7 +40,11 @@ constexpr int QUANTIDADE_RESERVA =
 void limparRadios() {
     quantidadeRadios = 0;
 
-    for (int indice = 0; indice < MAXIMO_RADIOS; indice++) {
+    for (
+        size_t indice = 0;
+        indice < QUANTIDADE_MAXIMA_RADIOS;
+        indice++
+    ) {
         nomes[indice] = "";
         urls[indice] = "";
 
@@ -74,28 +82,21 @@ void carregarRadiosReserva() {
     );
 }
 
-}
-
-bool carregarRadios() {
-    limparRadios();
-
+bool carregarDocumentoRadios(
+    const char* caminho,
+    DynamicJsonDocument& documento
+) {
     File arquivo =
         FFat.open(
-            "/radios.json",
+            caminho,
             FILE_READ
         );
 
     if (!arquivo) {
-        Serial.println(
-            "Arquivo /radios.json nao encontrado."
-        );
-
-        carregarRadiosReserva();
-
         return false;
     }
 
-    DynamicJsonDocument documento(16384);
+    documento.clear();
 
     DeserializationError erro =
         deserializeJson(
@@ -105,23 +106,71 @@ bool carregarRadios() {
 
     arquivo.close();
 
-    if (erro) {
-        Serial.print(
-            "Erro ao ler radios.json: "
-        );
+    return
+        !erro &&
+        documento.is<JsonArray>();
+}
 
-        Serial.println(
-            erro.c_str()
-        );
+}
 
-        carregarRadiosReserva();
-
+bool dadosRadioValidos(
+    const char* nome,
+    const char* url
+) {
+    if (
+        nome == nullptr ||
+        nome[0] == '\0' ||
+        strlen(nome) >
+            TAMANHO_MAXIMO_NOME_RADIO ||
+        url == nullptr ||
+        url[0] == '\0' ||
+        strlen(url) >
+            TAMANHO_MAXIMO_URL_RADIO
+    ) {
         return false;
     }
 
-    if (!documento.is<JsonArray>()) {
+    return
+        strncmp(
+            url,
+            "http://",
+            7
+        ) == 0 ||
+        strncmp(
+            url,
+            "https://",
+            8
+        ) == 0;
+}
+
+bool carregarRadios() {
+    limparRadios();
+
+    DynamicJsonDocument documento(16384);
+
+    bool carregado =
+        carregarDocumentoRadios(
+            ARQUIVO_RADIOS,
+            documento
+        );
+
+    if (!carregado) {
+        carregado =
+            carregarDocumentoRadios(
+                ARQUIVO_RADIOS_BACKUP,
+                documento
+            );
+
+        if (carregado) {
+            Serial.println(
+                "Usando backup de radios.json."
+            );
+        }
+    }
+
+    if (!carregado) {
         Serial.println(
-            "radios.json nao contem uma lista."
+            "radios.json e radios.bak indisponiveis ou invalidos."
         );
 
         carregarRadiosReserva();
@@ -135,7 +184,7 @@ bool carregarRadios() {
     for (JsonObject item : lista) {
         if (
             quantidadeRadios >=
-            MAXIMO_RADIOS
+            QUANTIDADE_MAXIMA_RADIOS
         ) {
             break;
         }
@@ -146,12 +195,7 @@ bool carregarRadios() {
         const char* url =
             item["url"];
 
-        if (
-            nome == nullptr ||
-            url == nullptr ||
-            strlen(nome) == 0 ||
-            strlen(url) == 0
-        ) {
+        if (!dadosRadioValidos(nome, url)) {
             continue;
         }
 

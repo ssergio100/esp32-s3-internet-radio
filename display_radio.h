@@ -15,6 +15,12 @@ void mostrarNomeRadio(
     int quantidadeRadios
 );
 
+void mostrarSelecaoRadio(
+    const String& nome,
+    int indiceSelecionado,
+    int quantidadeRadios
+);
+
 void mostrarVolume(int volume);
 
 /*

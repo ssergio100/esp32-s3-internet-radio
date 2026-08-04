@@ -22,10 +22,9 @@ int radioAtual = 0;
 int radioSelecionada = 0;
 
 unsigned long ultimaAlteracaoVolume = 0;
-unsigned long ultimaAlteracaoRadio = 0;
+unsigned long ultimaAtividadeSelecao = 0;
 
 bool telaVolumeAtiva = false;
-bool radioAguardandoConfirmacao = false;
 
 // =====================================================
 // Protótipos
@@ -47,9 +46,13 @@ void processarModoSelecaoRadio(
 );
 
 void verificarTelaVolume();
-void verificarConfirmacaoRadio();
+void verificarInatividadeSelecao();
 
-void atualizarLedBuffer();
+void atualizarInterfaceAudio(
+    bool forcar = false
+);
+void atualizarLedEstadoAudio();
+void registrarStatusSistema();
 
 // =====================================================
 // Setup
@@ -76,8 +79,6 @@ void setup() {
 
     carregarRadios();
 
-    
-
     configTime(
         -3 * 3600,
         0,
@@ -85,7 +86,13 @@ void setup() {
         "time.nist.gov"
     );
 
-    iniciarAudio(volume);
+    if (!iniciarAudio(volume)) {
+        mostrarMensagem(
+            "Erro no audio"
+        );
+
+        return;
+    }
 
     radioAtual = 0;
     radioSelecionada = radioAtual;
@@ -98,7 +105,6 @@ void setup() {
 // =====================================================
 
 void loop() {
-    processarAudio();
     processarDisplay();
     processarServidorWeb();
 
@@ -106,15 +112,13 @@ void loop() {
 
     processarEventoEncoder(evento);
 
+    verificarInatividadeSelecao();
     verificarTelaVolume();
-    
-    verificarConfirmacaoRadio();
 
-    // verificarBufferAudio();
+    atualizarLedEstadoAudio();
+    atualizarInterfaceAudio();
 
-    atualizarLedBuffer();
-
-    status();
+    registrarStatusSistema();
 }
 
 // =====================================================
@@ -135,20 +139,39 @@ void processarEventoEncoder(
             telaVolumeAtiva = false;
 
             radioSelecionada = radioAtual;
-            radioAguardandoConfirmacao = false;
+            ultimaAtividadeSelecao = millis();
 
-            exibirRadio(radioSelecionada);
+            const Radio* radio =
+                obterRadio(radioSelecionada);
 
-            Serial.println("Modo: seleção de rádio");
+            if (radio != nullptr) {
+                mostrarSelecaoRadio(
+                    radio->nome,
+                    radioSelecionada,
+                    obterQuantidadeRadios()
+                );
+            }
+
+            Serial.println(
+                "Modo: seleção de rádio"
+            );
         } else {
             modoControle = ModoControle::VOLUME;
 
-            radioSelecionada = radioAtual;
-            radioAguardandoConfirmacao = false;
+            if (
+                radioSelecionada ==
+                radioAtual
+            ) {
+                atualizarInterfaceAudio(true);
+            } else {
+                iniciarRadio(
+                    radioSelecionada
+                );
+            }
 
-            exibirRadio(radioAtual);
-
-            Serial.println("Modo: volume");
+            Serial.println(
+                "Rádio confirmada; modo: volume"
+            );
         }
 
         return;
@@ -236,15 +259,7 @@ void processarModoSelecaoRadio(
             quantidade - 1;
     }
 
-    exibirRadio(
-        radioSelecionada
-    );
-
-    ultimaAlteracaoRadio =
-        millis();
-
-    radioAguardandoConfirmacao =
-        true;
+    ultimaAtividadeSelecao = millis();
 
     Serial.print(
         "Selecionada: "
@@ -256,6 +271,12 @@ void processarModoSelecaoRadio(
         );
 
     if (radio != nullptr) {
+        mostrarSelecaoRadio(
+            radio->nome,
+            radioSelecionada,
+            quantidade
+        );
+
         Serial.println(
             radio->nome
         );
@@ -263,10 +284,10 @@ void processarModoSelecaoRadio(
 }
 
 // =====================================================
-// Confirmação automática após 1 segundo
+// Retorno automático do controle para volume
 // =====================================================
 
-void verificarConfirmacaoRadio() {
+void verificarInatividadeSelecao() {
     if (
         modoControle !=
             ModoControle::SELECAO_RADIO
@@ -274,27 +295,22 @@ void verificarConfirmacaoRadio() {
         return;
     }
 
-    if (!radioAguardandoConfirmacao) {
-        return;
-    }
-
     if (
-        millis() - ultimaAlteracaoRadio <
-            TEMPO_CONFIRMAR_RADIO_MS
+        millis() - ultimaAtividadeSelecao <
+            TEMPO_INATIVIDADE_SELECAO_MS
     ) {
         return;
     }
 
-    radioAguardandoConfirmacao =
-        false;
+    modoControle = ModoControle::VOLUME;
+    radioSelecionada = radioAtual;
+    telaVolumeAtiva = false;
 
-    if (radioSelecionada == radioAtual) {
-        return;
-    }
-
-    iniciarRadio(
-        radioSelecionada
+    Serial.println(
+        "Seleção cancelada por inatividade; modo: volume"
     );
+
+    atualizarInterfaceAudio(true);
 }
 
 // =====================================================
@@ -320,7 +336,7 @@ void verificarTelaVolume() {
 
     telaVolumeAtiva = false;
 
-    exibirRadio(radioAtual);
+    atualizarInterfaceAudio(true);
 }
 
 // =====================================================
@@ -343,18 +359,16 @@ void iniciarRadio(int indice) {
         "Conectando..."
     );
 
-    bool conectado =
+    bool comandoAceito =
         tocarRadio(
             radio->nome,
             radio->url
         );
 
-    if (!conectado) {
+    if (!comandoAceito) {
         mostrarMensagem(
-            "Falha na radio"
+            "Comando rejeitado"
         );
-
-        delay(800);
 
         exibirRadio(
             radioAtual
@@ -365,10 +379,6 @@ void iniciarRadio(int indice) {
 
     radioAtual = indice;
     radioSelecionada = indice;
-
-    exibirRadio(
-        radioAtual
-    );
 }
 
 void exibirRadio(int indice) {
@@ -386,48 +396,47 @@ void exibirRadio(int indice) {
     );
 }
 
-void verificarBufferAudio() {
-    static unsigned long ultimaVerificacao = 0;
-    static uint8_t menorBuffer = 100;
-
-    if (millis() - ultimaVerificacao < 250) {
-        return;
-    }
-
-    ultimaVerificacao = millis();
-
-    uint8_t percentual =
-        obterPercentualBufferAudio();
-
-    if (percentual < menorBuffer) {
-        menorBuffer = percentual;
-    }
-
-    Serial.printf(
-        "Buffer: %u%% | mínimo: %u%%\n",
-        percentual,
-        menorBuffer
-    );
-}
-
-void status(){
+void registrarStatusSistema() {
 
     static unsigned long ultimaAtualizacaoStatus = 0;
 
-    if (millis() - ultimaAtualizacaoStatus < 1000) {
+    if (millis() - ultimaAtualizacaoStatus < 5000) {
         return;
     }
     ultimaAtualizacaoStatus = millis();
 
+    StatusAudio audio =
+        obterStatusAudio();
+
     Serial.printf("Temperatura: %.1f °C\n", temperatureRead());
     Serial.printf("RAM livre: %u KB\n", ESP.getFreeHeap() / 1024);
     Serial.printf("Menor RAM livre: %u KB\n", ESP.getMinFreeHeap() / 1024);
+    Serial.printf("Maior bloco RAM: %u KB\n", ESP.getMaxAllocHeap() / 1024);
     Serial.printf("PSRAM livre: %u KB\n", ESP.getFreePsram() / 1024);
-    Serial.printf("Sinal Wi-Fi: %d dBm\n", WiFi.RSSI());
+    Serial.printf("Maior bloco PSRAM: %u KB\n", ESP.getMaxAllocPsram() / 1024);
+    Serial.printf(
+        "Wi-Fi: %d dBm | BSSID: %s | Canal: %d\n",
+        WiFi.RSSI(),
+        WiFi.BSSIDstr().c_str(),
+        WiFi.channel()
+    );
+    Serial.printf(
+        "Audio: %s | Buffer: %lu ms | Bitrate: %lu | Fluxo lento: %lu | Reconexoes: %lu | Pilha livre min.: %lu bytes\n",
+        obterTextoEstadoAudio(
+            audio.estado
+        ),
+        audio.bufferMilissegundos,
+        audio.bitrate,
+        audio.eventosFluxoLento,
+        audio.tentativasReconexao,
+        audio.stackMinimoBytes
+    );
 }
 
-void atualizarLedBuffer() {
+void atualizarLedEstadoAudio() {
     static unsigned long ultimaAtualizacao = 0;
+    static EstadoAudio ultimoEstado =
+        EstadoAudio::DESLIGADO;
 
     if (millis() - ultimaAtualizacao < 250) {
         return;
@@ -435,43 +444,131 @@ void atualizarLedBuffer() {
 
     ultimaAtualizacao = millis();
 
-    uint8_t buffer =
-        obterPercentualBufferAudio();
+    StatusAudio audio =
+        obterStatusAudio();
 
-    if (buffer == 0) {
-        // Rádio fora ou sem receber áudio
-        rgbLedWrite(
-            PIN_LED_RGB,
-            0,
-            0,
-            0
-        );
+    if (audio.estado == ultimoEstado) {
+        return;
+    }
 
-    } else if (buffer <= 5) {
-        // Buffer crítico: vermelho
-        rgbLedWrite(
-            PIN_LED_RGB,
-            BRILHO_LED_RGB,
-            0,
-            0
-        );
+    ultimoEstado = audio.estado;
 
-    } else if (buffer <= 15) {
-        // Buffer baixo: amarelo
-        rgbLedWrite(
-            PIN_LED_RGB,
-            BRILHO_LED_RGB,
-            BRILHO_LED_RGB,
-            0
-        );
+    switch (audio.estado) {
+        case EstadoAudio::CONECTANDO:
+        case EstadoAudio::BUFFERIZANDO:
+        case EstadoAudio::INICIALIZANDO:
+            rgbLedWrite(
+                PIN_LED_RGB,
+                0,
+                0,
+                BRILHO_LED_RGB
+            );
+            break;
 
-    } else {
-        // Buffer normal: verde
-        rgbLedWrite(
-            PIN_LED_RGB,
-            0,
-            BRILHO_LED_RGB,
-            0
-        );
+        case EstadoAudio::TOCANDO:
+            rgbLedWrite(
+                PIN_LED_RGB,
+                0,
+                BRILHO_LED_RGB,
+                0
+            );
+            break;
+
+        case EstadoAudio::DEGRADADO:
+            rgbLedWrite(
+                PIN_LED_RGB,
+                BRILHO_LED_RGB,
+                BRILHO_LED_RGB,
+                0
+            );
+            break;
+
+        case EstadoAudio::RECONECTANDO:
+        case EstadoAudio::ERRO:
+            rgbLedWrite(
+                PIN_LED_RGB,
+                BRILHO_LED_RGB,
+                0,
+                0
+            );
+            break;
+
+        case EstadoAudio::DESLIGADO:
+        case EstadoAudio::PARADO:
+            rgbLedWrite(
+                PIN_LED_RGB,
+                0,
+                0,
+                0
+            );
+            break;
+    }
+}
+
+void atualizarInterfaceAudio(
+    bool forcar
+) {
+    static EstadoAudio estadoAnterior =
+        EstadoAudio::DESLIGADO;
+
+    StatusAudio audio =
+        obterStatusAudio();
+
+    if (
+        !forcar &&
+        audio.estado == estadoAnterior
+    ) {
+        return;
+    }
+
+    estadoAnterior = audio.estado;
+
+    Serial.print("Estado do audio: ");
+    Serial.println(
+        obterTextoEstadoAudio(
+            audio.estado
+        )
+    );
+
+    if (
+        modoControle !=
+            ModoControle::VOLUME ||
+        telaVolumeAtiva
+    ) {
+        return;
+    }
+
+    switch (audio.estado) {
+        case EstadoAudio::CONECTANDO:
+            mostrarMensagem(
+                "Conectando..."
+            );
+            break;
+
+        case EstadoAudio::BUFFERIZANDO:
+            mostrarMensagem(
+                "Bufferizando..."
+            );
+            break;
+
+        case EstadoAudio::TOCANDO:
+        case EstadoAudio::DEGRADADO:
+            exibirRadio(radioAtual);
+            break;
+
+        case EstadoAudio::RECONECTANDO:
+            mostrarMensagem(
+                "Reconectando..."
+            );
+            break;
+
+        case EstadoAudio::ERRO:
+            mostrarMensagem(
+                "Erro no audio"
+            );
+            break;
+
+        default:
+            break;
     }
 }

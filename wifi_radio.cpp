@@ -51,7 +51,6 @@ bool conectarWifi() {
     WiFiManager wifiManager;
 
     wifiManager.setConnectTimeout(20);
-    wifiManager.setConfigPortalTimeout(180);
 
     wifiManager.setAPCallback([](WiFiManager *gerenciador) {
         Serial.println();
@@ -81,13 +80,14 @@ bool conectarWifi() {
         "</script>"
     );
 
+    // O portal permanece disponível até receber
+    // credenciais válidas. Isso permite levar o rádio
+    // para um local com outra rede sem regravar o firmware.
     wifiManager.setConfigPortalBlocking(false);
 
     bool conectado = wifiManager.autoConnect(
         "RADIO-WEB"
     );
-
-    unsigned long inicio = millis();
 
     while (!conectado) {
         wifiManager.process();
@@ -96,24 +96,12 @@ bool conectarWifi() {
         conectado =
             WiFi.status() == WL_CONNECTED;
 
-        if (millis() - inicio >= 180000) {
-            apagarLedConexao();
-
-            Serial.println();
-            Serial.println(
-                "Tempo de configuração esgotado."
-            );
-
-            mostrarMensagem("Falha no Wi-Fi");
-
-            return false;
-        }
-
         delay(10);
     }
 
     apagarLedConexao();
 
+    WiFi.setAutoReconnect(true);
     WiFi.setSleep(false);
 
     Serial.println();
@@ -125,6 +113,12 @@ bool conectarWifi() {
     Serial.print("Sinal: ");
     Serial.print(WiFi.RSSI());
     Serial.println(" dBm");
+
+    Serial.print("BSSID: ");
+    Serial.println(WiFi.BSSIDstr());
+
+    Serial.print("Canal: ");
+    Serial.println(WiFi.channel());
 
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
