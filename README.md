@@ -12,6 +12,7 @@ separados por responsabilidade:
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `configuracao.h` | Ligações do hardware e parâmetros ajustáveis |
+| `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
 | `display_radio.cpp` | Telas, relógio e animação do nome da estação |
@@ -122,6 +123,10 @@ A resposta JSON contém estado do áudio, rádio, título, codec, bitrate,
 buffer estimado em milissegundos, eventos de stream lento, tentativas de
 reconexão, RSSI, heap, PSRAM e uptime. A porta serial também imprime um
 resumo a cada cinco segundos.
+
+O endpoint responde a consultas feitas por outro equipamento da rede. O
+ESP32 não faz uma requisição para si mesmo: `api_status.cpp` apenas cria a
+fotografia JSON quando `servidor_web.cpp` recebe um pedido externo.
 
 ## Compilação
 

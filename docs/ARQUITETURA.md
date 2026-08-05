@@ -60,6 +60,13 @@ Wi-Fi e áudio enviado à porta serial. O `loop()` apenas chama
 bloquear as demais atividades. O intervalo ajustável fica em
 `configuracao.h`.
 
+### Diagnóstico HTTP
+
+`api_status.cpp` cria a fotografia JSON retornada por `/api/v1/status`,
+reunindo o estado publicado pelo áudio, a conexão Wi-Fi, a memória e o
+uptime. Ele não inicia requisições e não altera o estado do rádio.
+`servidor_web.cpp` continua responsável pela rota e pela resposta HTTP.
+
 ### Persistência
 
 `servidor_web.cpp` administra FFat e as mutações de `radios.json`.

@@ -1,5 +1,5 @@
 #include "servidor_web.h"
-#include "audio_radio.h"
+#include "api_status.h"
 #include "radios.h"
 
 #include <Arduino.h>
@@ -950,64 +950,11 @@ void finalizarUpload() {
     );
 }
 
-void obterStatusSistema() {
-    StatusAudio audio =
-        obterStatusAudio();
-
-    DynamicJsonDocument documento(1536);
-
-    documento["estado"] =
-        obterTextoEstadoAudio(
-            audio.estado
-        );
-
-    documento["radio"] = audio.radio;
-    documento["titulo"] = audio.titulo;
-    documento["codec"] = audio.codec;
-    documento["bitrate"] = audio.bitrate;
-    documento["bufferBytes"] =
-        audio.bufferBytes;
-    documento["bufferTotalBytes"] =
-        audio.bufferTotalBytes;
-    documento["bufferMilissegundos"] =
-        audio.bufferMilissegundos;
-    documento["eventosFluxoLento"] =
-        audio.eventosFluxoLento;
-    documento["tentativasReconexao"] =
-        audio.tentativasReconexao;
-    documento["stackMinimoBytes"] =
-        audio.stackMinimoBytes;
-    documento["ultimoErro"] =
-        audio.ultimoErro;
-
-    documento["wifiConectado"] =
-        WiFi.status() == WL_CONNECTED;
-    documento["rssi"] = WiFi.RSSI();
-    documento["bssid"] =
-        WiFi.BSSIDstr();
-    documento["canalWifi"] =
-        WiFi.channel();
-    documento["ramLivre"] =
-        ESP.getFreeHeap();
-    documento["maiorBlocoRam"] =
-        ESP.getMaxAllocHeap();
-    documento["psramLivre"] =
-        ESP.getFreePsram();
-    documento["maiorBlocoPsram"] =
-        ESP.getMaxAllocPsram();
-    documento["uptimeMs"] = millis();
-
-    String resposta;
-
-    serializeJson(
-        documento,
-        resposta
-    );
-
+void responderStatusSistema() {
     servidor.send(
         200,
         "application/json",
-        resposta
+        criarStatusSistemaJson()
     );
 }
 
@@ -1049,7 +996,7 @@ bool iniciarServidorWeb() {
     servidor.on(
         "/api/v1/status",
         HTTP_GET,
-        obterStatusSistema
+        responderStatusSistema
     );
 
     servidor.on(
