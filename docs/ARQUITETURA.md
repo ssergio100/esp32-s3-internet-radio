@@ -40,6 +40,13 @@ O Wi-Fi solicita a animação azul durante a conexão inicial; depois disso, o
 `loop()` solicita a apresentação do estado publicado pelo serviço de áudio.
 As cores e a temporização ficam encapsuladas no indicador.
 
+### Relógio
+
+`relogio.cpp` concentra a sincronização NTP, o fuso horário e a obtenção
+da data e hora locais. O arquivo principal apenas inicia o relógio. O display
+solicita a hora local e continua responsável por sua formatação e desenho.
+Fuso, ajuste de horário de verão e servidores NTP ficam em `configuracao.h`.
+
 ### Telemetria
 
 `telemetria.cpp` reúne o diagnóstico periódico de temperatura, memória,

@@ -9,7 +9,6 @@
  */
 
 #include <Arduino.h>
-#include <time.h>
 
 #include "configuracao.h"
 #include "radios.h"
@@ -18,6 +17,7 @@
 #include "audio_radio.h"
 #include "controles.h"
 #include "indicador_led.h"
+#include "relogio.h"
 #include "servidor_web.h"
 #include "telemetria.h"
 
@@ -89,12 +89,7 @@ void setup() {
 
     carregarRadios();
 
-    configTime(
-        -3 * 3600,
-        0,
-        "pool.ntp.org",
-        "time.nist.gov"
-    );
+    iniciarRelogio();
 
     if (!iniciarAudio(volume)) {
         mostrarMensagem(

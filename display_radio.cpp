@@ -1,10 +1,10 @@
 #include "display_radio.h"
 #include "configuracao.h"
+#include "relogio.h"
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <time.h>
 
 
 namespace {
@@ -35,6 +35,8 @@ namespace {
     constexpr int POSICAO_VERTICAL_NOME_RADIO_PX = 24;
     constexpr uint8_t TAMANHO_TEXTO_NOME_RADIO = 2;
     constexpr int ESPACO_ENTRE_REPETICOES_NOME_PX = 24;
+    constexpr unsigned long INTERVALO_VERIFICACAO_RELOGIO_MS =
+        1000;
 
     bool rolagemNomeAtiva = false;
     int posicaoHorizontalNomeRadioPx =
@@ -42,7 +44,7 @@ namespace {
     uint16_t larguraNomeRadioPx = 0;
     unsigned long momentoUltimoPassoRolagemNomeMs = 0;
 
-    unsigned long ultimaAtualizacaoRelogio = 0;
+    unsigned long momentoUltimaVerificacaoRelogioMs = 0;
     int ultimoMinutoExibido = -1;
     String dataHoraAtual = "--/--/---- --:--";
 
@@ -89,10 +91,10 @@ namespace {
         display.setTextWrap(false);
     }
 
-    String obterDataHora() {
-        struct tm horario;
+    String formatarDataHoraParaDisplay() {
+        struct tm dataHora;
 
-        if (!getLocalTime(&horario, 10)) {
+        if (!obterDataHoraLocal(dataHora)) {
             return "--/--/---- --:--";
         }
 
@@ -102,7 +104,7 @@ namespace {
             texto,
             sizeof(texto),
             "%d/%m/%Y %H:%M",
-            &horario
+            &dataHora
         );
 
         return String(texto);
@@ -245,7 +247,7 @@ void mostrarNomeRadio(
 
     telaAtual = TelaDisplay::RADIO;
     ultimoMinutoExibido = -1;
-    dataHoraAtual = obterDataHora();
+    dataHoraAtual = formatarDataHoraParaDisplay();
 
     if (radioMudou || larguraNomeRadioPx == 0) {
         reiniciarRolagemNome();
@@ -414,17 +416,20 @@ void processarDisplay() {
     unsigned long agoraMs = millis();
     bool precisaRedesenhar = false;
 
-    if (agoraMs - ultimaAtualizacaoRelogio >= 1000) {
-        ultimaAtualizacaoRelogio = agoraMs;
+    if (
+        agoraMs - momentoUltimaVerificacaoRelogioMs >=
+        INTERVALO_VERIFICACAO_RELOGIO_MS
+    ) {
+        momentoUltimaVerificacaoRelogioMs = agoraMs;
 
-        struct tm horario;
+        struct tm dataHora;
 
         if (
-            getLocalTime(&horario, 10) &&
-            horario.tm_min != ultimoMinutoExibido
+            obterDataHoraLocal(dataHora) &&
+            dataHora.tm_min != ultimoMinutoExibido
         ) {
-            ultimoMinutoExibido = horario.tm_min;
-            dataHoraAtual = obterDataHora();
+            ultimoMinutoExibido = dataHora.tm_min;
+            dataHoraAtual = formatarDataHoraParaDisplay();
             precisaRedesenhar = true;
         }
     }

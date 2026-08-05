@@ -18,6 +18,7 @@ separados por responsabilidade:
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
 | `radios.cpp` | Carregamento e validação da lista de estações |
+| `relogio.cpp` | Sincronização NTP e obtenção da hora local |
 | `servidor_web.cpp` | API HTTP, arquivos da FFat e interface administrativa |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `web/index.html` | Página principal da administração |
@@ -40,10 +41,12 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
+| `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 
 Na rolagem do nome, um intervalo menor produz movimento mais rápido e um
 intervalo maior produz movimento mais lento. A mesma relação vale para o
 intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
+Os servidores NTP primário e secundário também ficam em `configuracao.h`.
 
 ## Arquitetura
 

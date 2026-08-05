@@ -58,6 +58,13 @@ constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 50;
 // Diagnóstico
 constexpr unsigned long INTERVALO_TELEMETRIA_SERIAL_MS = 5000;
 
+// Relógio
+// Exemplo: -3 corresponde ao horário UTC-3 usado em Brasília.
+constexpr int FUSO_HORARIO_UTC_HORAS = -3;
+constexpr int AJUSTE_HORARIO_VERAO_HORAS = 0;
+constexpr const char* SERVIDOR_NTP_PRIMARIO = "pool.ntp.org";
+constexpr const char* SERVIDOR_NTP_SECUNDARIO = "time.nist.gov";
+
 // =====================================================
 // Ajustes internos
 // =====================================================
