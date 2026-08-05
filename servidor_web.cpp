@@ -2,6 +2,7 @@
 #include "api_status.h"
 #include "persistencia_radios.h"
 #include "radios.h"
+#include "upload_arquivos.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -15,15 +16,6 @@ WebServer servidor(80);
 
 const char* ARQUIVO_PAGINA_PRINCIPAL = "/index.html";
 const char* ARQUIVO_PAGINA_UPLOAD = "/upload.html";
-const char* ARQUIVO_UPLOAD_TEMPORARIO = "/.upload.tmp";
-const char* ARQUIVO_UPLOAD_RESERVA = "/.upload.bak";
-
-File arquivoUpload;
-
-String destinoUpload;
-String erroUpload;
-
-bool uploadConcluido = false;
 
 const char PAGINA_RECUPERACAO_UPLOAD[] PROGMEM = R"HTML(
 <!DOCTYPE html>
@@ -342,71 +334,6 @@ void abrirPagina() {
     );
 }
 
-bool caracterePermitido(char caractere) {
-    return
-        (
-            caractere >= 'a' &&
-            caractere <= 'z'
-        ) ||
-        (
-            caractere >= 'A' &&
-            caractere <= 'Z'
-        ) ||
-        (
-            caractere >= '0' &&
-            caractere <= '9'
-        ) ||
-        caractere == '.' ||
-        caractere == '-' ||
-        caractere == '_';
-}
-
-String obterNomeArquivoSeguro(
-    const String& nomeOriginal
-) {
-    int ultimaBarraNormal =
-        nomeOriginal.lastIndexOf('/');
-
-    int ultimaBarraInvertida =
-        nomeOriginal.lastIndexOf('\\');
-
-    int ultimaBarra =
-        ultimaBarraNormal >
-        ultimaBarraInvertida
-            ? ultimaBarraNormal
-            : ultimaBarraInvertida;
-
-    String nome =
-        nomeOriginal.substring(
-            ultimaBarra + 1
-        );
-
-    nome.trim();
-
-    if (
-        nome.length() == 0 ||
-        nome == "." ||
-        nome == ".." ||
-        nome.startsWith(".") ||
-        nome == "radios.tmp" ||
-        nome == "radios.bak"
-    ) {
-        return "";
-    }
-
-    for (
-        size_t indice = 0;
-        indice < nome.length();
-        indice++
-    ) {
-        if (!caracterePermitido(nome[indice])) {
-            return "";
-        }
-    }
-
-    return nome;
-}
-
 void abrirPaginaUpload() {
     if (enviarPaginaHtmlDaFfat(ARQUIVO_PAGINA_UPLOAD)) {
         return;
@@ -460,263 +387,6 @@ void listarArquivos() {
 
     servidor.send(
         200,
-        "application/json",
-        resposta
-    );
-}
-
-void receberUpload() {
-    HTTPUpload& upload =
-        servidor.upload();
-
-    if (
-        upload.status ==
-        UPLOAD_FILE_START
-    ) {
-        uploadConcluido = false;
-        erroUpload = "";
-        destinoUpload = "";
-
-        if (arquivoUpload) {
-            arquivoUpload.close();
-        }
-
-        String nome =
-            obterNomeArquivoSeguro(
-                upload.filename
-            );
-
-        if (nome.length() == 0) {
-            erroUpload =
-                "Nome de arquivo inválido";
-
-            return;
-        }
-
-        destinoUpload =
-            "/" + nome;
-
-        FFat.remove(
-            ARQUIVO_UPLOAD_TEMPORARIO
-        );
-
-        arquivoUpload =
-            FFat.open(
-                ARQUIVO_UPLOAD_TEMPORARIO,
-                FILE_WRITE
-            );
-
-        if (!arquivoUpload) {
-            erroUpload =
-                "Não foi possível criar o arquivo temporário";
-        }
-
-        return;
-    }
-
-    if (
-        upload.status ==
-        UPLOAD_FILE_WRITE
-    ) {
-        if (
-            erroUpload.length() > 0 ||
-            !arquivoUpload
-        ) {
-            return;
-        }
-
-        size_t gravados =
-            arquivoUpload.write(
-                upload.buf,
-                upload.currentSize
-            );
-
-        if (
-            gravados !=
-            upload.currentSize
-        ) {
-            erroUpload =
-                "Falha ao gravar os dados";
-        }
-
-        return;
-    }
-
-    if (
-        upload.status ==
-        UPLOAD_FILE_END
-    ) {
-        if (arquivoUpload) {
-            arquivoUpload.close();
-        }
-
-        if (erroUpload.length() > 0) {
-            FFat.remove(
-                ARQUIVO_UPLOAD_TEMPORARIO
-            );
-
-            return;
-        }
-
-        if (destinoUpload == CAMINHO_RADIOS_ATIVO) {
-            DynamicJsonDocument documento(16384);
-
-            if (
-                !carregarDocumentoRadiosDoArquivo(
-                    documento,
-                    ARQUIVO_UPLOAD_TEMPORARIO
-                )
-            ) {
-                erroUpload =
-                    "O arquivo radios.json é inválido";
-
-                FFat.remove(
-                    ARQUIVO_UPLOAD_TEMPORARIO
-                );
-
-                return;
-            }
-
-            if (!salvarDocumentoRadios(documento)) {
-                erroUpload =
-                    "Não foi possível salvar radios.json";
-
-                FFat.remove(
-                    ARQUIVO_UPLOAD_TEMPORARIO
-                );
-
-                return;
-            }
-
-            FFat.remove(
-                ARQUIVO_UPLOAD_TEMPORARIO
-            );
-
-            uploadConcluido = true;
-
-            Serial.println(
-                "radios.json validado e atualizado."
-            );
-
-            return;
-        }
-
-        FFat.remove(
-            ARQUIVO_UPLOAD_RESERVA
-        );
-
-        bool arquivoAnteriorExiste =
-            FFat.exists(
-                destinoUpload.c_str()
-            );
-
-        if (
-            arquivoAnteriorExiste &&
-            !FFat.rename(
-                destinoUpload.c_str(),
-                ARQUIVO_UPLOAD_RESERVA
-            )
-        ) {
-            erroUpload =
-                "Não foi possível preservar o arquivo anterior";
-
-            FFat.remove(
-                ARQUIVO_UPLOAD_TEMPORARIO
-            );
-
-            return;
-        }
-
-        if (
-            !FFat.rename(
-                ARQUIVO_UPLOAD_TEMPORARIO,
-                destinoUpload.c_str()
-            )
-        ) {
-            erroUpload =
-                "Não foi possível concluir a substituição";
-
-            if (arquivoAnteriorExiste) {
-                FFat.rename(
-                    ARQUIVO_UPLOAD_RESERVA,
-                    destinoUpload.c_str()
-                );
-            }
-
-            FFat.remove(
-                ARQUIVO_UPLOAD_TEMPORARIO
-            );
-
-            return;
-        }
-
-        FFat.remove(
-            ARQUIVO_UPLOAD_RESERVA
-        );
-
-        uploadConcluido = true;
-
-        Serial.print(
-            "Arquivo enviado: "
-        );
-
-        Serial.println(
-            destinoUpload
-        );
-
-        return;
-    }
-
-    if (
-        upload.status ==
-        UPLOAD_FILE_ABORTED
-    ) {
-        if (arquivoUpload) {
-            arquivoUpload.close();
-        }
-
-        FFat.remove(
-            ARQUIVO_UPLOAD_TEMPORARIO
-        );
-
-        erroUpload =
-            "Upload interrompido";
-    }
-}
-
-void finalizarUpload() {
-    if (
-        uploadConcluido &&
-        erroUpload.length() == 0
-    ) {
-        servidor.send(
-            200,
-            "application/json",
-            "{\"sucesso\":true}"
-        );
-
-        return;
-    }
-
-    String mensagemErro =
-        erroUpload.length() > 0
-            ? erroUpload
-            : "Upload não concluído";
-
-    DynamicJsonDocument documento(256);
-
-    documento["erro"] =
-        mensagemErro;
-
-    String resposta;
-
-    serializeJson(
-        documento,
-        resposta
-    );
-
-    servidor.send(
-        500,
         "application/json",
         resposta
     );
@@ -786,8 +456,12 @@ bool iniciarServidorWeb() {
     servidor.on(
         "/upload",
         HTTP_POST,
-        finalizarUpload,
-        receberUpload
+        []() {
+            responderResultadoUpload(servidor);
+        },
+        []() {
+            processarDadosUpload(servidor);
+        }
     );
 
     servidor.onNotFound([]() {

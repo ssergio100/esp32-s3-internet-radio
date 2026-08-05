@@ -81,8 +81,14 @@ Por projeto, uma lista nova entra em uso depois de reiniciar.
 As interfaces web completas são arquivos físicos: `/index.html` e
 `/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas
 quando `/upload.html` está ausente, permitindo restaurar arquivos enquanto a
-FFat continuar montada. Validação, escrita temporária e backup permanecem no
-firmware; o JavaScript não é considerado uma barreira de segurança.
+FFat continuar montada.
+
+`upload_arquivos.cpp` recebe os blocos enviados, valida o nome do arquivo e
+substitui arquivos comuns usando `/.upload.tmp` e `/.upload.bak`. Quando o
+destino é `/radios.json`, ele delega a validação e a promoção para
+`persistencia_radios.cpp`. `servidor_web.cpp` apenas registra as rotas e entrega
+o pedido ao módulo apropriado. Essas garantias permanecem no firmware; o
+JavaScript não é considerado uma barreira de segurança.
 
 ## Máquina de estados
 

@@ -21,8 +21,9 @@ separados por responsabilidade:
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Sincronização NTP e obtenção da hora local |
-| `servidor_web.cpp` | Rotas HTTP, upload e interface administrativa |
+| `servidor_web.cpp` | Inicialização, rotas HTTP e interface administrativa |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
+| `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
 | `web/index.html` | Página principal da administração |
 | `web/upload.html` | Página completa de manutenção dos arquivos |
 
@@ -170,9 +171,11 @@ os arquivos da interface. Esse fallback depende de a FFat ter sido montada;
 ele não recupera uma falha de montagem do sistema de arquivos.
 
 O upload aceita nomes simples e faz substituição por arquivo temporário.
-`radios.json` recebe validação e backup próprios. Ao migrar uma instalação
-existente, envie `upload.html` pela página incorporada atual antes de gravar
-uma versão do firmware que passe a servi-lo da FFat.
+Esse fluxo fica em `upload_arquivos.cpp`, que trata separadamente o início, a
+escrita das partes, a conclusão e o cancelamento do envio. `radios.json` recebe
+validação e backup próprios por meio de `persistencia_radios.cpp`. Ao migrar
+uma instalação existente, envie `upload.html` pela página incorporada atual
+antes de gravar uma versão do firmware que passe a servi-lo da FFat.
 
 O sketch mínimo usado para comparação foi isolado em
 `examples/radio_web_exemplo_minimo/`. Ele não participa da compilação do
