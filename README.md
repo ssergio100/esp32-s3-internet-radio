@@ -3,6 +3,42 @@
 Firmware de rádio web com saída I2S, display OLED, encoder, LED RGB,
 cadastro de estações em FFat e interface HTTP para administração.
 
+## Por onde começar
+
+O arquivo `radio_web_1.ino` é o ponto de entrada e mostra a ordem geral de
+inicialização e as atividades coordenadas pelo `loop()`. Os detalhes ficam
+separados por responsabilidade:
+
+| Arquivo | Responsabilidade |
+| --- | --- |
+| `configuracao.h` | Ligações do hardware e parâmetros ajustáveis |
+| `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
+| `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
+| `display_radio.cpp` | Telas, relógio e animação do nome da estação |
+| `controles.cpp` | Leitura do encoder e do botão |
+| `radios.cpp` | Carregamento e validação da lista de estações |
+| `servidor_web.cpp` | API HTTP, arquivos da FFat e interface administrativa |
+| `web/index.html` | Página principal da administração |
+
+Para uma primeira leitura, siga `radio_web_1.ino`, depois o arquivo do módulo
+que deseja alterar. Consulte [docs/ARQUITETURA.md](docs/ARQUITETURA.md) antes
+de mudar a comunicação entre os módulos.
+
+## Personalização rápida
+
+As opções que normalmente precisam ser adaptadas ficam em
+`configuracao.h`. Cada tempo informa sua unidade no sufixo do nome.
+
+| Opção | Efeito | Padrão |
+| --- | --- | ---: |
+| `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
+| `TEMPO_TELA_VOLUME_MS` | Permanência da tela de volume | 2000 ms |
+| `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
+| `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
+
+Na rolagem do nome, um intervalo menor produz movimento mais rápido e um
+intervalo maior produz movimento mais lento.
+
 ## Arquitetura
 
 O fluxo de áudio não é executado pelo `loop()` principal. O módulo
@@ -46,9 +82,9 @@ O modo de repouso é sempre o controle de volume:
 - após dois segundos, o display volta ao nome da rádio;
 - pressionar o encoder abre a seleção de estações;
 - girar escolhe a estação;
-- após um segundo sem movimento, a escolha é confirmada e o encoder retorna
-  automaticamente ao volume;
-- pressionar novamente antes da confirmação cancela a seleção.
+- pressionar novamente confirma a estação e retorna ao controle de volume;
+- após dez segundos sem atividade, a seleção é cancelada e a estação
+  anterior permanece ativa.
 
 ## Lista de rádios
 

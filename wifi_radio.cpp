@@ -8,6 +8,9 @@
 
 namespace {
 
+constexpr unsigned long INTERVALO_RECONEXAO_WIFI_MS =
+    10000;
+
 void atualizarLedConexao() {
     static unsigned long ultimaPiscada = 0;
     static bool ledAceso = false;
@@ -38,6 +41,58 @@ void apagarLedConexao() {
     );
 }
 
+}
+
+void supervisionarWifi() {
+    static wl_status_t estadoAnterior =
+        WL_CONNECTED;
+    static unsigned long ultimaTentativa = 0;
+
+    wl_status_t estadoAtual = WiFi.status();
+
+    if (estadoAtual == WL_CONNECTED) {
+        if (estadoAnterior != WL_CONNECTED) {
+            Serial.println();
+            Serial.println("Wi-Fi reconectado.");
+            Serial.print("BSSID: ");
+            Serial.println(WiFi.BSSIDstr());
+            Serial.print("IP: ");
+            Serial.println(WiFi.localIP());
+        }
+
+        estadoAnterior = estadoAtual;
+        return;
+    }
+
+    unsigned long agora = millis();
+
+    if (estadoAnterior == WL_CONNECTED) {
+        Serial.println();
+        Serial.println("Wi-Fi desconectado.");
+
+        // Permite uma tentativa imediata ao detectar a queda.
+        ultimaTentativa =
+            agora - INTERVALO_RECONEXAO_WIFI_MS;
+    }
+
+    estadoAnterior = estadoAtual;
+
+    if (
+        agora - ultimaTentativa <
+        INTERVALO_RECONEXAO_WIFI_MS
+    ) {
+        return;
+    }
+
+    ultimaTentativa = agora;
+
+    Serial.println(
+        "Solicitando reconexao do Wi-Fi..."
+    );
+
+    // Usa as credenciais persistidas e deixa a pilha
+    // escolher normalmente o ponto de acesso disponível.
+    WiFi.reconnect();
 }
 
 bool conectarWifi() {

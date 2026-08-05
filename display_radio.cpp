@@ -31,16 +31,16 @@ namespace {
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
 
-    constexpr int MARGEM_NOME_RADIO = 2;
-    constexpr int POSICAO_Y_NOME_RADIO = 24;
-    constexpr uint8_t TAMANHO_NOME_RADIO = 2;
-    constexpr unsigned long INTERVALO_ROLAGEM_MS = 50;
-    constexpr int ESPACO_ENTRE_NOMES = 24;
+    constexpr int MARGEM_HORIZONTAL_NOME_RADIO_PX = 2;
+    constexpr int POSICAO_VERTICAL_NOME_RADIO_PX = 24;
+    constexpr uint8_t TAMANHO_TEXTO_NOME_RADIO = 2;
+    constexpr int ESPACO_ENTRE_REPETICOES_NOME_PX = 24;
 
     bool rolagemNomeAtiva = false;
-    int posicaoXNomeRadio = MARGEM_NOME_RADIO;
-    uint16_t larguraNomeRadio = 0;
-    unsigned long ultimaMovimentacaoNome = 0;
+    int posicaoHorizontalNomeRadioPx =
+        MARGEM_HORIZONTAL_NOME_RADIO_PX;
+    uint16_t larguraNomeRadioPx = 0;
+    unsigned long momentoUltimoPassoRolagemNomeMs = 0;
 
     unsigned long ultimaAtualizacaoRelogio = 0;
     int ultimoMinutoExibido = -1;
@@ -109,7 +109,7 @@ namespace {
     }
 
     void reiniciarRolagemNome() {
-        display.setTextSize(TAMANHO_NOME_RADIO);
+        display.setTextSize(TAMANHO_TEXTO_NOME_RADIO);
 
         int16_t x1;
         int16_t y1;
@@ -121,23 +121,25 @@ namespace {
             0,
             &x1,
             &y1,
-            &larguraNomeRadio,
+            &larguraNomeRadioPx,
             &altura
         );
 
         if (
-            larguraNomeRadio <=
-            DISPLAY_LARGURA - 2 * MARGEM_NOME_RADIO
+            larguraNomeRadioPx <=
+            DISPLAY_LARGURA -
+                2 * MARGEM_HORIZONTAL_NOME_RADIO_PX
         ) {
-            posicaoXNomeRadio =
-                (DISPLAY_LARGURA - larguraNomeRadio) / 2;
+            posicaoHorizontalNomeRadioPx =
+                (DISPLAY_LARGURA - larguraNomeRadioPx) / 2;
             rolagemNomeAtiva = false;
         } else {
-            posicaoXNomeRadio = MARGEM_NOME_RADIO;
+            posicaoHorizontalNomeRadioPx =
+                MARGEM_HORIZONTAL_NOME_RADIO_PX;
             rolagemNomeAtiva = true;
         }
 
-        ultimaMovimentacaoNome = millis();
+        momentoUltimoPassoRolagemNomeMs = millis();
     }
 
     void desenharTelaRadio() {
@@ -149,19 +151,19 @@ namespace {
             1
         );
 
-        display.setTextSize(TAMANHO_NOME_RADIO);
+        display.setTextSize(TAMANHO_TEXTO_NOME_RADIO);
         display.setCursor(
-            posicaoXNomeRadio,
-            POSICAO_Y_NOME_RADIO
+            posicaoHorizontalNomeRadioPx,
+            POSICAO_VERTICAL_NOME_RADIO_PX
         );
         display.print(nomeRadioAtual);
 
         if (rolagemNomeAtiva) {
             display.setCursor(
-                posicaoXNomeRadio +
-                    larguraNomeRadio +
-                    ESPACO_ENTRE_NOMES,
-                POSICAO_Y_NOME_RADIO
+                posicaoHorizontalNomeRadioPx +
+                    larguraNomeRadioPx +
+                    ESPACO_ENTRE_REPETICOES_NOME_PX,
+                POSICAO_VERTICAL_NOME_RADIO_PX
             );
             display.print(nomeRadioAtual);
         }
@@ -245,10 +247,10 @@ void mostrarNomeRadio(
     ultimoMinutoExibido = -1;
     dataHoraAtual = obterDataHora();
 
-    if (radioMudou || larguraNomeRadio == 0) {
+    if (radioMudou || larguraNomeRadioPx == 0) {
         reiniciarRolagemNome();
     } else {
-        ultimaMovimentacaoNome = millis();
+        momentoUltimoPassoRolagemNomeMs = millis();
     }
 
     desenharTelaRadio();
@@ -409,11 +411,11 @@ void processarDisplay() {
         return;
     }
 
-    unsigned long agora = millis();
+    unsigned long agoraMs = millis();
     bool precisaRedesenhar = false;
 
-    if (agora - ultimaAtualizacaoRelogio >= 1000) {
-        ultimaAtualizacaoRelogio = agora;
+    if (agoraMs - ultimaAtualizacaoRelogio >= 1000) {
+        ultimaAtualizacaoRelogio = agoraMs;
 
         struct tm horario;
 
@@ -429,20 +431,23 @@ void processarDisplay() {
 
     if (
         rolagemNomeAtiva &&
-        agora - ultimaMovimentacaoNome >=
-            INTERVALO_ROLAGEM_MS
+        agoraMs - momentoUltimoPassoRolagemNomeMs >=
+            INTERVALO_PASSO_ROLAGEM_NOME_MS
     ) {
-        ultimaMovimentacaoNome = agora;
-        posicaoXNomeRadio--;
+        momentoUltimoPassoRolagemNomeMs = agoraMs;
+        posicaoHorizontalNomeRadioPx--;
 
-        int comprimentoCiclo =
-            larguraNomeRadio + ESPACO_ENTRE_NOMES;
+        int larguraCicloRolagemPx =
+            larguraNomeRadioPx +
+            ESPACO_ENTRE_REPETICOES_NOME_PX;
 
         if (
-            posicaoXNomeRadio <=
-            MARGEM_NOME_RADIO - comprimentoCiclo
+            posicaoHorizontalNomeRadioPx <=
+            MARGEM_HORIZONTAL_NOME_RADIO_PX -
+                larguraCicloRolagemPx
         ) {
-            posicaoXNomeRadio += comprimentoCiclo;
+            posicaoHorizontalNomeRadioPx +=
+                larguraCicloRolagemPx;
         }
 
         precisaRedesenhar = true;

@@ -1,12 +1,23 @@
+/*
+ * Arquivo principal e mapa de execução do firmware.
+ *
+ * O setup() inicializa, nesta ordem: interface física, Wi-Fi,
+ * armazenamento/servidor, lista de estações, relógio e serviço de áudio.
+ *
+ * O loop() apenas coordena os módulos. A reprodução de áudio acontece em
+ * uma tarefa dedicada implementada em audio_radio.cpp.
+ */
+
 #include <Arduino.h>
 #include <time.h>
+#include <WiFi.h>
+
 #include "configuracao.h"
 #include "radios.h"
 #include "display_radio.h"
 #include "wifi_radio.h"
 #include "audio_radio.h"
 #include "controles.h"
-#include <WiFi.h>
 #include "servidor_web.h"
 
 enum class ModoControle {
@@ -105,6 +116,7 @@ void setup() {
 // =====================================================
 
 void loop() {
+    supervisionarWifi();
     processarDisplay();
     processarServidorWeb();
 
@@ -414,12 +426,16 @@ void registrarStatusSistema() {
     Serial.printf("Maior bloco RAM: %u KB\n", ESP.getMaxAllocHeap() / 1024);
     Serial.printf("PSRAM livre: %u KB\n", ESP.getFreePsram() / 1024);
     Serial.printf("Maior bloco PSRAM: %u KB\n", ESP.getMaxAllocPsram() / 1024);
-    Serial.printf(
-        "Wi-Fi: %d dBm | BSSID: %s | Canal: %d\n",
-        WiFi.RSSI(),
-        WiFi.BSSIDstr().c_str(),
-        WiFi.channel()
-    );
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf(
+            "Wi-Fi: %d dBm | BSSID: %s | Canal: %d\n",
+            WiFi.RSSI(),
+            WiFi.BSSIDstr().c_str(),
+            WiFi.channel()
+        );
+    } else {
+        Serial.println("Wi-Fi: desconectado");
+    }
     Serial.printf(
         "Audio: %s | Buffer: %lu ms | Bitrate: %lu | Fluxo lento: %lu | Reconexoes: %lu | Pilha livre min.: %lu bytes\n",
         obterTextoEstadoAudio(

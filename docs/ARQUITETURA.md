@@ -27,6 +27,12 @@ comandos ao serviço e reage às mudanças de estado, sem alimentar o decoder.
 Uma operação HTTP lenta pode atrasar a interface, mas não interrompe a
 execução do serviço de áudio.
 
+O Wi-Fi mantém a reconexão automática da pilha. Além disso, o `loop()`
+supervisiona a associação e solicita `WiFi.reconnect()` a cada dez segundos
+enquanto a rede estiver desconectada. A tentativa usa as credenciais
+persistidas e não fixa nem filtra BSSID. O serviço de áudio aguarda a rede e
+retoma suas próprias tentativas quando a associação volta.
+
 ### Persistência
 
 `servidor_web.cpp` administra FFat e as mutações de `radios.json`.
