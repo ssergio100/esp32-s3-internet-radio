@@ -22,6 +22,7 @@ separados por responsabilidade:
 | `servidor_web.cpp` | API HTTP, arquivos da FFat e interface administrativa |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `web/index.html` | Página principal da administração |
+| `web/upload.html` | Página completa de manutenção dos arquivos |
 
 Para uma primeira leitura, siga `radio_web_1.ino`, depois o arquivo do módulo
 que deseja alterar. Consulte [docs/ARQUITETURA.md](docs/ARQUITETURA.md) antes
@@ -147,11 +148,19 @@ versões fixadas; o script rotineiro apenas usa o ambiente já instalado.
 
 ## Interface web
 
-O arquivo-fonte da interface principal fica em `web/index.html`; a página
-de upload de manutenção está incorporada ao firmware. Os arquivos web
-precisam existir na partição FFat do dispositivo. O upload aceita nomes
-simples e faz substituição por arquivo temporário. `radios.json` recebe
-validação e backup próprios.
+Os arquivos-fonte das interfaces ficam em `web/index.html` e
+`web/upload.html`. Para o funcionamento completo, ambos precisam existir na
+raiz da partição FFat do dispositivo.
+
+A rota `/upload` tenta servir `/upload.html`. Se o arquivo estiver ausente,
+o firmware apresenta um formulário mínimo incorporado que permite restaurar
+os arquivos da interface. Esse fallback depende de a FFat ter sido montada;
+ele não recupera uma falha de montagem do sistema de arquivos.
+
+O upload aceita nomes simples e faz substituição por arquivo temporário.
+`radios.json` recebe validação e backup próprios. Ao migrar uma instalação
+existente, envie `upload.html` pela página incorporada atual antes de gravar
+uma versão do firmware que passe a servi-lo da FFat.
 
 O sketch mínimo usado para comparação foi isolado em
 `examples/radio_web_exemplo_minimo/`. Ele não participa da compilação do

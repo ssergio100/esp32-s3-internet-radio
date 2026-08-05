@@ -66,6 +66,12 @@ bloquear as demais atividades. O intervalo ajustável fica em
 `radios.cpp` carrega uma fotografia da lista durante o boot. Por projeto, a
 lista nova entra em uso depois de reiniciar.
 
+As interfaces web completas são arquivos físicos: `/index.html` e
+`/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas
+quando `/upload.html` está ausente, permitindo restaurar arquivos enquanto a
+FFat continuar montada. Validação, escrita temporária e backup permanecem no
+firmware; o JavaScript não é considerado uma barreira de segurança.
+
 ## Máquina de estados
 
 ```text

@@ -12,6 +12,8 @@ namespace {
 
 WebServer servidor(80);
 
+const char* ARQUIVO_PAGINA_PRINCIPAL = "/index.html";
+const char* ARQUIVO_PAGINA_UPLOAD = "/upload.html";
 const char* ARQUIVO_RADIOS = "/radios.json";
 const char* ARQUIVO_RADIOS_TEMPORARIO = "/radios.tmp";
 const char* ARQUIVO_RADIOS_BACKUP = "/radios.bak";
@@ -25,371 +27,35 @@ String erroUpload;
 
 bool uploadConcluido = false;
 
-const char PAGINA_UPLOAD[] PROGMEM = R"HTML(
+const char PAGINA_RECUPERACAO_UPLOAD[] PROGMEM = R"HTML(
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Arquivos do ESP32</title>
-
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            padding: 30px 16px;
-            background: #101826;
-            color: #edf3fa;
-            font-family: Arial, sans-serif;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 720px;
-            margin: 0 auto;
-        }
-
-        .cabecalho {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 15px;
-            margin-bottom: 22px;
-        }
-
-        h1 {
-            margin: 0;
-            font-size: 26px;
-        }
-
-        h2 {
-            margin-top: 0;
-            font-size: 20px;
-        }
-
-        .voltar {
-            color: #9ecfff;
-            text-decoration: none;
-        }
-
-        .card {
-            padding: 22px;
-            margin-bottom: 20px;
-            border: 1px solid #2b3c52;
-            border-radius: 14px;
-            background: #182436;
-        }
-
-        input[type="file"] {
-            display: block;
-            width: 100%;
-            padding: 14px;
-            margin: 14px 0;
-            color: #edf3fa;
-            border: 1px solid #3b506a;
-            border-radius: 9px;
-            background: #101826;
-        }
-
-        button {
-            width: 100%;
-            padding: 13px;
-            border: 0;
-            border-radius: 9px;
-            background: #2f8cff;
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        button:disabled {
-            opacity: 0.55;
-            cursor: wait;
-        }
-
-        progress {
-            display: none;
-            width: 100%;
-            height: 18px;
-            margin-top: 16px;
-        }
-
-        #mensagem {
-            min-height: 20px;
-            margin-top: 14px;
-        }
-
-        .sucesso {
-            color: #62df91;
-        }
-
-        .erro {
-            color: #ff7c7c;
-        }
-
-        .arquivo {
-            display: flex;
-            justify-content: space-between;
-            gap: 15px;
-            padding: 11px 0;
-            border-bottom: 1px solid #2b3c52;
-        }
-
-        .arquivo:last-child {
-            border-bottom: 0;
-        }
-
-        .tamanho {
-            color: #9eb0c4;
-            white-space: nowrap;
-        }
-
-        .aviso {
-            margin-bottom: 0;
-            color: #b9c7d6;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-    </style>
+    <title>Recuperação de arquivos</title>
 </head>
-
 <body>
-    <main class="container">
-        <header class="cabecalho">
-            <h1>Arquivos do ESP32</h1>
-            <a class="voltar" href="/">Voltar ao rádio</a>
-        </header>
+    <h1>Recuperação de arquivos</h1>
 
-        <section class="card">
-            <form id="formUpload">
-                <label for="arquivo">Selecione o arquivo</label>
+    <p>
+        O arquivo upload.html não foi encontrado na FFat.
+        Use este formulário mínimo para restaurá-lo.
+    </p>
 
-                <input
-                    type="file"
-                    id="arquivo"
-                    name="arquivo"
-                    required
-                >
+    <form
+        method="post"
+        action="/upload"
+        enctype="multipart/form-data"
+    >
+        <input
+            type="file"
+            name="arquivo"
+            required
+        >
 
-                <button type="submit" id="btnEnviar">
-                    Enviar arquivo
-                </button>
-
-                <progress
-                    id="progresso"
-                    max="100"
-                    value="0"
-                ></progress>
-
-                <div id="mensagem"></div>
-            </form>
-
-            <p class="aviso">
-                O arquivo será gravado na raiz do FFat com seu nome
-                original. Um novo index.html substituirá o atual.
-            </p>
-        </section>
-
-        <section class="card">
-            <h2>Arquivos armazenados</h2>
-            <div id="listaArquivos">Carregando...</div>
-        </section>
-    </main>
-
-    <script>
-        const formUpload =
-            document.getElementById("formUpload");
-
-        const campoArquivo =
-            document.getElementById("arquivo");
-
-        const btnEnviar =
-            document.getElementById("btnEnviar");
-
-        const progresso =
-            document.getElementById("progresso");
-
-        const mensagem =
-            document.getElementById("mensagem");
-
-        const listaArquivos =
-            document.getElementById("listaArquivos");
-
-        function formatarTamanho(bytes) {
-            if (bytes < 1024) {
-                return bytes + " bytes";
-            }
-
-            if (bytes < 1024 * 1024) {
-                return (bytes / 1024).toFixed(1) + " KB";
-            }
-
-            return (
-                bytes / (1024 * 1024)
-            ).toFixed(1) + " MB";
-        }
-
-        async function carregarArquivos() {
-            try {
-                const resposta =
-                    await fetch("/api/arquivos");
-
-                if (!resposta.ok) {
-                    throw new Error(
-                        "Falha ao listar os arquivos"
-                    );
-                }
-
-                const arquivos =
-                    await resposta.json();
-
-                if (!arquivos.length) {
-                    listaArquivos.textContent =
-                        "Nenhum arquivo encontrado.";
-
-                    return;
-                }
-
-                listaArquivos.innerHTML = "";
-
-                arquivos.forEach(function (arquivo) {
-                    const linha =
-                        document.createElement("div");
-
-                    linha.className = "arquivo";
-
-                    const nome =
-                        document.createElement("span");
-
-                    nome.textContent = arquivo.nome;
-
-                    const tamanho =
-                        document.createElement("span");
-
-                    tamanho.className = "tamanho";
-                    tamanho.textContent =
-                        formatarTamanho(arquivo.tamanho);
-
-                    linha.appendChild(nome);
-                    linha.appendChild(tamanho);
-                    listaArquivos.appendChild(linha);
-                });
-            } catch (erro) {
-                listaArquivos.textContent = erro.message;
-            }
-        }
-
-        formUpload.addEventListener(
-            "submit",
-            function (evento) {
-                evento.preventDefault();
-
-                if (!campoArquivo.files.length) {
-                    return;
-                }
-
-                const arquivo = campoArquivo.files[0];
-
-                if (
-                    arquivo.name === "radios.json" &&
-                    !confirm(
-                        "Isso substituirá toda a lista de rádios. Continuar?"
-                    )
-                ) {
-                    return;
-                }
-
-                const dados = new FormData();
-
-                dados.append("arquivo", arquivo);
-
-                const requisicao =
-                    new XMLHttpRequest();
-
-                requisicao.open("POST", "/upload");
-
-                btnEnviar.disabled = true;
-                btnEnviar.textContent = "Enviando...";
-
-                progresso.style.display = "block";
-                progresso.value = 0;
-
-                mensagem.className = "";
-                mensagem.textContent = "";
-
-                requisicao.upload.addEventListener(
-                    "progress",
-                    function (eventoProgresso) {
-                        if (!eventoProgresso.lengthComputable) {
-                            return;
-                        }
-
-                        progresso.value =
-                            eventoProgresso.loaded /
-                            eventoProgresso.total *
-                            100;
-                    }
-                );
-
-                requisicao.addEventListener(
-                    "load",
-                    async function () {
-                        let respostaJson = {};
-
-                        try {
-                            respostaJson =
-                                JSON.parse(
-                                    requisicao.responseText
-                                );
-                        } catch (erro) {
-                        }
-
-                        if (
-                            requisicao.status >= 200 &&
-                            requisicao.status < 300
-                        ) {
-                            mensagem.className = "sucesso";
-                            mensagem.textContent =
-                                "Arquivo enviado com sucesso.";
-
-                            campoArquivo.value = "";
-                            await carregarArquivos();
-                        } else {
-                            mensagem.className = "erro";
-                            mensagem.textContent =
-                                respostaJson.erro ||
-                                "Falha ao enviar o arquivo.";
-                        }
-
-                        btnEnviar.disabled = false;
-                        btnEnviar.textContent =
-                            "Enviar arquivo";
-                    }
-                );
-
-                requisicao.addEventListener(
-                    "error",
-                    function () {
-                        mensagem.className = "erro";
-                        mensagem.textContent =
-                            "A conexão com o ESP32 foi interrompida.";
-
-                        btnEnviar.disabled = false;
-                        btnEnviar.textContent =
-                            "Enviar arquivo";
-                    }
-                );
-
-                requisicao.send(dados);
-            }
-        );
-
-        carregarArquivos();
-    </script>
+        <button type="submit">Enviar arquivo</button>
+    </form>
 </body>
 </html>
 )HTML";
@@ -871,21 +537,15 @@ void excluirRadio() {
     );
 }
 
-void abrirPagina() {
+bool enviarPaginaHtmlDaFfat(const char* caminho) {
     File arquivo =
         FFat.open(
-            "/index.html",
+            caminho,
             FILE_READ
         );
 
     if (!arquivo) {
-        servidor.send(
-            404,
-            "text/plain",
-            "Arquivo index.html não encontrado"
-        );
-
-        return;
+        return false;
     }
 
     servidor.streamFile(
@@ -894,6 +554,20 @@ void abrirPagina() {
     );
 
     arquivo.close();
+
+    return true;
+}
+
+void abrirPagina() {
+    if (enviarPaginaHtmlDaFfat(ARQUIVO_PAGINA_PRINCIPAL)) {
+        return;
+    }
+
+    servidor.send(
+        404,
+        "text/plain",
+        "Arquivo index.html não encontrado"
+    );
 }
 
 bool caracterePermitido(char caractere) {
@@ -962,10 +636,14 @@ String obterNomeArquivoSeguro(
 }
 
 void abrirPaginaUpload() {
+    if (enviarPaginaHtmlDaFfat(ARQUIVO_PAGINA_UPLOAD)) {
+        return;
+    }
+
     servidor.send_P(
         200,
         "text/html; charset=utf-8",
-        PAGINA_UPLOAD
+        PAGINA_RECUPERACAO_UPLOAD
     );
 }
 
