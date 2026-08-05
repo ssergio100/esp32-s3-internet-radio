@@ -3,6 +3,7 @@
 
 struct LeituraControles {
     bool cliqueDetectado = false;
+    bool cliqueLongoDetectado = false;
     long deslocamentoEncoder = 0;
 };
 

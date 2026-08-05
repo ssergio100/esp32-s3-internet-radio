@@ -49,6 +49,10 @@ constexpr int VOLUME_PADRAO = 10;
 constexpr unsigned long TEMPO_TELA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
+// Tempo que o botão do encoder deve permanecer pressionado para desligar.
+// Aumente para reduzir acionamentos acidentais; diminua para desligar mais rápido.
+constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
+
 // O LED alterna entre azul e apagado a cada intervalo.
 // Diminua o valor para piscar mais rápido; aumente para piscar mais devagar.
 constexpr unsigned long INTERVALO_PISCA_LED_CONEXAO_WIFI_MS = 100;
@@ -80,6 +84,10 @@ constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
 // Tratamento dos controles
 constexpr unsigned long TEMPO_VALIDACAO_CLIQUE_ENCODER_MS = 30;
 constexpr unsigned long INTERVALO_MINIMO_CLIQUES_ENCODER_MS = 200;
+
+// Evita impedir o sono indefinidamente caso o serviço de áudio não confirme
+// a parada. No deep sleep, o próprio ESP32 interrompe os periféricos.
+constexpr unsigned long TEMPO_MAXIMO_PARADA_AUDIO_ANTES_SONO_MS = 1000;
 
 // Atualização dos indicadores
 constexpr unsigned long INTERVALO_VERIFICACAO_LED_AUDIO_MS = 250;

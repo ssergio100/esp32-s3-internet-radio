@@ -23,6 +23,7 @@ separados por responsabilidade:
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Sincronização NTP e obtenção da hora local |
 | `servidor_web.cpp` | Inicialização do servidor e mapa das rotas HTTP |
+| `sono_profundo.cpp` | Configuração do despertar e entrada em deep sleep |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
 | `web/index.html` | Página principal da administração |
@@ -43,6 +44,7 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
 | `TEMPO_TELA_VOLUME_MS` | Permanência da tela de volume | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
+| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
@@ -100,12 +102,21 @@ O modo de repouso é sempre o controle de volume:
 - pressionar novamente confirma a estação e retorna ao controle de volume;
 - após dez segundos sem atividade, a seleção é cancelada e a estação
   anterior permanece ativa.
+- manter o botão pressionado por dois segundos e soltá-lo interrompe o áudio,
+  apaga LED e OLED e coloca o ESP32-S3 em deep sleep;
+- pressionar o botão novamente acorda o rádio, que executa uma inicialização
+  completa.
 
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
 duas passagens do `loop()`, todos são aplicados. O valor
 `TRANSICOES_ENCODER_POR_DETENTE` está calibrado em `2` para o componente
 instalado.
+
+Enquanto o controle elétrico de `SD_MODE` não for instalado, o deep sleep
+interrompe o `BCLK` e os dois MAX98357A entram no standby automático. Portanto,
+os amplificadores ainda não alcançam o consumo de shutdown completo nessa
+condição.
 
 ## Lista de rádios
 

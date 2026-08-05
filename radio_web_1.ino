@@ -21,6 +21,7 @@
 #include "indicador_led.h"
 #include "relogio.h"
 #include "servidor_web.h"
+#include "sono_profundo.h"
 #include "telemetria.h"
 
 enum class ModoInterface {
@@ -41,6 +42,9 @@ unsigned long momentoUltimaAtividadeSelecaoMs = 0;
 
 bool telaVolumeVisivel = false;
 
+bool preparandoSonoProfundo = false;
+unsigned long momentoSolicitacaoSonoProfundoMs = 0;
+
 // =====================================================
 // Protótipos
 // =====================================================
@@ -50,6 +54,9 @@ void solicitarReproducaoRadio(int indiceRadio);
 
 void entrarModoSelecaoRadio();
 void confirmarSelecaoRadio();
+
+void solicitarEntradaSonoProfundo();
+void concluirEntradaSonoProfundoQuandoAudioParar();
 
 void processarLeituraControles(
     const LeituraControles& leitura
@@ -77,6 +84,8 @@ void atualizarDisplayEstadoAudio(
 void setup() {
     Serial.begin(115200);
     delay(1000);
+
+    informarMotivoDespertar();
 
     iniciarDisplay();
     iniciarControles();
@@ -116,6 +125,11 @@ void setup() {
 // =====================================================
 
 void loop() {
+    if (preparandoSonoProfundo) {
+        concluirEntradaSonoProfundoQuandoAudioParar();
+        return;
+    }
+
     supervisionarWifi();
     processarDisplay();
     processarServidorWeb();
@@ -124,6 +138,10 @@ void loop() {
         lerControles();
 
     processarLeituraControles(leituraControles);
+
+    if (preparandoSonoProfundo) {
+        return;
+    }
 
     cancelarSelecaoRadioPorInatividade();
     restaurarDisplayAposTempoVolume();
@@ -141,6 +159,11 @@ void loop() {
 void processarLeituraControles(
     const LeituraControles& leitura
 ) {
+    if (leitura.cliqueLongoDetectado) {
+        solicitarEntradaSonoProfundo();
+        return;
+    }
+
     if (leitura.cliqueDetectado) {
         if (modoInterface == ModoInterface::VOLUME) {
             entrarModoSelecaoRadio();
@@ -164,6 +187,71 @@ void processarLeituraControles(
             leitura.deslocamentoEncoder
         );
     }
+}
+
+// =====================================================
+// Sono profundo
+// =====================================================
+
+void solicitarEntradaSonoProfundo() {
+    if (!configurarDespertarPeloBotaoEncoder()) {
+        mostrarMensagem(
+            "Falha ao desligar"
+        );
+
+        return;
+    }
+
+    preparandoSonoProfundo = true;
+    momentoSolicitacaoSonoProfundoMs = millis();
+
+    modoInterface = ModoInterface::VOLUME;
+    telaVolumeVisivel = false;
+
+    mostrarMensagem(
+        "Desligando..."
+    );
+    apagarIndicadorLed();
+
+    if (!pararAudio()) {
+        Serial.println(
+            "Comando de parada do audio nao foi aceito."
+        );
+    }
+
+    Serial.println(
+        "Clique longo: preparando sono profundo."
+    );
+}
+
+void concluirEntradaSonoProfundoQuandoAudioParar() {
+    EstadoAudio estadoAudio =
+        obterStatusAudio().estado;
+
+    bool audioParado =
+        estadoAudio == EstadoAudio::PARADO ||
+        estadoAudio == EstadoAudio::DESLIGADO;
+
+    bool tempoEsgotado =
+        millis() - momentoSolicitacaoSonoProfundoMs >=
+        TEMPO_MAXIMO_PARADA_AUDIO_ANTES_SONO_MS;
+
+    if (!audioParado && !tempoEsgotado) {
+        return;
+    }
+
+    if (!audioParado) {
+        Serial.println(
+            "Tempo limite ao parar audio; continuando o desligamento."
+        );
+    }
+
+    desligarDisplay();
+    apagarIndicadorLed();
+
+    // Sem controle elétrico de SD_MODE, os MAX98357A entrarão no standby
+    // automático quando o deep sleep interromper o BCLK.
+    entrarSonoProfundo();
 }
 
 void entrarModoSelecaoRadio() {

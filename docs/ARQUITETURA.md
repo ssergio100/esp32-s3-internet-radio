@@ -48,14 +48,29 @@ As cores e a temporização ficam encapsuladas no indicador.
 ### Controles
 
 `controles.cpp` configura o encoder e devolve uma `LeituraControles` contendo o
-clique e o deslocamento assinado acumulado. A rotação usa diretamente o valor
-de `encoderChanged()`, sem manter um segundo contador, aplicar aceleração ou
-filtrar mudanças de direção. O arquivo principal decide se esse deslocamento
+clique curto, o clique longo e o deslocamento assinado acumulado. Os cliques são
+confirmados após a soltura, o que impede que o botão ainda pressionado provoque
+um despertar imediato ao entrar em deep sleep. A rotação usa diretamente o
+valor de `encoderChanged()`, sem manter um segundo contador, aplicar aceleração
+ou filtrar mudanças de direção. O arquivo principal decide se esse deslocamento
 altera o volume ou navega circularmente pela lista de estações.
 
 A calibração física fica em `TRANSICOES_ENCODER_POR_DETENTE`, em
 `configuracao.h`. Os tempos com nomes de clique tratam somente o botão e não
 interferem na rotação.
+
+### Sono profundo
+
+O arquivo principal mantém visível a transição de desligamento: reconhece o
+clique longo, solicita a parada ao serviço de áudio, espera a confirmação por
+um tempo limitado, apaga LED e OLED e então pede a entrada em deep sleep.
+`sono_profundo.cpp` encapsula somente as APIs específicas do ESP32-S3: configura
+o `GPIO17` ativo em nível baixo como fonte RTC de despertar, informa a causa da
+inicialização e inicia o sono.
+
+O despertar pelo botão reinicia normalmente o firmware. Como o controle físico
+de `SD_MODE` foi adiado, a interrupção de `BCLK` durante o deep sleep deixa os
+MAX98357A em standby automático, e não em shutdown completo.
 
 ### Relógio
 

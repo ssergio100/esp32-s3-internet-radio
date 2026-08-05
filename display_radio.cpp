@@ -381,6 +381,18 @@ void mostrarVolume(
     display.display();
 }
 
+void desligarDisplay() {
+    if (!disponivel) {
+        return;
+    }
+
+    display.clearDisplay();
+    display.display();
+    display.ssd1306_command(SSD1306_DISPLAYOFF);
+
+    disponivel = false;
+}
+
 void mostrarConfiguracaoWifi() {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
