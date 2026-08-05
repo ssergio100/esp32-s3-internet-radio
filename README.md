@@ -12,6 +12,7 @@ separados por responsabilidade:
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `configuracao.h` | Ligações do hardware e parâmetros ajustáveis |
+| `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
@@ -21,7 +22,7 @@ separados por responsabilidade:
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Sincronização NTP e obtenção da hora local |
-| `servidor_web.cpp` | Inicialização, rotas HTTP e interface administrativa |
+| `servidor_web.cpp` | Inicialização do servidor e mapa das rotas HTTP |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
 | `web/index.html` | Página principal da administração |

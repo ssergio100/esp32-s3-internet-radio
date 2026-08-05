@@ -67,6 +67,17 @@ reunindo o estado publicado pelo áudio, a conexão Wi-Fi, a memória e o
 uptime. Ele não inicia requisições e não altera o estado do rádio.
 `servidor_web.cpp` continua responsável pela rota e pela resposta HTTP.
 
+### API de rádios
+
+`api_radios.cpp` implementa as respostas de `GET`, `POST` e `DELETE` da rota
+`/api/radios`. Ele interpreta os parâmetros recebidos, aplica as regras de
+cadastro e exclusão, escolhe o código HTTP e delega a leitura ou a gravação a
+`persistencia_radios.cpp`.
+
+Entre essas regras estão o limite de estações, a nota entre uma e cinco
+estrelas, a geração do próximo identificador e a proibição de excluir a última
+estação. `servidor_web.cpp` conserva apenas o registro visível dessas rotas.
+
 ### Persistência
 
 `persistencia_radios.cpp` é o proprietário dos arquivos `/radios.json`,
