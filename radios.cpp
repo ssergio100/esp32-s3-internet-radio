@@ -1,15 +1,10 @@
 #include "radios.h"
+#include "persistencia_radios.h"
 
 #include <ArduinoJson.h>
 #include <FFat.h>
 
 namespace {
-
-const char* ARQUIVO_RADIOS =
-    "/radios.json";
-
-const char* ARQUIVO_RADIOS_BACKUP =
-    "/radios.bak";
 
 Radio radios[QUANTIDADE_MAXIMA_RADIOS];
 
@@ -150,14 +145,14 @@ bool carregarRadios() {
 
     bool carregado =
         carregarDocumentoRadios(
-            ARQUIVO_RADIOS,
+            CAMINHO_RADIOS_ATIVO,
             documento
         );
 
     if (!carregado) {
         carregado =
             carregarDocumentoRadios(
-                ARQUIVO_RADIOS_BACKUP,
+                CAMINHO_RADIOS_BACKUP,
                 documento
             );
 

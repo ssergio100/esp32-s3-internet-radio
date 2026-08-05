@@ -1,5 +1,6 @@
 #include "servidor_web.h"
 #include "api_status.h"
+#include "persistencia_radios.h"
 #include "radios.h"
 
 #include <Arduino.h>
@@ -14,9 +15,6 @@ WebServer servidor(80);
 
 const char* ARQUIVO_PAGINA_PRINCIPAL = "/index.html";
 const char* ARQUIVO_PAGINA_UPLOAD = "/upload.html";
-const char* ARQUIVO_RADIOS = "/radios.json";
-const char* ARQUIVO_RADIOS_TEMPORARIO = "/radios.tmp";
-const char* ARQUIVO_RADIOS_BACKUP = "/radios.bak";
 const char* ARQUIVO_UPLOAD_TEMPORARIO = "/.upload.tmp";
 const char* ARQUIVO_UPLOAD_RESERVA = "/.upload.bak";
 
@@ -60,247 +58,21 @@ const char PAGINA_RECUPERACAO_UPLOAD[] PROGMEM = R"HTML(
 </html>
 )HTML";
 
-bool documentoRadiosValido(
-    DynamicJsonDocument& documento
-) {
-    if (!documento.is<JsonArray>()) {
-        return false;
-    }
-
-    JsonArray radios =
-        documento.as<JsonArray>();
-
-    if (
-        radios.size() == 0 ||
-        radios.size() >
-        QUANTIDADE_MAXIMA_RADIOS
-    ) {
-        return false;
-    }
-
-    for (JsonObject radio : radios) {
-        const char* nome = radio["nome"];
-        const char* url = radio["url"];
-
-        if (!dadosRadioValidos(nome, url)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool arquivoJsonValido(
-    const char* caminho
-) {
-    File arquivo =
-        FFat.open(
-            caminho,
-            FILE_READ
-        );
-
-    if (!arquivo) {
-        return false;
-    }
-
-    DynamicJsonDocument documento(16384);
-
-    DeserializationError erro =
-        deserializeJson(
-            documento,
-            arquivo
-        );
-
-    arquivo.close();
-
-    return
-        !erro &&
-        documentoRadiosValido(
-            documento
-        );
-}
-
-bool salvarDocumento(
-    DynamicJsonDocument& documento
-) {
-    FFat.remove(
-        ARQUIVO_RADIOS_TEMPORARIO
-    );
-
-    File arquivo =
-        FFat.open(
-            ARQUIVO_RADIOS_TEMPORARIO,
-            FILE_WRITE
-        );
-
-    if (!arquivo) {
-        return false;
-    }
-
-    bool salvo =
-        serializeJson(
-            documento,
-            arquivo
-        ) > 0;
-
-    arquivo.flush();
-    arquivo.close();
-
-    if (
-        !salvo ||
-        !arquivoJsonValido(
-            ARQUIVO_RADIOS_TEMPORARIO
-        )
-    ) {
-        FFat.remove(
-            ARQUIVO_RADIOS_TEMPORARIO
-        );
-
-        return false;
-    }
-
-    bool arquivoAnteriorValido =
-        arquivoJsonValido(
-            ARQUIVO_RADIOS
-        );
-
-    if (arquivoAnteriorValido) {
-        FFat.remove(
-            ARQUIVO_RADIOS_BACKUP
-        );
-
-        if (
-            !FFat.rename(
-                ARQUIVO_RADIOS,
-                ARQUIVO_RADIOS_BACKUP
-            )
-        ) {
-            FFat.remove(
-                ARQUIVO_RADIOS_TEMPORARIO
-            );
-
-            return false;
-        }
-    } else if (
-        FFat.exists(
-            ARQUIVO_RADIOS
-        )
-    ) {
-        FFat.remove(
-            ARQUIVO_RADIOS
-        );
-    }
-
-    if (
-        FFat.rename(
-            ARQUIVO_RADIOS_TEMPORARIO,
-            ARQUIVO_RADIOS
-        )
-    ) {
-        return true;
-    }
-
-    if (arquivoAnteriorValido) {
-        FFat.rename(
-            ARQUIVO_RADIOS_BACKUP,
-            ARQUIVO_RADIOS
-        );
-    }
-
-    FFat.remove(
-        ARQUIVO_RADIOS_TEMPORARIO
-    );
-
-    return false;
-}
-
-bool carregarDocumentoArquivo(
-    DynamicJsonDocument& documento,
-    const char* caminho
-) {
-    File arquivo =
-        FFat.open(
-            caminho,
-            FILE_READ
-        );
-
-    if (!arquivo) {
-        return false;
-    }
-
-    documento.clear();
-
-    DeserializationError erro =
-        deserializeJson(
-            documento,
-            arquivo
-        );
-
-    arquivo.close();
-
-    return
-        !erro &&
-        documentoRadiosValido(
-            documento
-        );
-}
-
-bool carregarDocumento(
-    DynamicJsonDocument& documento
-) {
-    if (
-        carregarDocumentoArquivo(
-            documento,
-            ARQUIVO_RADIOS
-        )
-    ) {
-        return true;
-    }
-
-    if (
-        carregarDocumentoArquivo(
-            documento,
-            ARQUIVO_RADIOS_BACKUP
-        )
-    ) {
-        Serial.println(
-            "radios.json invalido; usando radios.bak."
-        );
-
-        return true;
-    }
-
-    if (
-        !FFat.exists(
-            ARQUIVO_RADIOS
-        ) &&
-        !FFat.exists(
-            ARQUIVO_RADIOS_BACKUP
-        )
-    ) {
-        documento.to<JsonArray>();
-
-        return true;
-    }
-
-    return false;
-}
-
 void listarRadios() {
     const char* caminho = nullptr;
 
     if (
-        arquivoJsonValido(
-            ARQUIVO_RADIOS
+        arquivoRadiosValido(
+            CAMINHO_RADIOS_ATIVO
         )
     ) {
-        caminho = ARQUIVO_RADIOS;
+        caminho = CAMINHO_RADIOS_ATIVO;
     } else if (
-        arquivoJsonValido(
-            ARQUIVO_RADIOS_BACKUP
+        arquivoRadiosValido(
+            CAMINHO_RADIOS_BACKUP
         )
     ) {
-        caminho = ARQUIVO_RADIOS_BACKUP;
+        caminho = CAMINHO_RADIOS_BACKUP;
     }
 
     if (caminho == nullptr) {
@@ -391,7 +163,7 @@ void adicionarRadio() {
 
     DynamicJsonDocument documento(16384);
 
-    if (!carregarDocumento(documento)) {
+    if (!carregarDocumentoRadiosParaEdicao(documento)) {
         servidor.send(
             500,
             "application/json",
@@ -436,7 +208,7 @@ void adicionarRadio() {
     radio["url"] = url;
     radio["estrelas"] = estrelas;
 
-    if (!salvarDocumento(documento)) {
+    if (!salvarDocumentoRadios(documento)) {
         servidor.send(
             500,
             "application/json",
@@ -469,7 +241,7 @@ void excluirRadio() {
 
     DynamicJsonDocument documento(16384);
 
-    if (!carregarDocumento(documento)) {
+    if (!carregarDocumentoRadiosParaEdicao(documento)) {
         servidor.send(
             500,
             "application/json",
@@ -520,7 +292,7 @@ void excluirRadio() {
         return;
     }
 
-    if (!salvarDocumento(documento)) {
+    if (!salvarDocumentoRadios(documento)) {
         servidor.send(
             500,
             "application/json",
@@ -786,11 +558,11 @@ void receberUpload() {
             return;
         }
 
-        if (destinoUpload == ARQUIVO_RADIOS) {
+        if (destinoUpload == CAMINHO_RADIOS_ATIVO) {
             DynamicJsonDocument documento(16384);
 
             if (
-                !carregarDocumentoArquivo(
+                !carregarDocumentoRadiosDoArquivo(
                     documento,
                     ARQUIVO_UPLOAD_TEMPORARIO
                 )
@@ -805,7 +577,7 @@ void receberUpload() {
                 return;
             }
 
-            if (!salvarDocumento(documento)) {
+            if (!salvarDocumentoRadios(documento)) {
                 erroUpload =
                     "Não foi possível salvar radios.json";
 

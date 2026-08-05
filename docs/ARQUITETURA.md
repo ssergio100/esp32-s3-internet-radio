@@ -69,9 +69,14 @@ uptime. Ele não inicia requisições e não altera o estado do rádio.
 
 ### Persistência
 
-`servidor_web.cpp` administra FFat e as mutações de `radios.json`.
-`radios.cpp` carrega uma fotografia da lista durante o boot. Por projeto, a
-lista nova entra em uso depois de reiniciar.
+`persistencia_radios.cpp` é o proprietário dos arquivos `/radios.json`,
+`/radios.tmp` e `/radios.bak`. Ele concentra a validação do documento JSON e a
+transação que preserva a versão anterior antes de promover uma nova lista.
+
+`servidor_web.cpp` interpreta as requisições HTTP e delega a leitura ou a
+gravação da lista persistida. `radios.cpp` monta durante o boot a fotografia em
+memória usada pelo restante do firmware e mantém a lista de reserva compilada.
+Por projeto, uma lista nova entra em uso depois de reiniciar.
 
 As interfaces web completas são arquivos físicos: `/index.html` e
 `/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas
@@ -126,8 +131,14 @@ radios.tmp -- validação --> radios.json
 ```
 
 Uma falha antes da promoção preserva o arquivo ativo. Uma falha durante a
-promoção tenta restaurar o backup. O boot aceita somente um array cujos
-itens tenham nome e URL HTTP/HTTPS dentro dos limites suportados.
+promoção tenta restaurar o backup. As alterações feitas pela API ou pelo upload
+de `radios.json` aceitam somente um array não vazio cujos itens tenham nome e
+URL HTTP/HTTPS dentro dos limites suportados.
+
+No boot, `radios.cpp` tenta o backup quando o arquivo ativo não pode ser aberto,
+interpretado ou não contém um array. Dentro de um array legível, itens inválidos
+são ignorados. Se nenhum item válido for encontrado, a lista de reserva
+compilada entra em uso.
 
 ## Limites atuais
 

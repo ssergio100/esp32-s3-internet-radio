@@ -18,9 +18,10 @@ separados por responsabilidade:
 | `display_radio.cpp` | Telas, relógio e animação do nome da estação |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
-| `radios.cpp` | Carregamento e validação da lista de estações |
+| `radios.cpp` | Lista de estações em memória e reserva compilada |
+| `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Sincronização NTP e obtenção da hora local |
-| `servidor_web.cpp` | API HTTP, arquivos da FFat e interface administrativa |
+| `servidor_web.cpp` | Rotas HTTP, upload e interface administrativa |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `web/index.html` | Página principal da administração |
 | `web/upload.html` | Página completa de manutenção dos arquivos |
@@ -108,8 +109,14 @@ transacional:
 3. a versão íntegra anterior vira `/radios.bak`;
 4. o temporário é promovido para `/radios.json`.
 
-Na inicialização, o firmware tenta o arquivo ativo, depois o backup e por
-último a lista de reserva compilada no firmware.
+`persistencia_radios.cpp` concentra os nomes desses arquivos, a validação do
+JSON e essa transação. `servidor_web.cpp` apenas interpreta a requisição HTTP,
+enquanto `radios.cpp` monta a lista em memória usada durante a execução.
+
+Na inicialização, o firmware tenta ler o arquivo ativo e, se ele não puder ser
+aberto, interpretado ou não contiver um array, tenta o backup. Itens inválidos
+dentro de um array legível são ignorados. Se nenhuma estação válida for
+carregada, entra em uso a lista de reserva compilada no firmware.
 
 ## Diagnóstico
 
