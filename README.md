@@ -46,6 +46,7 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
+| `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 2 |
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 
 Na rolagem do nome, um intervalo menor produz movimento mais rápido e um
@@ -99,6 +100,12 @@ O modo de repouso é sempre o controle de volume:
 - pressionar novamente confirma a estação e retorna ao controle de volume;
 - após dez segundos sem atividade, a seleção é cancelada e a estação
   anterior permanece ativa.
+
+A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
+sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
+duas passagens do `loop()`, todos são aplicados. O valor
+`TRANSICOES_ENCODER_POR_DETENTE` está calibrado em `2` para o componente
+instalado.
 
 ## Lista de rádios
 

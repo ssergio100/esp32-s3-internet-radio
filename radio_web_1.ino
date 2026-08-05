@@ -51,16 +51,16 @@ void solicitarReproducaoRadio(int indiceRadio);
 void entrarModoSelecaoRadio();
 void confirmarSelecaoRadio();
 
-void processarEventoEncoder(
-    EventoEncoder evento
+void processarLeituraControles(
+    const LeituraControles& leitura
 );
 
 void processarAjusteVolume(
-    EventoEncoder evento
+    long deslocamentoEncoder
 );
 
 void processarNavegacaoRadios(
-    EventoEncoder evento
+    long deslocamentoEncoder
 );
 
 void restaurarDisplayAposTempoVolume();
@@ -120,9 +120,10 @@ void loop() {
     processarDisplay();
     processarServidorWeb();
 
-    EventoEncoder evento = lerControles();
+    LeituraControles leituraControles =
+        lerControles();
 
-    processarEventoEncoder(evento);
+    processarLeituraControles(leituraControles);
 
     cancelarSelecaoRadioPorInatividade();
     restaurarDisplayAposTempoVolume();
@@ -134,17 +135,13 @@ void loop() {
 }
 
 // =====================================================
-// Eventos do encoder
+// Eventos dos controles
 // =====================================================
 
-void processarEventoEncoder(
-    EventoEncoder evento
+void processarLeituraControles(
+    const LeituraControles& leitura
 ) {
-    if (evento == EventoEncoder::NENHUM) {
-        return;
-    }
-
-    if (evento == EventoEncoder::CLIQUE) {
+    if (leitura.cliqueDetectado) {
         if (modoInterface == ModoInterface::VOLUME) {
             entrarModoSelecaoRadio();
         } else {
@@ -154,10 +151,18 @@ void processarEventoEncoder(
         return;
     }
 
+    if (leitura.deslocamentoEncoder == 0) {
+        return;
+    }
+
     if (modoInterface == ModoInterface::VOLUME) {
-        processarAjusteVolume(evento);
+        processarAjusteVolume(
+            leitura.deslocamentoEncoder
+        );
     } else {
-        processarNavegacaoRadios(evento);
+        processarNavegacaoRadios(
+            leitura.deslocamentoEncoder
+        );
     }
 }
 
@@ -199,29 +204,22 @@ void confirmarSelecaoRadio() {
 // =====================================================
 
 void processarAjusteVolume(
-    EventoEncoder evento
+    long deslocamentoEncoder
 ) {
-    int novoVolume = volumeAtual;
-
-    if (evento == EventoEncoder::DIREITA) {
-        novoVolume++;
-    }
-
-    if (evento == EventoEncoder::ESQUERDA) {
-        novoVolume--;
-    }
+    long novoVolume =
+        volumeAtual + deslocamentoEncoder;
 
     novoVolume = constrain(
         novoVolume,
-        VOLUME_MINIMO,
-        VOLUME_MAXIMO
+        static_cast<long>(VOLUME_MINIMO),
+        static_cast<long>(VOLUME_MAXIMO)
     );
 
     if (novoVolume == volumeAtual) {
         return;
     }
 
-    volumeAtual = novoVolume;
+    volumeAtual = static_cast<int>(novoVolume);
 
     alterarVolumeAudio(volumeAtual);
     mostrarVolume(volumeAtual);
@@ -242,7 +240,7 @@ void processarAjusteVolume(
 // =====================================================
 
 void processarNavegacaoRadios(
-    EventoEncoder evento
+    long deslocamentoEncoder
 ) {
     int quantidadeRadios =
         obterQuantidadeRadios();
@@ -251,23 +249,18 @@ void processarNavegacaoRadios(
         return;
     }
 
-    if (evento == EventoEncoder::DIREITA) {
-        indiceRadioEmSelecao++;
+    long novoIndice =
+        indiceRadioEmSelecao + deslocamentoEncoder;
+
+    // O resto preserva todos os passos e mantém a navegação circular.
+    novoIndice %= quantidadeRadios;
+
+    if (novoIndice < 0) {
+        novoIndice += quantidadeRadios;
     }
 
-    if (evento == EventoEncoder::ESQUERDA) {
-        indiceRadioEmSelecao--;
-    }
-
-    // Navegação circular
-    if (indiceRadioEmSelecao >= quantidadeRadios) {
-        indiceRadioEmSelecao = 0;
-    }
-
-    if (indiceRadioEmSelecao < 0) {
-        indiceRadioEmSelecao =
-            quantidadeRadios - 1;
-    }
+    indiceRadioEmSelecao =
+        static_cast<int>(novoIndice);
 
     momentoUltimaAtividadeSelecaoMs = millis();
 

@@ -11,11 +11,9 @@ AiEsp32RotaryEncoder encoder(
     PIN_ENCODER_CLK,
     PIN_ENCODER_SW,
     PIN_ENCODER_VCC,
-    PASSOS_ENCODER,
+    TRANSICOES_ENCODER_POR_DETENTE,
     false
 );
-
-long valorAnterior = 0;
 
 volatile bool bordaBotaoPendente = false;
 
@@ -90,7 +88,7 @@ bool detectarCliqueConfirmado() {
 
     if (
         agora - inicioValidacaoBotao <
-        TEMPO_VALIDAR_BOTAO_MS
+        TEMPO_VALIDACAO_CLIQUE_ENCODER_MS
     ) {
         return false;
     }
@@ -100,7 +98,7 @@ bool detectarCliqueConfirmado() {
 
     if (
         agora - ultimoClique <
-        DEBOUNCE_ENCODER_MS
+        INTERVALO_MINIMO_CLIQUES_ENCODER_MS
     ) {
         return false;
     }
@@ -137,35 +135,24 @@ void iniciarControles() {
 
     encoder.disableAcceleration();
 
-    valorAnterior = encoder.readEncoder();
     ultimoClique =
-        millis() - DEBOUNCE_ENCODER_MS;
+        millis() - INTERVALO_MINIMO_CLIQUES_ENCODER_MS;
 
     Serial.println("Encoder inicializado.");
 }
 
-EventoEncoder lerControles() {
+LeituraControles lerControles() {
+    LeituraControles leitura;
+
     if (detectarCliqueConfirmado()) {
-        return EventoEncoder::CLIQUE;
+        leitura.cliqueDetectado = true;
+
+        return leitura;
     }
 
-    if (!encoder.encoderChanged()) {
-        return EventoEncoder::NENHUM;
-    }
+    // A própria biblioteca informa o deslocamento acumulado e sua direção.
+    leitura.deslocamentoEncoder =
+        encoder.encoderChanged();
 
-    long valorAtual =
-        encoder.readEncoder();
-
-    EventoEncoder evento =
-        EventoEncoder::NENHUM;
-
-    if (valorAtual > valorAnterior) {
-        evento = EventoEncoder::DIREITA;
-    } else if (valorAtual < valorAnterior) {
-        evento = EventoEncoder::ESQUERDA;
-    }
-
-    valorAnterior = valorAtual;
-
-    return evento;
+    return leitura;
 }

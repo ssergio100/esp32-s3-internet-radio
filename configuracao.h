@@ -29,7 +29,9 @@ constexpr int PIN_ENCODER_DT  = 16;
 constexpr int PIN_ENCODER_SW  = 17;
 constexpr int PIN_ENCODER_VCC = -1;
 
-constexpr int PASSOS_ENCODER = 2;
+// Valor calibrado para o encoder instalado: cada detente produz duas
+// transições válidas reconhecidas pela biblioteca.
+constexpr int TRANSICOES_ENCODER_POR_DETENTE = 2;
 
 // =====================================================
 // Comportamento ajustável pelo usuário
@@ -76,8 +78,8 @@ constexpr uint32_t PILHA_SERVICO_AUDIO_BYTES = 12288;
 constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
 
 // Tratamento dos controles
-constexpr unsigned long TEMPO_VALIDAR_BOTAO_MS = 30;
-constexpr unsigned long DEBOUNCE_ENCODER_MS = 200;
+constexpr unsigned long TEMPO_VALIDACAO_CLIQUE_ENCODER_MS = 30;
+constexpr unsigned long INTERVALO_MINIMO_CLIQUES_ENCODER_MS = 200;
 
 // Atualização dos indicadores
 constexpr unsigned long INTERVALO_VERIFICACAO_LED_AUDIO_MS = 250;

@@ -45,6 +45,18 @@ O Wi-Fi solicita a animação azul durante a conexão inicial; depois disso, o
 `loop()` solicita a apresentação do estado publicado pelo serviço de áudio.
 As cores e a temporização ficam encapsuladas no indicador.
 
+### Controles
+
+`controles.cpp` configura o encoder e devolve uma `LeituraControles` contendo o
+clique e o deslocamento assinado acumulado. A rotação usa diretamente o valor
+de `encoderChanged()`, sem manter um segundo contador, aplicar aceleração ou
+filtrar mudanças de direção. O arquivo principal decide se esse deslocamento
+altera o volume ou navega circularmente pela lista de estações.
+
+A calibração física fica em `TRANSICOES_ENCODER_POR_DETENTE`, em
+`configuracao.h`. Os tempos com nomes de clique tratam somente o botão e não
+interferem na rotação.
+
 ### Relógio
 
 `relogio.cpp` concentra a sincronização NTP, o fuso horário e a obtenção

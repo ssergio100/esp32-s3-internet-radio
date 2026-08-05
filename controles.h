@@ -1,15 +1,13 @@
 #ifndef CONTROLES_H
 #define CONTROLES_H
 
-enum class EventoEncoder {
-    NENHUM,
-    ESQUERDA,
-    DIREITA,
-    CLIQUE
+struct LeituraControles {
+    bool cliqueDetectado = false;
+    long deslocamentoEncoder = 0;
 };
 
 void iniciarControles();
 
-EventoEncoder lerControles();
+LeituraControles lerControles();
 
 #endif
