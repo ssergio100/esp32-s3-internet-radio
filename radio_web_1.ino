@@ -10,7 +10,6 @@
 
 #include <Arduino.h>
 #include <time.h>
-#include <WiFi.h>
 
 #include "configuracao.h"
 #include "radios.h"
@@ -19,6 +18,7 @@
 #include "audio_radio.h"
 #include "controles.h"
 #include "servidor_web.h"
+#include "telemetria.h"
 
 enum class ModoControle {
     VOLUME,
@@ -63,7 +63,6 @@ void atualizarInterfaceAudio(
     bool forcar = false
 );
 void atualizarLedEstadoAudio();
-void registrarStatusSistema();
 
 // =====================================================
 // Setup
@@ -130,7 +129,7 @@ void loop() {
     atualizarLedEstadoAudio();
     atualizarInterfaceAudio();
 
-    registrarStatusSistema();
+    registrarTelemetriaPeriodica();
 }
 
 // =====================================================
@@ -408,46 +407,9 @@ void exibirRadio(int indice) {
     );
 }
 
-void registrarStatusSistema() {
-
-    static unsigned long ultimaAtualizacaoStatus = 0;
-
-    if (millis() - ultimaAtualizacaoStatus < 5000) {
-        return;
-    }
-    ultimaAtualizacaoStatus = millis();
-
-    StatusAudio audio =
-        obterStatusAudio();
-
-    Serial.printf("Temperatura: %.1f °C\n", temperatureRead());
-    Serial.printf("RAM livre: %u KB\n", ESP.getFreeHeap() / 1024);
-    Serial.printf("Menor RAM livre: %u KB\n", ESP.getMinFreeHeap() / 1024);
-    Serial.printf("Maior bloco RAM: %u KB\n", ESP.getMaxAllocHeap() / 1024);
-    Serial.printf("PSRAM livre: %u KB\n", ESP.getFreePsram() / 1024);
-    Serial.printf("Maior bloco PSRAM: %u KB\n", ESP.getMaxAllocPsram() / 1024);
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf(
-            "Wi-Fi: %d dBm | BSSID: %s | Canal: %d\n",
-            WiFi.RSSI(),
-            WiFi.BSSIDstr().c_str(),
-            WiFi.channel()
-        );
-    } else {
-        Serial.println("Wi-Fi: desconectado");
-    }
-    Serial.printf(
-        "Audio: %s | Buffer: %lu ms | Bitrate: %lu | Fluxo lento: %lu | Reconexoes: %lu | Pilha livre min.: %lu bytes\n",
-        obterTextoEstadoAudio(
-            audio.estado
-        ),
-        audio.bufferMilissegundos,
-        audio.bitrate,
-        audio.eventosFluxoLento,
-        audio.tentativasReconexao,
-        audio.stackMinimoBytes
-    );
-}
+// =====================================================
+// Indicação visual do estado do áudio
+// =====================================================
 
 void atualizarLedEstadoAudio() {
     static unsigned long ultimaAtualizacao = 0;
@@ -520,6 +482,10 @@ void atualizarLedEstadoAudio() {
             break;
     }
 }
+
+// =====================================================
+// Apresentação do estado do áudio no display
+// =====================================================
 
 void atualizarInterfaceAudio(
     bool forcar

@@ -33,6 +33,14 @@ enquanto a rede estiver desconectada. A tentativa usa as credenciais
 persistidas e não fixa nem filtra BSSID. O serviço de áudio aguarda a rede e
 retoma suas próprias tentativas quando a associação volta.
 
+### Telemetria
+
+`telemetria.cpp` reúne o diagnóstico periódico de temperatura, memória,
+Wi-Fi e áudio enviado à porta serial. O `loop()` apenas chama
+`registrarTelemetriaPeriodica()`, que controla internamente o intervalo sem
+bloquear as demais atividades. O intervalo ajustável fica em
+`configuracao.h`.
+
 ### Persistência
 
 `servidor_web.cpp` administra FFat e as mutações de `radios.json`.

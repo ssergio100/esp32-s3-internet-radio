@@ -18,6 +18,7 @@ separados por responsabilidade:
 | `controles.cpp` | Leitura do encoder e do botão |
 | `radios.cpp` | Carregamento e validação da lista de estações |
 | `servidor_web.cpp` | API HTTP, arquivos da FFat e interface administrativa |
+| `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `web/index.html` | Página principal da administração |
 
 Para uma primeira leitura, siga `radio_web_1.ino`, depois o arquivo do módulo
@@ -35,6 +36,7 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `TEMPO_TELA_VOLUME_MS` | Permanência da tela de volume | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
+| `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
 
 Na rolagem do nome, um intervalo menor produz movimento mais rápido e um
 intervalo maior produz movimento mais lento.

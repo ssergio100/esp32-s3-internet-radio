@@ -49,6 +49,9 @@ constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 // Diminua o intervalo para acelerar a rolagem; aumente para desacelerar.
 constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 50;
 
+// Diagnóstico
+constexpr unsigned long INTERVALO_TELEMETRIA_SERIAL_MS = 5000;
+
 // =====================================================
 // Ajustes internos
 // =====================================================
