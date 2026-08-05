@@ -9,7 +9,6 @@
 
 // LED RGB integrado à placa
 #define PIN_LED_RGB 48
-#define BRILHO_LED_RGB 50
 
 // Amplificador de áudio I2S MAX98357A
 constexpr int PIN_MAX98357A_BCLK = 5;
@@ -42,8 +41,15 @@ constexpr int VOLUME_MAXIMO = 21;
 constexpr int VOLUME_PADRAO = 10;
 
 // Interface
+// Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
+#define BRILHO_LED_RGB 50
+
 constexpr unsigned long TEMPO_TELA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
+
+// O LED alterna entre azul e apagado a cada intervalo.
+// Diminua o valor para piscar mais rápido; aumente para piscar mais devagar.
+constexpr unsigned long INTERVALO_PISCA_LED_CONEXAO_WIFI_MS = 100;
 
 // O nome avança um pixel a cada passo.
 // Diminua o intervalo para acelerar a rolagem; aumente para desacelerar.
@@ -65,5 +71,8 @@ constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
 // Tratamento dos controles
 constexpr unsigned long TEMPO_VALIDAR_BOTAO_MS = 30;
 constexpr unsigned long DEBOUNCE_ENCODER_MS = 200;
+
+// Atualização dos indicadores
+constexpr unsigned long INTERVALO_VERIFICACAO_LED_AUDIO_MS = 250;
 
 #endif

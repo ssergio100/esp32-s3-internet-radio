@@ -17,6 +17,7 @@
 #include "wifi_radio.h"
 #include "audio_radio.h"
 #include "controles.h"
+#include "indicador_led.h"
 #include "servidor_web.h"
 #include "telemetria.h"
 
@@ -62,7 +63,6 @@ void verificarInatividadeSelecao();
 void atualizarInterfaceAudio(
     bool forcar = false
 );
-void atualizarLedEstadoAudio();
 
 // =====================================================
 // Setup
@@ -126,7 +126,7 @@ void loop() {
     verificarInatividadeSelecao();
     verificarTelaVolume();
 
-    atualizarLedEstadoAudio();
+    atualizarIndicadorEstadoAudio();
     atualizarInterfaceAudio();
 
     registrarTelemetriaPeriodica();
@@ -405,82 +405,6 @@ void exibirRadio(int indice) {
         indice,
         obterQuantidadeRadios()
     );
-}
-
-// =====================================================
-// Indicação visual do estado do áudio
-// =====================================================
-
-void atualizarLedEstadoAudio() {
-    static unsigned long ultimaAtualizacao = 0;
-    static EstadoAudio ultimoEstado =
-        EstadoAudio::DESLIGADO;
-
-    if (millis() - ultimaAtualizacao < 250) {
-        return;
-    }
-
-    ultimaAtualizacao = millis();
-
-    StatusAudio audio =
-        obterStatusAudio();
-
-    if (audio.estado == ultimoEstado) {
-        return;
-    }
-
-    ultimoEstado = audio.estado;
-
-    switch (audio.estado) {
-        case EstadoAudio::CONECTANDO:
-        case EstadoAudio::BUFFERIZANDO:
-        case EstadoAudio::INICIALIZANDO:
-            rgbLedWrite(
-                PIN_LED_RGB,
-                0,
-                0,
-                BRILHO_LED_RGB
-            );
-            break;
-
-        case EstadoAudio::TOCANDO:
-            rgbLedWrite(
-                PIN_LED_RGB,
-                0,
-                BRILHO_LED_RGB,
-                0
-            );
-            break;
-
-        case EstadoAudio::DEGRADADO:
-            rgbLedWrite(
-                PIN_LED_RGB,
-                BRILHO_LED_RGB,
-                BRILHO_LED_RGB,
-                0
-            );
-            break;
-
-        case EstadoAudio::RECONECTANDO:
-        case EstadoAudio::ERRO:
-            rgbLedWrite(
-                PIN_LED_RGB,
-                BRILHO_LED_RGB,
-                0,
-                0
-            );
-            break;
-
-        case EstadoAudio::DESLIGADO:
-        case EstadoAudio::PARADO:
-            rgbLedWrite(
-                PIN_LED_RGB,
-                0,
-                0,
-                0
-            );
-            break;
-    }
 }
 
 // =====================================================

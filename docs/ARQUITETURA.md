@@ -33,6 +33,13 @@ enquanto a rede estiver desconectada. A tentativa usa as credenciais
 persistidas e não fixa nem filtra BSSID. O serviço de áudio aguarda a rede e
 retoma suas próprias tentativas quando a associação volta.
 
+### Indicador LED
+
+`indicador_led.cpp` é o único módulo que escreve diretamente no LED RGB.
+O Wi-Fi solicita a animação azul durante a conexão inicial; depois disso, o
+`loop()` solicita a apresentação do estado publicado pelo serviço de áudio.
+As cores e a temporização ficam encapsuladas no indicador.
+
 ### Telemetria
 
 `telemetria.cpp` reúne o diagnóstico periódico de temperatura, memória,

@@ -16,6 +16,7 @@ separados por responsabilidade:
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
 | `display_radio.cpp` | Telas, relógio e animação do nome da estação |
 | `controles.cpp` | Leitura do encoder e do botão |
+| `indicador_led.cpp` | Cores e animações do LED RGB |
 | `radios.cpp` | Carregamento e validação da lista de estações |
 | `servidor_web.cpp` | API HTTP, arquivos da FFat e interface administrativa |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
@@ -32,14 +33,17 @@ As opções que normalmente precisam ser adaptadas ficam em
 
 | Opção | Efeito | Padrão |
 | --- | --- | ---: |
+| `BRILHO_LED_RGB` | Intensidade das cores do LED | 50 |
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
 | `TEMPO_TELA_VOLUME_MS` | Permanência da tela de volume | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
+| `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
 
 Na rolagem do nome, um intervalo menor produz movimento mais rápido e um
-intervalo maior produz movimento mais lento.
+intervalo maior produz movimento mais lento. A mesma relação vale para o
+intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 
 ## Arquitetura
 

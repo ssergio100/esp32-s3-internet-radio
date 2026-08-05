@@ -1,6 +1,6 @@
 #include "wifi_radio.h"
-#include "configuracao.h"
 #include "display_radio.h"
+#include "indicador_led.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -10,36 +10,6 @@ namespace {
 
 constexpr unsigned long INTERVALO_RECONEXAO_WIFI_MS =
     10000;
-
-void atualizarLedConexao() {
-    static unsigned long ultimaPiscada = 0;
-    static bool ledAceso = false;
-
-    unsigned long agora = millis();
-
-    if (agora - ultimaPiscada < 100) {
-        return;
-    }
-
-    ultimaPiscada = agora;
-    ledAceso = !ledAceso;
-
-    rgbLedWrite(
-        PIN_LED_RGB,
-        0,
-        0,
-        ledAceso ? BRILHO_LED_RGB : 0
-    );
-}
-
-void apagarLedConexao() {
-    rgbLedWrite(
-        PIN_LED_RGB,
-        0,
-        0,
-        0
-    );
-}
 
 }
 
@@ -146,7 +116,7 @@ bool conectarWifi() {
 
     while (!conectado) {
         wifiManager.process();
-        atualizarLedConexao();
+        atualizarIndicadorConexaoWifi();
 
         conectado =
             WiFi.status() == WL_CONNECTED;
@@ -154,7 +124,7 @@ bool conectarWifi() {
         delay(10);
     }
 
-    apagarLedConexao();
+    apagarIndicadorLed();
 
     WiFi.setAutoReconnect(true);
     WiFi.setSleep(false);
