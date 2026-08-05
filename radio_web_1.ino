@@ -6,6 +6,8 @@
  *
  * O loop() apenas coordena os módulos. A reprodução de áudio acontece em
  * uma tarefa dedicada implementada em audio_radio.cpp.
+ * As regras de volume e seleção de estação permanecem neste arquivo para
+ * que o fluxo principal do produto possa ser lido em um só lugar.
  */
 
 #include <Arduino.h>
@@ -21,47 +23,51 @@
 #include "servidor_web.h"
 #include "telemetria.h"
 
-enum class ModoControle {
+enum class ModoInterface {
     VOLUME,
     SELECAO_RADIO
 };
 
-ModoControle modoControle = ModoControle::VOLUME;
+// Estado da interação com o encoder e o display.
+ModoInterface modoInterface = ModoInterface::VOLUME;
 
-int volume = VOLUME_PADRAO;
+int volumeAtual = VOLUME_PADRAO;
 
-int radioAtual = 0;
-int radioSelecionada = 0;
+int indiceRadioAtual = 0;
+int indiceRadioEmSelecao = 0;
 
-unsigned long ultimaAlteracaoVolume = 0;
-unsigned long ultimaAtividadeSelecao = 0;
+unsigned long momentoUltimaAlteracaoVolumeMs = 0;
+unsigned long momentoUltimaAtividadeSelecaoMs = 0;
 
-bool telaVolumeAtiva = false;
+bool telaVolumeVisivel = false;
 
 // =====================================================
 // Protótipos
 // =====================================================
 
-void exibirRadio(int indice);
-void iniciarRadio(int indice);
+void mostrarRadioNoDisplay(int indiceRadio);
+void solicitarReproducaoRadio(int indiceRadio);
+
+void entrarModoSelecaoRadio();
+void confirmarSelecaoRadio();
 
 void processarEventoEncoder(
     EventoEncoder evento
 );
 
-void processarModoVolume(
+void processarAjusteVolume(
     EventoEncoder evento
 );
 
-void processarModoSelecaoRadio(
+void processarNavegacaoRadios(
     EventoEncoder evento
 );
 
-void verificarTelaVolume();
-void verificarInatividadeSelecao();
+void restaurarDisplayAposTempoVolume();
+void cancelarSelecaoRadioPorInatividade();
 
-void atualizarInterfaceAudio(
-    bool forcar = false
+void atualizarDisplayEstadoAudio(
+    bool forcarAtualizacao = false
 );
 
 // =====================================================
@@ -91,7 +97,7 @@ void setup() {
 
     iniciarRelogio();
 
-    if (!iniciarAudio(volume)) {
+    if (!iniciarAudio(volumeAtual)) {
         mostrarMensagem(
             "Erro no audio"
         );
@@ -99,10 +105,10 @@ void setup() {
         return;
     }
 
-    radioAtual = 0;
-    radioSelecionada = radioAtual;
+    indiceRadioAtual = 0;
+    indiceRadioEmSelecao = indiceRadioAtual;
 
-    iniciarRadio(radioAtual);
+    solicitarReproducaoRadio(indiceRadioAtual);
 }
 
 // =====================================================
@@ -118,11 +124,11 @@ void loop() {
 
     processarEventoEncoder(evento);
 
-    verificarInatividadeSelecao();
-    verificarTelaVolume();
+    cancelarSelecaoRadioPorInatividade();
+    restaurarDisplayAposTempoVolume();
 
     atualizarIndicadorEstadoAudio();
-    atualizarInterfaceAudio();
+    atualizarDisplayEstadoAudio();
 
     registrarTelemetriaPeriodica();
 }
@@ -139,65 +145,63 @@ void processarEventoEncoder(
     }
 
     if (evento == EventoEncoder::CLIQUE) {
-        if (modoControle == ModoControle::VOLUME) {
-            modoControle = ModoControle::SELECAO_RADIO;
-
-            telaVolumeAtiva = false;
-
-            radioSelecionada = radioAtual;
-            ultimaAtividadeSelecao = millis();
-
-            const Radio* radio =
-                obterRadio(radioSelecionada);
-
-            if (radio != nullptr) {
-                mostrarSelecaoRadio(
-                    radio->nome,
-                    radioSelecionada,
-                    obterQuantidadeRadios()
-                );
-            }
-
-            Serial.println(
-                "Modo: seleção de rádio"
-            );
+        if (modoInterface == ModoInterface::VOLUME) {
+            entrarModoSelecaoRadio();
         } else {
-            modoControle = ModoControle::VOLUME;
-
-            if (
-                radioSelecionada ==
-                radioAtual
-            ) {
-                atualizarInterfaceAudio(true);
-            } else {
-                iniciarRadio(
-                    radioSelecionada
-                );
-            }
-
-            Serial.println(
-                "Rádio confirmada; modo: volume"
-            );
+            confirmarSelecaoRadio();
         }
 
         return;
     }
 
-    if (modoControle == ModoControle::VOLUME) {
-        processarModoVolume(evento);
+    if (modoInterface == ModoInterface::VOLUME) {
+        processarAjusteVolume(evento);
     } else {
-        processarModoSelecaoRadio(evento);
+        processarNavegacaoRadios(evento);
     }
+}
+
+void entrarModoSelecaoRadio() {
+    modoInterface = ModoInterface::SELECAO_RADIO;
+    telaVolumeVisivel = false;
+
+    indiceRadioEmSelecao = indiceRadioAtual;
+    momentoUltimaAtividadeSelecaoMs = millis();
+
+    const Radio* radio =
+        obterRadio(indiceRadioEmSelecao);
+
+    if (radio != nullptr) {
+        mostrarSelecaoRadio(
+            radio->nome,
+            indiceRadioEmSelecao,
+            obterQuantidadeRadios()
+        );
+    }
+
+    Serial.println("Modo: seleção de rádio");
+}
+
+void confirmarSelecaoRadio() {
+    modoInterface = ModoInterface::VOLUME;
+
+    if (indiceRadioEmSelecao == indiceRadioAtual) {
+        atualizarDisplayEstadoAudio(true);
+    } else {
+        solicitarReproducaoRadio(indiceRadioEmSelecao);
+    }
+
+    Serial.println("Rádio confirmada; modo: volume");
 }
 
 // =====================================================
 // Modo volume
 // =====================================================
 
-void processarModoVolume(
+void processarAjusteVolume(
     EventoEncoder evento
 ) {
-    int novoVolume = volume;
+    int novoVolume = volumeAtual;
 
     if (evento == EventoEncoder::DIREITA) {
         novoVolume++;
@@ -213,23 +217,23 @@ void processarModoVolume(
         VOLUME_MAXIMO
     );
 
-    if (novoVolume == volume) {
+    if (novoVolume == volumeAtual) {
         return;
     }
 
-    volume = novoVolume;
+    volumeAtual = novoVolume;
 
-    alterarVolumeAudio(volume);
-    mostrarVolume(volume);
+    alterarVolumeAudio(volumeAtual);
+    mostrarVolume(volumeAtual);
 
-    telaVolumeAtiva = true;
+    telaVolumeVisivel = true;
 
-    ultimaAlteracaoVolume =
+    momentoUltimaAlteracaoVolumeMs =
         millis();
 
     Serial.printf(
         "Volume: %d\n",
-        volume
+        volumeAtual
     );
 }
 
@@ -237,35 +241,35 @@ void processarModoVolume(
 // Modo seleção de rádio
 // =====================================================
 
-void processarModoSelecaoRadio(
+void processarNavegacaoRadios(
     EventoEncoder evento
 ) {
-    int quantidade =
+    int quantidadeRadios =
         obterQuantidadeRadios();
 
-    if (quantidade <= 0) {
+    if (quantidadeRadios <= 0) {
         return;
     }
 
     if (evento == EventoEncoder::DIREITA) {
-        radioSelecionada++;
+        indiceRadioEmSelecao++;
     }
 
     if (evento == EventoEncoder::ESQUERDA) {
-        radioSelecionada--;
+        indiceRadioEmSelecao--;
     }
 
     // Navegação circular
-    if (radioSelecionada >= quantidade) {
-        radioSelecionada = 0;
+    if (indiceRadioEmSelecao >= quantidadeRadios) {
+        indiceRadioEmSelecao = 0;
     }
 
-    if (radioSelecionada < 0) {
-        radioSelecionada =
-            quantidade - 1;
+    if (indiceRadioEmSelecao < 0) {
+        indiceRadioEmSelecao =
+            quantidadeRadios - 1;
     }
 
-    ultimaAtividadeSelecao = millis();
+    momentoUltimaAtividadeSelecaoMs = millis();
 
     Serial.print(
         "Selecionada: "
@@ -273,14 +277,14 @@ void processarModoSelecaoRadio(
 
     const Radio* radio =
         obterRadio(
-            radioSelecionada
+            indiceRadioEmSelecao
         );
 
     if (radio != nullptr) {
         mostrarSelecaoRadio(
             radio->nome,
-            radioSelecionada,
-            quantidade
+            indiceRadioEmSelecao,
+            quantidadeRadios
         );
 
         Serial.println(
@@ -293,65 +297,65 @@ void processarModoSelecaoRadio(
 // Retorno automático do controle para volume
 // =====================================================
 
-void verificarInatividadeSelecao() {
+void cancelarSelecaoRadioPorInatividade() {
     if (
-        modoControle !=
-            ModoControle::SELECAO_RADIO
+        modoInterface !=
+            ModoInterface::SELECAO_RADIO
     ) {
         return;
     }
 
     if (
-        millis() - ultimaAtividadeSelecao <
+        millis() - momentoUltimaAtividadeSelecaoMs <
             TEMPO_INATIVIDADE_SELECAO_MS
     ) {
         return;
     }
 
-    modoControle = ModoControle::VOLUME;
-    radioSelecionada = radioAtual;
-    telaVolumeAtiva = false;
+    modoInterface = ModoInterface::VOLUME;
+    indiceRadioEmSelecao = indiceRadioAtual;
+    telaVolumeVisivel = false;
 
     Serial.println(
         "Seleção cancelada por inatividade; modo: volume"
     );
 
-    atualizarInterfaceAudio(true);
+    atualizarDisplayEstadoAudio(true);
 }
 
 // =====================================================
 // Retorno automático da tela de volume
 // =====================================================
 
-void verificarTelaVolume() {
-    if (modoControle != ModoControle::VOLUME) {
-        telaVolumeAtiva = false;
+void restaurarDisplayAposTempoVolume() {
+    if (modoInterface != ModoInterface::VOLUME) {
+        telaVolumeVisivel = false;
         return;
     }
 
-    if (!telaVolumeAtiva) {
+    if (!telaVolumeVisivel) {
         return;
     }
 
     if (
-        millis() - ultimaAlteracaoVolume <
+        millis() - momentoUltimaAlteracaoVolumeMs <
         TEMPO_TELA_VOLUME_MS
     ) {
         return;
     }
 
-    telaVolumeAtiva = false;
+    telaVolumeVisivel = false;
 
-    atualizarInterfaceAudio(true);
+    atualizarDisplayEstadoAudio(true);
 }
 
 // =====================================================
 // Rádio
 // =====================================================
 
-void iniciarRadio(int indice) {
+void solicitarReproducaoRadio(int indiceRadio) {
     const Radio* radio =
-        obterRadio(indice);
+        obterRadio(indiceRadio);
 
     if (radio == nullptr) {
         mostrarMensagem(
@@ -376,20 +380,20 @@ void iniciarRadio(int indice) {
             "Comando rejeitado"
         );
 
-        exibirRadio(
-            radioAtual
+        mostrarRadioNoDisplay(
+            indiceRadioAtual
         );
 
         return;
     }
 
-    radioAtual = indice;
-    radioSelecionada = indice;
+    indiceRadioAtual = indiceRadio;
+    indiceRadioEmSelecao = indiceRadio;
 }
 
-void exibirRadio(int indice) {
+void mostrarRadioNoDisplay(int indiceRadio) {
     const Radio* radio =
-        obterRadio(indice);
+        obterRadio(indiceRadio);
 
     if (radio == nullptr) {
         return;
@@ -397,7 +401,7 @@ void exibirRadio(int indice) {
 
     mostrarNomeRadio(
         radio->nome,
-        indice,
+        indiceRadio,
         obterQuantidadeRadios()
     );
 }
@@ -406,40 +410,40 @@ void exibirRadio(int indice) {
 // Apresentação do estado do áudio no display
 // =====================================================
 
-void atualizarInterfaceAudio(
-    bool forcar
+void atualizarDisplayEstadoAudio(
+    bool forcarAtualizacao
 ) {
-    static EstadoAudio estadoAnterior =
+    static EstadoAudio ultimoEstadoApresentado =
         EstadoAudio::DESLIGADO;
 
-    StatusAudio audio =
+    StatusAudio statusAudio =
         obterStatusAudio();
 
     if (
-        !forcar &&
-        audio.estado == estadoAnterior
+        !forcarAtualizacao &&
+        statusAudio.estado == ultimoEstadoApresentado
     ) {
         return;
     }
 
-    estadoAnterior = audio.estado;
+    ultimoEstadoApresentado = statusAudio.estado;
 
     Serial.print("Estado do audio: ");
     Serial.println(
         obterTextoEstadoAudio(
-            audio.estado
+            statusAudio.estado
         )
     );
 
     if (
-        modoControle !=
-            ModoControle::VOLUME ||
-        telaVolumeAtiva
+        modoInterface !=
+            ModoInterface::VOLUME ||
+        telaVolumeVisivel
     ) {
         return;
     }
 
-    switch (audio.estado) {
+    switch (statusAudio.estado) {
         case EstadoAudio::CONECTANDO:
             mostrarMensagem(
                 "Conectando..."
@@ -454,7 +458,7 @@ void atualizarInterfaceAudio(
 
         case EstadoAudio::TOCANDO:
         case EstadoAudio::DEGRADADO:
-            exibirRadio(radioAtual);
+            mostrarRadioNoDisplay(indiceRadioAtual);
             break;
 
         case EstadoAudio::RECONECTANDO:

@@ -27,6 +27,11 @@ comandos ao serviço e reage às mudanças de estado, sem alimentar o decoder.
 Uma operação HTTP lenta pode atrasar a interface, mas não interrompe a
 execução do serviço de áudio.
 
+As regras centrais de interação permanecem no arquivo principal: entrar na
+seleção de estações, navegar, confirmar, cancelar por inatividade e ajustar
+o volume. Cada transição usa uma função nomeada para que o fluxo seja legível
+sem conhecer previamente os detalhes do display ou do serviço de áudio.
+
 O Wi-Fi mantém a reconexão automática da pilha. Além disso, o `loop()`
 supervisiona a associação e solicita `WiFi.reconnect()` a cada dez segundos
 enquanto a rede estiver desconectada. A tentativa usa as credenciais
