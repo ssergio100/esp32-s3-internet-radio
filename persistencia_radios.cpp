@@ -45,25 +45,25 @@ namespace {
         return true;
     }
 
-}
+    bool arquivoRadiosValido(const char* caminho) {
+        File arquivo = FFat.open(caminho, FILE_READ);
 
-bool arquivoRadiosValido(const char* caminho) {
-    File arquivo = FFat.open(caminho, FILE_READ);
+        if (!arquivo) {
+            return false;
+        }
 
-    if (!arquivo) {
-        return false;
+        DynamicJsonDocument documento(16384);
+
+        DeserializationError erro =
+            deserializeJson(documento, arquivo);
+
+        arquivo.close();
+
+        return
+            !erro &&
+            documentoRadiosValido(documento);
     }
 
-    DynamicJsonDocument documento(16384);
-
-    DeserializationError erro =
-        deserializeJson(documento, arquivo);
-
-    arquivo.close();
-
-    return
-        !erro &&
-        documentoRadiosValido(documento);
 }
 
 bool carregarDocumentoRadiosDoArquivo(
@@ -88,7 +88,7 @@ bool carregarDocumentoRadiosDoArquivo(
         documentoRadiosValido(documento);
 }
 
-bool carregarDocumentoRadiosParaEdicao(
+OrigemArquivoRadios carregarDocumentoRadiosPersistido(
     DynamicJsonDocument& documento
 ) {
     if (
@@ -97,7 +97,7 @@ bool carregarDocumentoRadiosParaEdicao(
             CAMINHO_RADIOS_ATIVO
         )
     ) {
-        return true;
+        return OrigemArquivoRadios::ATIVO;
     }
 
     if (
@@ -106,6 +106,23 @@ bool carregarDocumentoRadiosParaEdicao(
             CAMINHO_RADIOS_BACKUP
         )
     ) {
+        return OrigemArquivoRadios::BACKUP;
+    }
+
+    return OrigemArquivoRadios::NENHUM_VALIDO;
+}
+
+bool carregarDocumentoRadiosParaEdicao(
+    DynamicJsonDocument& documento
+) {
+    OrigemArquivoRadios origem =
+        carregarDocumentoRadiosPersistido(documento);
+
+    if (origem == OrigemArquivoRadios::ATIVO) {
+        return true;
+    }
+
+    if (origem == OrigemArquivoRadios::BACKUP) {
         Serial.println(
             "radios.json invalido; usando radios.bak."
         );

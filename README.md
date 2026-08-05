@@ -112,13 +112,14 @@ transacional:
 4. o temporário é promovido para `/radios.json`.
 
 `persistencia_radios.cpp` concentra os nomes desses arquivos, a validação do
-JSON e essa transação. `servidor_web.cpp` apenas interpreta a requisição HTTP,
-enquanto `radios.cpp` monta a lista em memória usada durante a execução.
+JSON e essa transação. `api_radios.cpp` interpreta as requisições HTTP, enquanto
+`radios.cpp` monta a lista em memória usada durante a execução.
 
-Na inicialização, o firmware tenta ler o arquivo ativo e, se ele não puder ser
-aberto, interpretado ou não contiver um array, tenta o backup. Itens inválidos
-dentro de um array legível são ignorados. Se nenhuma estação válida for
-carregada, entra em uso a lista de reserva compilada no firmware.
+Na inicialização, o firmware aplica a mesma validação usada pela API: tenta
+`radios.json`, depois `radios.bak` e por último a lista de reserva compilada.
+Um arquivo é rejeitado por inteiro se o JSON, a quantidade, um nome ou uma URL
+forem inválidos. A serial informa o arquivo escolhido e quantas estações foram
+carregadas.
 
 ## Diagnóstico
 

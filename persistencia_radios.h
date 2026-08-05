@@ -7,13 +7,21 @@
 extern const char* const CAMINHO_RADIOS_ATIVO;
 extern const char* const CAMINHO_RADIOS_BACKUP;
 
-// Verifica estrutura, quantidade, nomes e URLs de um arquivo JSON de rádios.
-bool arquivoRadiosValido(const char* caminho);
+enum class OrigemArquivoRadios {
+    ATIVO,
+    BACKUP,
+    NENHUM_VALIDO
+};
 
 // Carrega e valida um documento de rádios a partir do caminho informado.
 bool carregarDocumentoRadiosDoArquivo(
     DynamicJsonDocument& documento,
     const char* caminho
+);
+
+// Aplica a ordem única de recuperação: arquivo ativo e depois backup.
+OrigemArquivoRadios carregarDocumentoRadiosPersistido(
+    DynamicJsonDocument& documento
 );
 
 // Carrega a lista ativa, depois o backup. Se ambos não existirem, cria um

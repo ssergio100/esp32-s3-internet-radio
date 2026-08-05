@@ -84,10 +84,10 @@ estação. `servidor_web.cpp` conserva apenas o registro visível dessas rotas.
 `/radios.tmp` e `/radios.bak`. Ele concentra a validação do documento JSON e a
 transação que preserva a versão anterior antes de promover uma nova lista.
 
-`servidor_web.cpp` interpreta as requisições HTTP e delega a leitura ou a
-gravação da lista persistida. `radios.cpp` monta durante o boot a fotografia em
-memória usada pelo restante do firmware e mantém a lista de reserva compilada.
-Por projeto, uma lista nova entra em uso depois de reiniciar.
+`api_radios.cpp` interpreta as requisições HTTP e delega a leitura ou a gravação
+da lista persistida. `radios.cpp` monta durante o boot a fotografia em memória
+usada pelo restante do firmware e mantém a lista de reserva compilada. Por
+projeto, uma lista nova entra em uso depois de reiniciar.
 
 As interfaces web completas são arquivos físicos: `/index.html` e
 `/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas
@@ -148,14 +148,11 @@ radios.tmp -- validação --> radios.json
 ```
 
 Uma falha antes da promoção preserva o arquivo ativo. Uma falha durante a
-promoção tenta restaurar o backup. As alterações feitas pela API ou pelo upload
-de `radios.json` aceitam somente um array não vazio cujos itens tenham nome e
-URL HTTP/HTTPS dentro dos limites suportados.
-
-No boot, `radios.cpp` tenta o backup quando o arquivo ativo não pode ser aberto,
-interpretado ou não contém um array. Dentro de um array legível, itens inválidos
-são ignorados. Se nenhum item válido for encontrado, a lista de reserva
-compilada entra em uso.
+promoção tenta restaurar o backup. Boot, API e edição usam a mesma seleção e a
+mesma validação: `radios.json`, depois `radios.bak` e por último a lista de
+reserva compilada. Um arquivo persistido somente é aceito quando contém um array
+não vazio e todos os itens possuem nome e URL HTTP/HTTPS dentro dos limites
+suportados.
 
 ## Limites atuais
 

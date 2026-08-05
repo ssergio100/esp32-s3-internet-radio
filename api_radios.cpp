@@ -8,15 +8,17 @@
 #include "radios.h"
 
 void responderListaRadios(WebServer& servidor) {
-    const char* caminho = nullptr;
+    OrigemArquivoRadios origem;
 
-    if (arquivoRadiosValido(CAMINHO_RADIOS_ATIVO)) {
-        caminho = CAMINHO_RADIOS_ATIVO;
-    } else if (arquivoRadiosValido(CAMINHO_RADIOS_BACKUP)) {
-        caminho = CAMINHO_RADIOS_BACKUP;
+    // Libera o documento de validação antes de transmitir o arquivo.
+    {
+        DynamicJsonDocument documento(16384);
+
+        origem =
+            carregarDocumentoRadiosPersistido(documento);
     }
 
-    if (caminho == nullptr) {
+    if (origem == OrigemArquivoRadios::NENHUM_VALIDO) {
         servidor.send(
             200,
             "application/json",
@@ -25,6 +27,11 @@ void responderListaRadios(WebServer& servidor) {
 
         return;
     }
+
+    const char* caminho =
+        origem == OrigemArquivoRadios::ATIVO
+            ? CAMINHO_RADIOS_ATIVO
+            : CAMINHO_RADIOS_BACKUP;
 
     File arquivo = FFat.open(caminho, FILE_READ);
 
