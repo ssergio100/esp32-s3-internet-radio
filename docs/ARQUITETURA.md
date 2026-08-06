@@ -133,6 +133,10 @@ As interfaces web completas são arquivos físicos: `/index.html` e
 quando `/upload.html` está ausente, permitindo restaurar arquivos enquanto a
 FFat continuar montada.
 
+`servidor_web.cpp` monta a FFat antes de registrar as rotas HTTP. Se a montagem
+falhar, o servidor não é iniciado e o arquivo principal apresenta o erro de
+armazenamento.
+
 `upload_arquivos.cpp` recebe os blocos enviados, valida o nome do arquivo e
 substitui arquivos comuns usando `/.upload.tmp` e `/.upload.bak`. Quando o
 destino é `/radios.json`, ele delega a validação e a promoção para

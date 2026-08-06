@@ -12,7 +12,7 @@ void responderListaRadios(WebServer& servidor) {
 
     // Libera o documento de validação antes de transmitir o arquivo.
     {
-        DynamicJsonDocument documento(16384);
+        JsonDocument documento;
 
         origem =
             carregarDocumentoRadiosPersistido(documento);
@@ -64,7 +64,7 @@ void adicionarRadioPelaApi(WebServer& servidor) {
         return;
     }
 
-    DynamicJsonDocument novaRadio(1024);
+    JsonDocument novaRadio;
 
     DeserializationError erro =
         deserializeJson(
@@ -100,7 +100,7 @@ void adicionarRadioPelaApi(WebServer& servidor) {
         return;
     }
 
-    DynamicJsonDocument documento(16384);
+    JsonDocument documento;
 
     if (!carregarDocumentoRadiosParaEdicao(documento)) {
         servidor.send(
@@ -134,7 +134,7 @@ void adicionarRadioPelaApi(WebServer& servidor) {
         }
     }
 
-    JsonObject radio = radios.createNestedObject();
+    JsonObject radio = radios.add<JsonObject>();
 
     radio["id"] = maiorId + 1;
     radio["nome"] = nome;
@@ -172,7 +172,7 @@ void excluirRadioPelaApi(WebServer& servidor) {
     unsigned long idProcurado =
         servidor.arg("id").toInt();
 
-    DynamicJsonDocument documento(16384);
+    JsonDocument documento;
 
     if (!carregarDocumentoRadiosParaEdicao(documento)) {
         servidor.send(

@@ -8,7 +8,7 @@
 namespace {
 
     void adicionarStatusAudio(
-        DynamicJsonDocument& documento
+        JsonDocument& documento
     ) {
         StatusAudio statusAudio = obterStatusAudio();
 
@@ -35,7 +35,7 @@ namespace {
     }
 
     void adicionarStatusWifi(
-        DynamicJsonDocument& documento
+        JsonDocument& documento
     ) {
         documento["wifiConectado"] =
             WiFi.status() == WL_CONNECTED;
@@ -45,7 +45,7 @@ namespace {
     }
 
     void adicionarStatusMemoriaEUptime(
-        DynamicJsonDocument& documento
+        JsonDocument& documento
     ) {
         documento["ramLivre"] = ESP.getFreeHeap();
         documento["maiorBlocoRam"] =
@@ -59,7 +59,7 @@ namespace {
 }
 
 String criarStatusSistemaJson() {
-    DynamicJsonDocument documento(1536);
+    JsonDocument documento;
 
     adicionarStatusAudio(documento);
     adicionarStatusWifi(documento);

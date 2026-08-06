@@ -90,11 +90,9 @@ void setup() {
     iniciarDisplay();
     iniciarControles();
 
-    if (!conectarWifi()) {
-        return;
-    }
+    conectarWifi();
 
-    if (!iniciarServidorWeb()) {
+    if (!iniciarArmazenamentoEServidorWeb()) {
         mostrarMensagem(
             "Erro no armazenamento"
         );

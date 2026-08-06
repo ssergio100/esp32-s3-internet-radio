@@ -18,9 +18,6 @@ enum class EstadoAudio : uint8_t {
 struct StatusAudio {
     EstadoAudio estado = EstadoAudio::DESLIGADO;
 
-    bool inicializado = false;
-    bool conexaoAtiva = false;
-
     uint32_t bitrate = 0;
     uint32_t bufferBytes = 0;
     uint32_t bufferTotalBytes = 0;

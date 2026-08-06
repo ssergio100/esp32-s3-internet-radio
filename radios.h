@@ -18,7 +18,7 @@ bool dadosRadioValidos(
     const char* url
 );
 
-bool carregarRadios();
+void carregarRadios();
 
 int obterQuantidadeRadios();
 

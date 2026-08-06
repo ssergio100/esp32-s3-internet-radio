@@ -108,10 +108,10 @@ bool dadosRadioValidos(
         ) == 0;
 }
 
-bool carregarRadios() {
+void carregarRadios() {
     limparRadios();
 
-    DynamicJsonDocument documento(16384);
+    JsonDocument documento;
 
     OrigemArquivoRadios origem =
         carregarDocumentoRadiosPersistido(documento);
@@ -123,7 +123,7 @@ bool carregarRadios() {
 
         carregarRadiosReserva();
 
-        return false;
+        return;
     }
 
     JsonArray lista =
@@ -161,8 +161,6 @@ bool carregarRadios() {
         quantidadeRadios,
         nomeArquivoOrigem
     );
-
-    return true;
 }
 
 int obterQuantidadeRadios() {
