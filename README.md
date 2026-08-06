@@ -16,7 +16,7 @@ separados por responsabilidade:
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
-| `display_radio.cpp` | Telas, relógio e animação do nome da estação |
+| `display_radio.cpp` | Telas e animações do nome e do diagnóstico da estação |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
@@ -46,14 +46,16 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
+| `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 50 ms |
+| `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
 | `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 2 |
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 
-Na rolagem do nome, um intervalo menor produz movimento mais rápido e um
-intervalo maior produz movimento mais lento. A mesma relação vale para o
-intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
+Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
+mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
+vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
 
 ## Arquitetura
@@ -77,6 +79,11 @@ reconexão progressiva de 1, 2, 5, 10 e 30 segundos. Se o Wi-Fi cair, ele
 aguarda a rede voltar antes de abrir uma nova conexão.
 
 Veja os detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+
+Na tela normal da rádio, a faixa superior percorre para a direita mostrando
+codec, bitrate, reserva de áudio em segundos, RSSI e BSSID. Os valores são uma
+fotografia passiva do serviço de áudio e do Wi-Fi: o display não controla o
+decoder nem interfere na escolha do ponto de acesso.
 
 ## Indicação do LED
 

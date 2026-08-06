@@ -28,7 +28,7 @@ void desligarDisplay();
 
 /*
  * Deve ser chamada continuamente no loop().
- * Atualiza o relógio e movimenta o nome da estação.
+ * Atualiza e movimenta o diagnóstico e o nome da estação.
  */
 void processarDisplay();
 
