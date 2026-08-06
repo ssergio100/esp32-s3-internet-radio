@@ -61,6 +61,12 @@ constexpr unsigned long INTERVALO_PISCA_LED_CONEXAO_WIFI_MS = 100;
 // Diminua o intervalo para acelerar a rolagem; aumente para desacelerar.
 constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 50;
 
+// A faixa superior mostra codec, bitrate, buffer e dados passivos do Wi-Fi.
+// O primeiro intervalo controla a velocidade da rolagem para a direita.
+// O segundo controla a frequência de renovação dos valores exibidos.
+constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS = 50;
+constexpr unsigned long INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS = 1000;
+
 // Diagnóstico
 constexpr unsigned long INTERVALO_TELEMETRIA_SERIAL_MS = 5000;
 

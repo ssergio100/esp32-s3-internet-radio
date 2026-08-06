@@ -1,8 +1,9 @@
 #include "display_radio.h"
+#include "audio_radio.h"
 #include "configuracao.h"
-#include "relogio.h"
 
 #include <Wire.h>
+#include <WiFi.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
@@ -31,22 +32,29 @@ namespace {
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
 
+    constexpr int MARGEM_HORIZONTAL_DIAGNOSTICO_PX = 2;
+    constexpr int POSICAO_VERTICAL_DIAGNOSTICO_PX = 2;
+    constexpr uint8_t TAMANHO_TEXTO_DIAGNOSTICO = 1;
+    constexpr int ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX = 24;
+
     constexpr int MARGEM_HORIZONTAL_NOME_RADIO_PX = 2;
     constexpr int POSICAO_VERTICAL_NOME_RADIO_PX = 24;
     constexpr uint8_t TAMANHO_TEXTO_NOME_RADIO = 2;
     constexpr int ESPACO_ENTRE_REPETICOES_NOME_PX = 24;
-    constexpr unsigned long INTERVALO_VERIFICACAO_RELOGIO_MS =
-        1000;
+
+    String textoDiagnostico;
+    bool rolagemDiagnosticoAtiva = false;
+    int posicaoHorizontalDiagnosticoPx =
+        MARGEM_HORIZONTAL_DIAGNOSTICO_PX;
+    uint16_t larguraDiagnosticoPx = 0;
+    unsigned long momentoUltimoPassoRolagemDiagnosticoMs = 0;
+    unsigned long momentoUltimaAtualizacaoDiagnosticoMs = 0;
 
     bool rolagemNomeAtiva = false;
     int posicaoHorizontalNomeRadioPx =
         MARGEM_HORIZONTAL_NOME_RADIO_PX;
     uint16_t larguraNomeRadioPx = 0;
     unsigned long momentoUltimoPassoRolagemNomeMs = 0;
-
-    unsigned long momentoUltimaVerificacaoRelogioMs = 0;
-    int ultimoMinutoExibido = -1;
-    String dataHoraAtual = "--/--/---- --:--";
 
     void escreverCentralizado(
         const String& texto,
@@ -91,23 +99,135 @@ namespace {
         display.setTextWrap(false);
     }
 
-    String formatarDataHoraParaDisplay() {
-        struct tm dataHora;
-
-        if (!obterDataHoraLocal(dataHora)) {
-            return "--/--/---- --:--";
+    String formatarBufferParaDiagnostico(
+        const StatusAudio& status
+    ) {
+        if (status.bitrate == 0) {
+            return "--";
         }
 
-        char texto[17];
+        uint32_t decimosDeSegundo =
+            (status.bufferMilissegundos + 50) / 100;
 
-        strftime(
-            texto,
-            sizeof(texto),
-            "%d/%m/%Y %H:%M",
-            &dataHora
+        return
+            String(decimosDeSegundo / 10) +
+            "." +
+            String(decimosDeSegundo % 10) +
+            " s";
+    }
+
+    String montarTextoDiagnostico() {
+        StatusAudio status = obterStatusAudio();
+        String texto;
+        texto.reserve(112);
+
+        texto += (
+            status.codec[0] != '\0'
+                ? status.codec
+                : "--"
+        );
+        texto += " | ";
+
+        if (status.bitrate > 0) {
+            texto += String((status.bitrate + 500) / 1000);
+            texto += " kbps";
+        } else {
+            texto += "-- kbps";
+        }
+
+        texto += " | BUF ";
+        texto += formatarBufferParaDiagnostico(status);
+
+        if (WiFi.status() == WL_CONNECTED) {
+            texto += " | RSSI ";
+            texto += String(WiFi.RSSI());
+            texto += " dBm | BSSID ";
+            texto += WiFi.BSSIDstr();
+        } else {
+            texto += " | Wi-Fi desconectado";
+        }
+
+        return texto;
+    }
+
+    void medirTextoDiagnostico(
+        bool reiniciarPosicao
+    ) {
+        display.setTextSize(TAMANHO_TEXTO_DIAGNOSTICO);
+
+        int16_t x1;
+        int16_t y1;
+        uint16_t altura;
+
+        display.getTextBounds(
+            textoDiagnostico,
+            0,
+            0,
+            &x1,
+            &y1,
+            &larguraDiagnosticoPx,
+            &altura
         );
 
-        return String(texto);
+        if (
+            larguraDiagnosticoPx <=
+            DISPLAY_LARGURA -
+                2 * MARGEM_HORIZONTAL_DIAGNOSTICO_PX
+        ) {
+            posicaoHorizontalDiagnosticoPx =
+                (DISPLAY_LARGURA - larguraDiagnosticoPx) / 2;
+            rolagemDiagnosticoAtiva = false;
+        } else {
+            rolagemDiagnosticoAtiva = true;
+
+            if (reiniciarPosicao) {
+                posicaoHorizontalDiagnosticoPx =
+                    MARGEM_HORIZONTAL_DIAGNOSTICO_PX;
+            }
+
+            int larguraCicloRolagemPx =
+                larguraDiagnosticoPx +
+                ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX;
+
+            while (
+                posicaoHorizontalDiagnosticoPx >=
+                MARGEM_HORIZONTAL_DIAGNOSTICO_PX +
+                    larguraCicloRolagemPx
+            ) {
+                posicaoHorizontalDiagnosticoPx -=
+                    larguraCicloRolagemPx;
+            }
+        }
+
+        if (reiniciarPosicao) {
+            momentoUltimoPassoRolagemDiagnosticoMs = millis();
+        }
+    }
+
+    bool atualizarTextoDiagnostico(
+        bool forcarAtualizacao = false
+    ) {
+        unsigned long agoraMs = millis();
+
+        if (
+            !forcarAtualizacao &&
+            agoraMs - momentoUltimaAtualizacaoDiagnosticoMs <
+                INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS
+        ) {
+            return false;
+        }
+
+        momentoUltimaAtualizacaoDiagnosticoMs = agoraMs;
+        String novoTexto = montarTextoDiagnostico();
+
+        if (novoTexto == textoDiagnostico) {
+            return false;
+        }
+
+        textoDiagnostico = novoTexto;
+        medirTextoDiagnostico(false);
+
+        return true;
     }
 
     void reiniciarRolagemNome() {
@@ -147,11 +267,22 @@ namespace {
     void desenharTelaRadio() {
         prepararTela();
 
-        escreverCentralizado(
-            dataHoraAtual,
-            2,
-            1
+        display.setTextSize(TAMANHO_TEXTO_DIAGNOSTICO);
+        display.setCursor(
+            posicaoHorizontalDiagnosticoPx,
+            POSICAO_VERTICAL_DIAGNOSTICO_PX
         );
+        display.print(textoDiagnostico);
+
+        if (rolagemDiagnosticoAtiva) {
+            display.setCursor(
+                posicaoHorizontalDiagnosticoPx -
+                    larguraDiagnosticoPx -
+                    ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX,
+                POSICAO_VERTICAL_DIAGNOSTICO_PX
+            );
+            display.print(textoDiagnostico);
+        }
 
         display.setTextSize(TAMANHO_TEXTO_NOME_RADIO);
         display.setCursor(
@@ -245,9 +376,15 @@ void mostrarNomeRadio(
     indiceRadioAtual = indiceAtual;
     quantidadeRadiosAtual = quantidadeRadios;
 
+    bool entrandoNaTelaRadio =
+        telaAtual != TelaDisplay::RADIO;
+
     telaAtual = TelaDisplay::RADIO;
-    ultimoMinutoExibido = -1;
-    dataHoraAtual = formatarDataHoraParaDisplay();
+    atualizarTextoDiagnostico(true);
+
+    if (entrandoNaTelaRadio || larguraDiagnosticoPx == 0) {
+        medirTextoDiagnostico(true);
+    }
 
     if (radioMudou || larguraNomeRadioPx == 0) {
         reiniciarRolagemNome();
@@ -428,22 +565,32 @@ void processarDisplay() {
     unsigned long agoraMs = millis();
     bool precisaRedesenhar = false;
 
-    if (
-        agoraMs - momentoUltimaVerificacaoRelogioMs >=
-        INTERVALO_VERIFICACAO_RELOGIO_MS
-    ) {
-        momentoUltimaVerificacaoRelogioMs = agoraMs;
+    if (atualizarTextoDiagnostico()) {
+        precisaRedesenhar = true;
+    }
 
-        struct tm dataHora;
+    if (
+        rolagemDiagnosticoAtiva &&
+        agoraMs - momentoUltimoPassoRolagemDiagnosticoMs >=
+            INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS
+    ) {
+        momentoUltimoPassoRolagemDiagnosticoMs = agoraMs;
+        posicaoHorizontalDiagnosticoPx++;
+
+        int larguraCicloRolagemPx =
+            larguraDiagnosticoPx +
+            ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX;
 
         if (
-            obterDataHoraLocal(dataHora) &&
-            dataHora.tm_min != ultimoMinutoExibido
+            posicaoHorizontalDiagnosticoPx >=
+            MARGEM_HORIZONTAL_DIAGNOSTICO_PX +
+                larguraCicloRolagemPx
         ) {
-            ultimoMinutoExibido = dataHora.tm_min;
-            dataHoraAtual = formatarDataHoraParaDisplay();
-            precisaRedesenhar = true;
+            posicaoHorizontalDiagnosticoPx -=
+                larguraCicloRolagemPx;
         }
+
+        precisaRedesenhar = true;
     }
 
     if (

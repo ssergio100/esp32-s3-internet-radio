@@ -38,6 +38,18 @@ enquanto a rede estiver desconectada. A tentativa usa as credenciais
 persistidas e não fixa nem filtra BSSID. O serviço de áudio aguarda a rede e
 retoma suas próprias tentativas quando a associação volta.
 
+### Display
+
+`display_radio.cpp` mantém independentes as duas animações da tela normal: o
+nome da estação na faixa central e o diagnóstico na faixa superior. O
+diagnóstico percorre para a direita e mostra codec, bitrate, reserva de áudio,
+RSSI e BSSID. Seus valores são renovados uma vez por segundo a partir da
+fotografia pública do serviço de áudio e de leituras passivas do Wi-Fi. O
+display não acessa a instância de `Audio` nem influencia a escolha do ponto de
+acesso.
+
+Velocidade da rolagem e intervalo de renovação ficam em `configuracao.h`.
+
 ### Indicador LED
 
 `indicador_led.cpp` é o único módulo que escreve diretamente no LED RGB.
@@ -75,8 +87,8 @@ MAX98357A em standby automático, e não em shutdown completo.
 ### Relógio
 
 `relogio.cpp` concentra a sincronização NTP, o fuso horário e a obtenção
-da data e hora locais. O arquivo principal apenas inicia o relógio. O display
-solicita a hora local e continua responsável por sua formatação e desenho.
+da data e hora locais. O arquivo principal continua iniciando o relógio para
+mantê-lo disponível ao firmware, embora a tela normal não o exiba atualmente.
 Fuso, ajuste de horário de verão e servidores NTP ficam em `configuracao.h`.
 
 ### Telemetria
