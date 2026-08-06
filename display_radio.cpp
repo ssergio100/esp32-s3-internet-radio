@@ -32,29 +32,50 @@ namespace {
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
 
-    constexpr int MARGEM_HORIZONTAL_DIAGNOSTICO_PX = 2;
-    constexpr int POSICAO_VERTICAL_DIAGNOSTICO_PX = 2;
-    constexpr uint8_t TAMANHO_TEXTO_DIAGNOSTICO = 1;
-    constexpr int ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX = 24;
+    enum class SentidoRolagem {
+        PARA_ESQUERDA,
+        PARA_DIREITA
+    };
 
-    constexpr int MARGEM_HORIZONTAL_NOME_RADIO_PX = 2;
-    constexpr int POSICAO_VERTICAL_NOME_RADIO_PX = 24;
-    constexpr uint8_t TAMANHO_TEXTO_NOME_RADIO = 2;
-    constexpr int ESPACO_ENTRE_REPETICOES_NOME_PX = 24;
+    struct ConfiguracaoFaixaRolante {
+        int posicaoVerticalPx;
+        uint8_t tamanhoTexto;
+        int margemHorizontalPx;
+        int espacoEntreRepeticoesPx;
+        unsigned long intervaloPassoMs;
+        SentidoRolagem sentido;
+    };
+
+    struct EstadoFaixaRolante {
+        bool ativa = false;
+        int posicaoHorizontalPx = 0;
+        uint16_t larguraTextoPx = 0;
+        unsigned long momentoUltimoPassoMs = 0;
+    };
+
+    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_FAIXA_DIAGNOSTICO = {
+        2,                                          // posição vertical, em px
+        1,                                          // tamanho do texto
+        2,                                          // margem horizontal, em px
+        24,                                         // espaço entre cópias, em px
+        INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS,     // velocidade
+        SentidoRolagem::PARA_ESQUERDA                // sentido do movimento
+    };
+
+    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_FAIXA_NOME_RADIO = {
+        24,                                         // posição vertical, em px
+        2,                                          // tamanho do texto
+        2,                                          // margem horizontal, em px
+        24,                                         // espaço entre cópias, em px
+        INTERVALO_PASSO_ROLAGEM_NOME_MS,            // velocidade
+        SentidoRolagem::PARA_ESQUERDA               // sentido do movimento
+    };
 
     String textoDiagnostico;
-    bool rolagemDiagnosticoAtiva = false;
-    int posicaoHorizontalDiagnosticoPx =
-        MARGEM_HORIZONTAL_DIAGNOSTICO_PX;
-    uint16_t larguraDiagnosticoPx = 0;
-    unsigned long momentoUltimoPassoRolagemDiagnosticoMs = 0;
+    EstadoFaixaRolante estadoFaixaDiagnostico;
     unsigned long momentoUltimaAtualizacaoDiagnosticoMs = 0;
 
-    bool rolagemNomeAtiva = false;
-    int posicaoHorizontalNomeRadioPx =
-        MARGEM_HORIZONTAL_NOME_RADIO_PX;
-    uint16_t larguraNomeRadioPx = 0;
-    unsigned long momentoUltimoPassoRolagemNomeMs = 0;
+    EstadoFaixaRolante estadoFaixaNomeRadio;
 
     void escreverCentralizado(
         const String& texto,
@@ -150,58 +171,149 @@ namespace {
         return texto;
     }
 
-    void medirTextoDiagnostico(
+    // Use esta função quando o texto de uma faixa mudar. O texto já deve
+    // estar pronto: esta função não conhece rádio, áudio nem Wi-Fi.
+    // Passe reiniciarPosicao=true ao trocar completamente o conteúdo.
+    void configurarFaixaRolante(
+        const String& texto,
+        const ConfiguracaoFaixaRolante& configuracao,
+        EstadoFaixaRolante& estado,
         bool reiniciarPosicao
     ) {
-        display.setTextSize(TAMANHO_TEXTO_DIAGNOSTICO);
+        display.setTextSize(configuracao.tamanhoTexto);
 
         int16_t x1;
         int16_t y1;
         uint16_t altura;
 
         display.getTextBounds(
-            textoDiagnostico,
+            texto,
             0,
             0,
             &x1,
             &y1,
-            &larguraDiagnosticoPx,
+            &estado.larguraTextoPx,
             &altura
         );
 
         if (
-            larguraDiagnosticoPx <=
+            estado.larguraTextoPx <=
             DISPLAY_LARGURA -
-                2 * MARGEM_HORIZONTAL_DIAGNOSTICO_PX
+                2 * configuracao.margemHorizontalPx
         ) {
-            posicaoHorizontalDiagnosticoPx =
-                (DISPLAY_LARGURA - larguraDiagnosticoPx) / 2;
-            rolagemDiagnosticoAtiva = false;
+            estado.posicaoHorizontalPx =
+                (DISPLAY_LARGURA - estado.larguraTextoPx) / 2;
+            estado.ativa = false;
         } else {
-            rolagemDiagnosticoAtiva = true;
+            estado.ativa = true;
 
             if (reiniciarPosicao) {
-                posicaoHorizontalDiagnosticoPx =
-                    MARGEM_HORIZONTAL_DIAGNOSTICO_PX;
+                estado.posicaoHorizontalPx =
+                    configuracao.margemHorizontalPx;
             }
 
             int larguraCicloRolagemPx =
-                larguraDiagnosticoPx +
-                ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX;
+                estado.larguraTextoPx +
+                configuracao.espacoEntreRepeticoesPx;
 
-            while (
-                posicaoHorizontalDiagnosticoPx >=
-                MARGEM_HORIZONTAL_DIAGNOSTICO_PX +
-                    larguraCicloRolagemPx
-            ) {
-                posicaoHorizontalDiagnosticoPx -=
-                    larguraCicloRolagemPx;
+            if (configuracao.sentido == SentidoRolagem::PARA_DIREITA) {
+                while (
+                    estado.posicaoHorizontalPx >=
+                    configuracao.margemHorizontalPx + larguraCicloRolagemPx
+                ) {
+                    estado.posicaoHorizontalPx -= larguraCicloRolagemPx;
+                }
+            } else {
+                while (
+                    estado.posicaoHorizontalPx <=
+                    configuracao.margemHorizontalPx - larguraCicloRolagemPx
+                ) {
+                    estado.posicaoHorizontalPx += larguraCicloRolagemPx;
+                }
             }
         }
 
         if (reiniciarPosicao) {
-            momentoUltimoPassoRolagemDiagnosticoMs = millis();
+            estado.momentoUltimoPassoMs = millis();
         }
+    }
+
+    // Desenha o texto e, quando necessário, uma segunda cópia fora da tela.
+    // Essa cópia entra logo após a primeira e torna a rolagem contínua.
+    void desenharFaixaRolante(
+        const String& texto,
+        const ConfiguracaoFaixaRolante& configuracao,
+        const EstadoFaixaRolante& estado
+    ) {
+        display.setTextSize(configuracao.tamanhoTexto);
+        display.setCursor(
+            estado.posicaoHorizontalPx,
+            configuracao.posicaoVerticalPx
+        );
+        display.print(texto);
+
+        if (!estado.ativa) {
+            return;
+        }
+
+        int larguraCicloRolagemPx =
+            estado.larguraTextoPx +
+            configuracao.espacoEntreRepeticoesPx;
+
+        int posicaoRepeticaoPx =
+            configuracao.sentido == SentidoRolagem::PARA_DIREITA
+                ? estado.posicaoHorizontalPx - larguraCicloRolagemPx
+                : estado.posicaoHorizontalPx + larguraCicloRolagemPx;
+
+        display.setCursor(
+            posicaoRepeticaoPx,
+            configuracao.posicaoVerticalPx
+        );
+        display.print(texto);
+    }
+
+    // Chame periodicamente no loop. A função respeita o intervalo configurado,
+    // move um pixel no sentido escolhido e informa se a tela deve ser redesenhada.
+    bool avancarFaixaRolante(
+        const ConfiguracaoFaixaRolante& configuracao,
+        EstadoFaixaRolante& estado,
+        unsigned long agoraMs
+    ) {
+        if (
+            !estado.ativa ||
+            agoraMs - estado.momentoUltimoPassoMs <
+                configuracao.intervaloPassoMs
+        ) {
+            return false;
+        }
+
+        estado.momentoUltimoPassoMs = agoraMs;
+
+        int larguraCicloRolagemPx =
+            estado.larguraTextoPx +
+            configuracao.espacoEntreRepeticoesPx;
+
+        if (configuracao.sentido == SentidoRolagem::PARA_DIREITA) {
+            estado.posicaoHorizontalPx++;
+
+            if (
+                estado.posicaoHorizontalPx >=
+                configuracao.margemHorizontalPx + larguraCicloRolagemPx
+            ) {
+                estado.posicaoHorizontalPx -= larguraCicloRolagemPx;
+            }
+        } else {
+            estado.posicaoHorizontalPx--;
+
+            if (
+                estado.posicaoHorizontalPx <=
+                configuracao.margemHorizontalPx - larguraCicloRolagemPx
+            ) {
+                estado.posicaoHorizontalPx += larguraCicloRolagemPx;
+            }
+        }
+
+        return true;
     }
 
     bool atualizarTextoDiagnostico(
@@ -225,81 +337,30 @@ namespace {
         }
 
         textoDiagnostico = novoTexto;
-        medirTextoDiagnostico(false);
-
-        return true;
-    }
-
-    void reiniciarRolagemNome() {
-        display.setTextSize(TAMANHO_TEXTO_NOME_RADIO);
-
-        int16_t x1;
-        int16_t y1;
-        uint16_t altura;
-
-        display.getTextBounds(
-            nomeRadioAtual,
-            0,
-            0,
-            &x1,
-            &y1,
-            &larguraNomeRadioPx,
-            &altura
+        configurarFaixaRolante(
+            textoDiagnostico,
+            CONFIGURACAO_FAIXA_DIAGNOSTICO,
+            estadoFaixaDiagnostico,
+            false
         );
 
-        if (
-            larguraNomeRadioPx <=
-            DISPLAY_LARGURA -
-                2 * MARGEM_HORIZONTAL_NOME_RADIO_PX
-        ) {
-            posicaoHorizontalNomeRadioPx =
-                (DISPLAY_LARGURA - larguraNomeRadioPx) / 2;
-            rolagemNomeAtiva = false;
-        } else {
-            posicaoHorizontalNomeRadioPx =
-                MARGEM_HORIZONTAL_NOME_RADIO_PX;
-            rolagemNomeAtiva = true;
-        }
-
-        momentoUltimoPassoRolagemNomeMs = millis();
+        return true;
     }
 
     void desenharTelaRadio() {
         prepararTela();
 
-        display.setTextSize(TAMANHO_TEXTO_DIAGNOSTICO);
-        display.setCursor(
-            posicaoHorizontalDiagnosticoPx,
-            POSICAO_VERTICAL_DIAGNOSTICO_PX
+        desenharFaixaRolante(
+            textoDiagnostico,
+            CONFIGURACAO_FAIXA_DIAGNOSTICO,
+            estadoFaixaDiagnostico
         );
-        display.print(textoDiagnostico);
 
-        if (rolagemDiagnosticoAtiva) {
-            display.setCursor(
-                posicaoHorizontalDiagnosticoPx -
-                    larguraDiagnosticoPx -
-                    ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX,
-                POSICAO_VERTICAL_DIAGNOSTICO_PX
-            );
-            display.print(textoDiagnostico);
-        }
-
-        display.setTextSize(TAMANHO_TEXTO_NOME_RADIO);
-        display.setCursor(
-            posicaoHorizontalNomeRadioPx,
-            POSICAO_VERTICAL_NOME_RADIO_PX
+        desenharFaixaRolante(
+            nomeRadioAtual,
+            CONFIGURACAO_FAIXA_NOME_RADIO,
+            estadoFaixaNomeRadio
         );
-        display.print(nomeRadioAtual);
-
-        if (rolagemNomeAtiva) {
-            display.setCursor(
-                posicaoHorizontalNomeRadioPx +
-                    larguraNomeRadioPx +
-                    ESPACO_ENTRE_REPETICOES_NOME_PX,
-                POSICAO_VERTICAL_NOME_RADIO_PX
-            );
-            display.print(nomeRadioAtual);
-        }
 
         escreverCentralizado(
             String(indiceRadioAtual + 1) +
@@ -382,14 +443,30 @@ void mostrarNomeRadio(
     telaAtual = TelaDisplay::RADIO;
     atualizarTextoDiagnostico(true);
 
-    if (entrandoNaTelaRadio || larguraDiagnosticoPx == 0) {
-        medirTextoDiagnostico(true);
+    if (
+        entrandoNaTelaRadio ||
+        estadoFaixaDiagnostico.larguraTextoPx == 0
+    ) {
+        configurarFaixaRolante(
+            textoDiagnostico,
+            CONFIGURACAO_FAIXA_DIAGNOSTICO,
+            estadoFaixaDiagnostico,
+            true
+        );
     }
 
-    if (radioMudou || larguraNomeRadioPx == 0) {
-        reiniciarRolagemNome();
+    if (
+        radioMudou ||
+        estadoFaixaNomeRadio.larguraTextoPx == 0
+    ) {
+        configurarFaixaRolante(
+            nomeRadioAtual,
+            CONFIGURACAO_FAIXA_NOME_RADIO,
+            estadoFaixaNomeRadio,
+            true
+        );
     } else {
-        momentoUltimoPassoRolagemNomeMs = millis();
+        estadoFaixaNomeRadio.momentoUltimoPassoMs = millis();
     }
 
     desenharTelaRadio();
@@ -570,50 +647,22 @@ void processarDisplay() {
     }
 
     if (
-        rolagemDiagnosticoAtiva &&
-        agoraMs - momentoUltimoPassoRolagemDiagnosticoMs >=
-            INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS
+        avancarFaixaRolante(
+            CONFIGURACAO_FAIXA_DIAGNOSTICO,
+            estadoFaixaDiagnostico,
+            agoraMs
+        )
     ) {
-        momentoUltimoPassoRolagemDiagnosticoMs = agoraMs;
-        posicaoHorizontalDiagnosticoPx++;
-
-        int larguraCicloRolagemPx =
-            larguraDiagnosticoPx +
-            ESPACO_ENTRE_REPETICOES_DIAGNOSTICO_PX;
-
-        if (
-            posicaoHorizontalDiagnosticoPx >=
-            MARGEM_HORIZONTAL_DIAGNOSTICO_PX +
-                larguraCicloRolagemPx
-        ) {
-            posicaoHorizontalDiagnosticoPx -=
-                larguraCicloRolagemPx;
-        }
-
         precisaRedesenhar = true;
     }
 
     if (
-        rolagemNomeAtiva &&
-        agoraMs - momentoUltimoPassoRolagemNomeMs >=
-            INTERVALO_PASSO_ROLAGEM_NOME_MS
+        avancarFaixaRolante(
+            CONFIGURACAO_FAIXA_NOME_RADIO,
+            estadoFaixaNomeRadio,
+            agoraMs
+        )
     ) {
-        momentoUltimoPassoRolagemNomeMs = agoraMs;
-        posicaoHorizontalNomeRadioPx--;
-
-        int larguraCicloRolagemPx =
-            larguraNomeRadioPx +
-            ESPACO_ENTRE_REPETICOES_NOME_PX;
-
-        if (
-            posicaoHorizontalNomeRadioPx <=
-            MARGEM_HORIZONTAL_NOME_RADIO_PX -
-                larguraCicloRolagemPx
-        ) {
-            posicaoHorizontalNomeRadioPx +=
-                larguraCicloRolagemPx;
-        }
-
         precisaRedesenhar = true;
     }
 
