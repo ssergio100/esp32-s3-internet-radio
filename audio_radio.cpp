@@ -520,9 +520,6 @@ void atualizarAmostraStatus() {
         return;
     }
 
-    statusAudio.conexaoAtiva =
-        audio.isRunning();
-
     statusAudio.bufferBytes =
         preenchido;
 
@@ -818,15 +815,8 @@ bool iniciarAudio(int volume) {
             VOLUME_MAXIMO
         );
 
-    int volumeAudio = map(
-        volumeLimitado,
-        VOLUME_MINIMO,
-        VOLUME_MAXIMO,
-        0,
-        21
-    );
-
-    audio.setVolume(volumeAudio);
+    // A interface e a ESP32-audioI2S usam a mesma escala de 0 a 21.
+    audio.setVolume(volumeLimitado);
 
     BaseType_t criada =
         xTaskCreatePinnedToCore(
@@ -857,13 +847,7 @@ bool iniciarAudio(int volume) {
         return false;
     }
 
-    if (bloquearStatus()) {
-        statusAudio.inicializado = true;
-        statusAudio.estado =
-            EstadoAudio::PARADO;
-
-        liberarStatus();
-    }
+    definirEstado(EstadoAudio::PARADO);
 
     Serial.printf(
         "Servico de audio iniciado. Biblioteca %s, volume %d.\n",
@@ -928,16 +912,10 @@ void alterarVolumeAudio(int volume) {
 
     comando.volume =
         static_cast<uint8_t>(
-            map(
-                constrain(
-                    volume,
-                    VOLUME_MINIMO,
-                    VOLUME_MAXIMO
-                ),
+            constrain(
+                volume,
                 VOLUME_MINIMO,
-                VOLUME_MAXIMO,
-                0,
-                21
+                VOLUME_MAXIMO
             )
         );
 

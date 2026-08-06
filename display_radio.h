@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-bool iniciarDisplay();
+void iniciarDisplay();
 
 void mostrarConfiguracaoWifi();
 

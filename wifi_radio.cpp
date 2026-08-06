@@ -65,7 +65,7 @@ void supervisionarWifi() {
     WiFi.reconnect();
 }
 
-bool conectarWifi() {
+void conectarWifi() {
     WiFi.mode(WIFI_STA);
 
     mostrarMensagem("Conectando Wi-Fi");
@@ -151,6 +151,4 @@ bool conectarWifi() {
     mostrarMensagem("Wi-Fi conectado");
 
     delay(500);
-
-    return true;
 }

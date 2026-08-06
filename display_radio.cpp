@@ -32,9 +32,10 @@ namespace {
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
 
+    // Os valores também representam o passo horizontal de um pixel.
     enum class SentidoRolagem {
-        PARA_ESQUERDA,
-        PARA_DIREITA
+        PARA_ESQUERDA = -1,
+        PARA_DIREITA = 1
     };
 
     struct ConfiguracaoFaixaRolante {
@@ -216,20 +217,17 @@ namespace {
                 estado.larguraTextoPx +
                 configuracao.espacoEntreRepeticoesPx;
 
-            if (configuracao.sentido == SentidoRolagem::PARA_DIREITA) {
-                while (
-                    estado.posicaoHorizontalPx >=
-                    configuracao.margemHorizontalPx + larguraCicloRolagemPx
-                ) {
-                    estado.posicaoHorizontalPx -= larguraCicloRolagemPx;
-                }
-            } else {
-                while (
-                    estado.posicaoHorizontalPx <=
-                    configuracao.margemHorizontalPx - larguraCicloRolagemPx
-                ) {
-                    estado.posicaoHorizontalPx += larguraCicloRolagemPx;
-                }
+            int passoHorizontalPx =
+                static_cast<int>(configuracao.sentido);
+
+            while (
+                (
+                    estado.posicaoHorizontalPx -
+                    configuracao.margemHorizontalPx
+                ) * passoHorizontalPx >= larguraCicloRolagemPx
+            ) {
+                estado.posicaoHorizontalPx -=
+                    passoHorizontalPx * larguraCicloRolagemPx;
             }
         }
 
@@ -260,13 +258,12 @@ namespace {
             estado.larguraTextoPx +
             configuracao.espacoEntreRepeticoesPx;
 
-        int posicaoRepeticaoPx =
-            configuracao.sentido == SentidoRolagem::PARA_DIREITA
-                ? estado.posicaoHorizontalPx - larguraCicloRolagemPx
-                : estado.posicaoHorizontalPx + larguraCicloRolagemPx;
+        int passoHorizontalPx =
+            static_cast<int>(configuracao.sentido);
 
         display.setCursor(
-            posicaoRepeticaoPx,
+            estado.posicaoHorizontalPx -
+                passoHorizontalPx * larguraCicloRolagemPx,
             configuracao.posicaoVerticalPx
         );
         display.print(texto);
@@ -293,24 +290,19 @@ namespace {
             estado.larguraTextoPx +
             configuracao.espacoEntreRepeticoesPx;
 
-        if (configuracao.sentido == SentidoRolagem::PARA_DIREITA) {
-            estado.posicaoHorizontalPx++;
+        int passoHorizontalPx =
+            static_cast<int>(configuracao.sentido);
 
-            if (
-                estado.posicaoHorizontalPx >=
-                configuracao.margemHorizontalPx + larguraCicloRolagemPx
-            ) {
-                estado.posicaoHorizontalPx -= larguraCicloRolagemPx;
-            }
-        } else {
-            estado.posicaoHorizontalPx--;
+        estado.posicaoHorizontalPx += passoHorizontalPx;
 
-            if (
-                estado.posicaoHorizontalPx <=
-                configuracao.margemHorizontalPx - larguraCicloRolagemPx
-            ) {
-                estado.posicaoHorizontalPx += larguraCicloRolagemPx;
-            }
+        if (
+            (
+                estado.posicaoHorizontalPx -
+                configuracao.margemHorizontalPx
+            ) * passoHorizontalPx >= larguraCicloRolagemPx
+        ) {
+            estado.posicaoHorizontalPx -=
+                passoHorizontalPx * larguraCicloRolagemPx;
         }
 
         return true;
@@ -375,7 +367,7 @@ namespace {
 
 }
 
-bool iniciarDisplay() {
+void iniciarDisplay() {
     Wire.begin(
         PIN_DISPLAY_SDA,
         PIN_DISPLAY_SCL
@@ -391,13 +383,11 @@ bool iniciarDisplay() {
             "Display OLED não encontrado."
         );
 
-        return false;
+        return;
     }
 
     prepararTela();
     mostrarMensagem("Inicializando");
-
-    return true;
 }
 
 void mostrarMensagem(

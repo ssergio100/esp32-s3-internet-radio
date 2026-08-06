@@ -17,7 +17,7 @@ namespace {
         "/radios.tmp";
 
     bool documentoRadiosValido(
-        DynamicJsonDocument& documento
+        JsonDocument& documento
     ) {
         if (!documento.is<JsonArray>()) {
             return false;
@@ -52,7 +52,7 @@ namespace {
             return false;
         }
 
-        DynamicJsonDocument documento(16384);
+        JsonDocument documento;
 
         DeserializationError erro =
             deserializeJson(documento, arquivo);
@@ -67,7 +67,7 @@ namespace {
 }
 
 bool carregarDocumentoRadiosDoArquivo(
-    DynamicJsonDocument& documento,
+    JsonDocument& documento,
     const char* caminho
 ) {
     File arquivo = FFat.open(caminho, FILE_READ);
@@ -89,7 +89,7 @@ bool carregarDocumentoRadiosDoArquivo(
 }
 
 OrigemArquivoRadios carregarDocumentoRadiosPersistido(
-    DynamicJsonDocument& documento
+    JsonDocument& documento
 ) {
     if (
         carregarDocumentoRadiosDoArquivo(
@@ -113,7 +113,7 @@ OrigemArquivoRadios carregarDocumentoRadiosPersistido(
 }
 
 bool carregarDocumentoRadiosParaEdicao(
-    DynamicJsonDocument& documento
+    JsonDocument& documento
 ) {
     OrigemArquivoRadios origem =
         carregarDocumentoRadiosPersistido(documento);
@@ -143,7 +143,7 @@ bool carregarDocumentoRadiosParaEdicao(
 }
 
 bool salvarDocumentoRadios(
-    DynamicJsonDocument& documento
+    JsonDocument& documento
 ) {
     FFat.remove(CAMINHO_RADIOS_TEMPORARIO);
 

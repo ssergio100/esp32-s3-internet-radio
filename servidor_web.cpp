@@ -95,7 +95,7 @@ void abrirPaginaUpload() {
 }
 
 void listarArquivos() {
-    DynamicJsonDocument documento(4096);
+    JsonDocument documento;
 
     JsonArray lista =
         documento.to<JsonArray>();
@@ -110,7 +110,7 @@ void listarArquivos() {
         while (arquivo) {
             if (!arquivo.isDirectory()) {
                 JsonObject item =
-                    lista.createNestedObject();
+                    lista.add<JsonObject>();
 
                 item["nome"] =
                     arquivo.name();
@@ -150,7 +150,7 @@ void responderStatusSistema() {
 
 }
 
-bool iniciarServidorWeb() {
+bool iniciarArmazenamentoEServidorWeb() {
     if (!FFat.begin(false)) {
         Serial.println(
             "Falha ao iniciar o FFat."

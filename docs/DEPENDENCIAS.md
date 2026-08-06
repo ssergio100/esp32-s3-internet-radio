@@ -18,6 +18,11 @@ Ao compilar com `--profile esp32s3`, o Arduino CLI pode instalar os
 componentes ausentes. Use `scripts/compilar.sh` para um build rotineiro sem
 provisionamento automático.
 
+Na ArduinoJson 7, use `JsonDocument`, que cresce dinamicamente. As classes
+`DynamicJsonDocument` e `StaticJsonDocument` pertencem à camada de
+compatibilidade com versões anteriores; o argumento de capacidade de
+`DynamicJsonDocument` não reserva nem limita a memória nessa versão.
+
 Não atualize uma biblioteca isoladamente em uma versão destinada ao
 hardware. Crie uma nova combinação, compile e execute o teste de
 estabilidade antes de promovê-la.

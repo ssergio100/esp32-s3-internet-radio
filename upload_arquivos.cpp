@@ -138,7 +138,7 @@ void gravarParteRecebida(const HTTPUpload& upload) {
 }
 
 bool salvarListaRadiosRecebida() {
-    DynamicJsonDocument documento(16384);
+    JsonDocument documento;
 
     if (
         !carregarDocumentoRadiosDoArquivo(
@@ -290,7 +290,7 @@ void responderResultadoUpload(WebServer& servidor) {
             ? mensagemErro
             : "Upload não concluído";
 
-    DynamicJsonDocument documento(256);
+    JsonDocument documento;
 
     documento["erro"] = erro;
 

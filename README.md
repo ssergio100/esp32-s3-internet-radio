@@ -22,7 +22,7 @@ separados por responsabilidade:
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Sincronização NTP e obtenção da hora local |
-| `servidor_web.cpp` | Inicialização do servidor e mapa das rotas HTTP |
+| `servidor_web.cpp` | Montagem da FFat, inicialização do servidor e mapa das rotas HTTP |
 | `sono_profundo.cpp` | Configuração do despertar e entrada em deep sleep |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |

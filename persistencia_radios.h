@@ -15,24 +15,24 @@ enum class OrigemArquivoRadios {
 
 // Carrega e valida um documento de rádios a partir do caminho informado.
 bool carregarDocumentoRadiosDoArquivo(
-    DynamicJsonDocument& documento,
+    JsonDocument& documento,
     const char* caminho
 );
 
 // Aplica a ordem única de recuperação: arquivo ativo e depois backup.
 OrigemArquivoRadios carregarDocumentoRadiosPersistido(
-    DynamicJsonDocument& documento
+    JsonDocument& documento
 );
 
 // Carrega a lista ativa, depois o backup. Se ambos não existirem, cria um
 // array vazio para permitir o primeiro cadastro pela API.
 bool carregarDocumentoRadiosParaEdicao(
-    DynamicJsonDocument& documento
+    JsonDocument& documento
 );
 
 // Valida e promove o documento usando temporário e backup.
 bool salvarDocumentoRadios(
-    DynamicJsonDocument& documento
+    JsonDocument& documento
 );
 
 #endif
