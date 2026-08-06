@@ -3,16 +3,19 @@
 
 #include <Arduino.h>
 
-// LED RGB
-#define PIN_LED_RGB 48
-#define BRILHO_LED_RGB 50
+// =====================================================
+// Ligações do hardware
+// =====================================================
 
-// MAX98357A
+// LED RGB integrado à placa
+#define PIN_LED_RGB 48
+
+// Amplificador de áudio I2S MAX98357A
 constexpr int PIN_MAX98357A_BCLK = 5;
 constexpr int PIN_MAX98357A_LRC  = 6;
 constexpr int PIN_MAX98357A_DIN  = 7;
 
-// Display OLED
+// Display OLED SSD1306
 constexpr int PIN_DISPLAY_SDA = 9;
 constexpr int PIN_DISPLAY_SCL = 10;
 
@@ -20,30 +23,73 @@ constexpr int DISPLAY_LARGURA  = 128;
 constexpr int DISPLAY_ALTURA   = 64;
 constexpr int DISPLAY_ENDERECO = 0x3C;
 
-// Encoder
+// Encoder rotativo
 constexpr int PIN_ENCODER_CLK = 15;
 constexpr int PIN_ENCODER_DT  = 16;
 constexpr int PIN_ENCODER_SW  = 17;
 constexpr int PIN_ENCODER_VCC = -1;
 
-constexpr int PASSOS_ENCODER = 2;
+// Valor calibrado para o encoder instalado: cada detente produz duas
+// transições válidas reconhecidas pela biblioteca.
+constexpr int TRANSICOES_ENCODER_POR_DETENTE = 2;
 
-// Volume
+// =====================================================
+// Comportamento ajustável pelo usuário
+// =====================================================
+
+// Áudio
 constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
 constexpr int VOLUME_PADRAO = 10;
 
-// Tarefas de audio
+// Interface
+// Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
+#define BRILHO_LED_RGB 50
+
+constexpr unsigned long TEMPO_TELA_VOLUME_MS = 2000;
+constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
+
+// Tempo que o botão do encoder deve permanecer pressionado para desligar.
+// Aumente para reduzir acionamentos acidentais; diminua para desligar mais rápido.
+constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
+
+// O LED alterna entre azul e apagado a cada intervalo.
+// Diminua o valor para piscar mais rápido; aumente para piscar mais devagar.
+constexpr unsigned long INTERVALO_PISCA_LED_CONEXAO_WIFI_MS = 100;
+
+// O nome avança um pixel a cada passo.
+// Diminua o intervalo para acelerar a rolagem; aumente para desacelerar.
+constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 50;
+
+// Diagnóstico
+constexpr unsigned long INTERVALO_TELEMETRIA_SERIAL_MS = 5000;
+
+// Relógio
+// Exemplo: -3 corresponde ao horário UTC-3 usado em Brasília.
+constexpr int FUSO_HORARIO_UTC_HORAS = -3;
+constexpr int AJUSTE_HORARIO_VERAO_HORAS = 0;
+constexpr const char* SERVIDOR_NTP_PRIMARIO = "pool.ntp.org";
+constexpr const char* SERVIDOR_NTP_SECUNDARIO = "time.nist.gov";
+
+// =====================================================
+// Ajustes internos
+// =====================================================
+
+// Tarefas de áudio
 constexpr int NUCLEO_DECODIFICADOR_AUDIO = 0;
 constexpr int NUCLEO_SERVICO_AUDIO = 1;
 constexpr uint32_t PILHA_SERVICO_AUDIO_BYTES = 12288;
 constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
 
-// Tempos
-constexpr unsigned long TEMPO_TELA_VOLUME_MS = 2000;
-constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
-constexpr unsigned long TEMPO_VALIDAR_BOTAO_MS = 30;
-constexpr unsigned long DEBOUNCE_ENCODER_MS = 200;
+// Tratamento dos controles
+constexpr unsigned long TEMPO_VALIDACAO_CLIQUE_ENCODER_MS = 30;
+constexpr unsigned long INTERVALO_MINIMO_CLIQUES_ENCODER_MS = 200;
 
+// Evita impedir o sono indefinidamente caso o serviço de áudio não confirme
+// a parada. No deep sleep, o próprio ESP32 interrompe os periféricos.
+constexpr unsigned long TEMPO_MAXIMO_PARADA_AUDIO_ANTES_SONO_MS = 1000;
+
+// Atualização dos indicadores
+constexpr unsigned long INTERVALO_VERIFICACAO_LED_AUDIO_MS = 250;
 
 #endif

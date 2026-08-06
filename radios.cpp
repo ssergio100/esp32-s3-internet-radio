@@ -1,15 +1,9 @@
 #include "radios.h"
+#include "persistencia_radios.h"
 
 #include <ArduinoJson.h>
-#include <FFat.h>
 
 namespace {
-
-const char* ARQUIVO_RADIOS =
-    "/radios.json";
-
-const char* ARQUIVO_RADIOS_BACKUP =
-    "/radios.bak";
 
 Radio radios[QUANTIDADE_MAXIMA_RADIOS];
 
@@ -82,35 +76,6 @@ void carregarRadiosReserva() {
     );
 }
 
-bool carregarDocumentoRadios(
-    const char* caminho,
-    DynamicJsonDocument& documento
-) {
-    File arquivo =
-        FFat.open(
-            caminho,
-            FILE_READ
-        );
-
-    if (!arquivo) {
-        return false;
-    }
-
-    documento.clear();
-
-    DeserializationError erro =
-        deserializeJson(
-            documento,
-            arquivo
-        );
-
-    arquivo.close();
-
-    return
-        !erro &&
-        documento.is<JsonArray>();
-}
-
 }
 
 bool dadosRadioValidos(
@@ -148,27 +113,10 @@ bool carregarRadios() {
 
     DynamicJsonDocument documento(16384);
 
-    bool carregado =
-        carregarDocumentoRadios(
-            ARQUIVO_RADIOS,
-            documento
-        );
+    OrigemArquivoRadios origem =
+        carregarDocumentoRadiosPersistido(documento);
 
-    if (!carregado) {
-        carregado =
-            carregarDocumentoRadios(
-                ARQUIVO_RADIOS_BACKUP,
-                documento
-            );
-
-        if (carregado) {
-            Serial.println(
-                "Usando backup de radios.json."
-            );
-        }
-    }
-
-    if (!carregado) {
+    if (origem == OrigemArquivoRadios::NENHUM_VALIDO) {
         Serial.println(
             "radios.json e radios.bak indisponiveis ou invalidos."
         );
@@ -182,22 +130,11 @@ bool carregarRadios() {
         documento.as<JsonArray>();
 
     for (JsonObject item : lista) {
-        if (
-            quantidadeRadios >=
-            QUANTIDADE_MAXIMA_RADIOS
-        ) {
-            break;
-        }
-
         const char* nome =
             item["nome"];
 
         const char* url =
             item["url"];
-
-        if (!dadosRadioValidos(nome, url)) {
-            continue;
-        }
 
         nomes[quantidadeRadios] =
             nome;
@@ -214,19 +151,15 @@ bool carregarRadios() {
         quantidadeRadios++;
     }
 
-    if (quantidadeRadios == 0) {
-        Serial.println(
-            "Nenhuma radio valida no JSON."
-        );
-
-        carregarRadiosReserva();
-
-        return false;
-    }
+    const char* nomeArquivoOrigem =
+        origem == OrigemArquivoRadios::ATIVO
+            ? "radios.json"
+            : "radios.bak";
 
     Serial.printf(
-        "%d radios carregadas do FFat.\n",
-        quantidadeRadios
+        "%d radios carregadas de %s.\n",
+        quantidadeRadios,
+        nomeArquivoOrigem
     );
 
     return true;

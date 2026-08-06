@@ -11,11 +11,9 @@ AiEsp32RotaryEncoder encoder(
     PIN_ENCODER_CLK,
     PIN_ENCODER_SW,
     PIN_ENCODER_VCC,
-    PASSOS_ENCODER,
+    TRANSICOES_ENCODER_POR_DETENTE,
     false
 );
-
-long valorAnterior = 0;
 
 volatile bool bordaBotaoPendente = false;
 
@@ -23,10 +21,23 @@ portMUX_TYPE muxBotao =
     portMUX_INITIALIZER_UNLOCKED;
 
 unsigned long ultimoClique = 0;
-unsigned long inicioValidacaoBotao = 0;
+unsigned long inicioPressionamentoBotao = 0;
+unsigned long inicioValidacaoSolturaBotao = 0;
 
-bool validandoBotao = false;
-bool aguardandoSolturaBotao = false;
+enum class EstadoBotao {
+    SOLTO,
+    VALIDANDO_PRESSAO,
+    PRESSIONADO,
+    VALIDANDO_SOLTURA
+};
+
+enum class EventoBotao {
+    NENHUM,
+    CLIQUE_CURTO,
+    CLIQUE_LONGO
+};
+
+EstadoBotao estadoBotao = EstadoBotao::SOLTO;
 
 void IRAM_ATTR encoderISR() {
     encoder.readEncoder_ISR();
@@ -49,65 +60,76 @@ bool consumirBordaBotao() {
     return pendente;
 }
 
-bool detectarCliqueConfirmado() {
+EventoBotao detectarEventoBotaoConfirmado() {
     unsigned long agora = millis();
-    bool bordaDetectada =
-        consumirBordaBotao();
 
-    if (
-        aguardandoSolturaBotao
-    ) {
-        if (
-            digitalRead(PIN_ENCODER_SW) ==
-            HIGH
-        ) {
-            aguardandoSolturaBotao = false;
-        }
+    switch (estadoBotao) {
+        case EstadoBotao::SOLTO:
+            if (consumirBordaBotao()) {
+                inicioPressionamentoBotao = agora;
+                estadoBotao =
+                    EstadoBotao::VALIDANDO_PRESSAO;
+            }
+            break;
 
-        return false;
+        case EstadoBotao::VALIDANDO_PRESSAO:
+            if (digitalRead(PIN_ENCODER_SW) == HIGH) {
+                estadoBotao = EstadoBotao::SOLTO;
+            } else if (
+                agora - inicioPressionamentoBotao >=
+                TEMPO_VALIDACAO_CLIQUE_ENCODER_MS
+            ) {
+                estadoBotao = EstadoBotao::PRESSIONADO;
+            }
+            break;
+
+        case EstadoBotao::PRESSIONADO:
+            if (digitalRead(PIN_ENCODER_SW) == HIGH) {
+                inicioValidacaoSolturaBotao = agora;
+                estadoBotao =
+                    EstadoBotao::VALIDANDO_SOLTURA;
+            }
+            break;
+
+        case EstadoBotao::VALIDANDO_SOLTURA:
+            if (digitalRead(PIN_ENCODER_SW) == LOW) {
+                estadoBotao = EstadoBotao::PRESSIONADO;
+                break;
+            }
+
+            if (
+                agora - inicioValidacaoSolturaBotao <
+                TEMPO_VALIDACAO_CLIQUE_ENCODER_MS
+            ) {
+                break;
+            }
+
+            estadoBotao = EstadoBotao::SOLTO;
+
+            // Descarta uma eventual borda de bounce acumulada durante
+            // a confirmação da soltura.
+            consumirBordaBotao();
+
+            if (
+                inicioValidacaoSolturaBotao -
+                    inicioPressionamentoBotao >=
+                TEMPO_CLIQUE_LONGO_ENCODER_MS
+            ) {
+                return EventoBotao::CLIQUE_LONGO;
+            }
+
+            if (
+                agora - ultimoClique <
+                INTERVALO_MINIMO_CLIQUES_ENCODER_MS
+            ) {
+                break;
+            }
+
+            ultimoClique = agora;
+            return EventoBotao::CLIQUE_CURTO;
     }
 
-    if (
-        bordaDetectada &&
-        !validandoBotao
-    ) {
-        validandoBotao = true;
-        inicioValidacaoBotao = agora;
-    }
-
-    if (!validandoBotao) {
-        return false;
-    }
-
-    if (
-        digitalRead(PIN_ENCODER_SW) ==
-        HIGH
-    ) {
-        validandoBotao = false;
-
-        return false;
-    }
-
-    if (
-        agora - inicioValidacaoBotao <
-        TEMPO_VALIDAR_BOTAO_MS
-    ) {
-        return false;
-    }
-
-    validandoBotao = false;
-    aguardandoSolturaBotao = true;
-
-    if (
-        agora - ultimoClique <
-        DEBOUNCE_ENCODER_MS
-    ) {
-        return false;
-    }
-
-    ultimoClique = agora;
-
-    return true;
+    return EventoBotao::NENHUM;
 }
 
 }
@@ -137,35 +159,32 @@ void iniciarControles() {
 
     encoder.disableAcceleration();
 
-    valorAnterior = encoder.readEncoder();
     ultimoClique =
-        millis() - DEBOUNCE_ENCODER_MS;
+        millis() - INTERVALO_MINIMO_CLIQUES_ENCODER_MS;
 
     Serial.println("Encoder inicializado.");
 }
 
-EventoEncoder lerControles() {
-    if (detectarCliqueConfirmado()) {
-        return EventoEncoder::CLIQUE;
+LeituraControles lerControles() {
+    LeituraControles leitura;
+    EventoBotao eventoBotao =
+        detectarEventoBotaoConfirmado();
+
+    if (eventoBotao == EventoBotao::CLIQUE_LONGO) {
+        leitura.cliqueLongoDetectado = true;
+
+        return leitura;
     }
 
-    if (!encoder.encoderChanged()) {
-        return EventoEncoder::NENHUM;
+    if (eventoBotao == EventoBotao::CLIQUE_CURTO) {
+        leitura.cliqueDetectado = true;
+
+        return leitura;
     }
 
-    long valorAtual =
-        encoder.readEncoder();
+    // A própria biblioteca informa o deslocamento acumulado e sua direção.
+    leitura.deslocamentoEncoder =
+        encoder.encoderChanged();
 
-    EventoEncoder evento =
-        EventoEncoder::NENHUM;
-
-    if (valorAtual > valorAnterior) {
-        evento = EventoEncoder::DIREITA;
-    } else if (valorAtual < valorAnterior) {
-        evento = EventoEncoder::ESQUERDA;
-    }
-
-    valorAnterior = valorAtual;
-
-    return evento;
+    return leitura;
 }

@@ -3,6 +3,59 @@
 Firmware de rádio web com saída I2S, display OLED, encoder, LED RGB,
 cadastro de estações em FFat e interface HTTP para administração.
 
+## Por onde começar
+
+O arquivo `radio_web_1.ino` é o ponto de entrada e mostra a ordem geral de
+inicialização e as atividades coordenadas pelo `loop()`. Os detalhes ficam
+separados por responsabilidade:
+
+| Arquivo | Responsabilidade |
+| --- | --- |
+| `configuracao.h` | Ligações do hardware e parâmetros ajustáveis |
+| `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
+| `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
+| `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
+| `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
+| `display_radio.cpp` | Telas, relógio e animação do nome da estação |
+| `controles.cpp` | Leitura do encoder e do botão |
+| `indicador_led.cpp` | Cores e animações do LED RGB |
+| `radios.cpp` | Lista de estações em memória e reserva compilada |
+| `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
+| `relogio.cpp` | Sincronização NTP e obtenção da hora local |
+| `servidor_web.cpp` | Inicialização do servidor e mapa das rotas HTTP |
+| `sono_profundo.cpp` | Configuração do despertar e entrada em deep sleep |
+| `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
+| `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
+| `web/index.html` | Página principal da administração |
+| `web/upload.html` | Página completa de manutenção dos arquivos |
+
+Para uma primeira leitura, siga `radio_web_1.ino`, depois o arquivo do módulo
+que deseja alterar. Consulte [docs/ARQUITETURA.md](docs/ARQUITETURA.md) antes
+de mudar a comunicação entre os módulos.
+
+## Personalização rápida
+
+As opções que normalmente precisam ser adaptadas ficam em
+`configuracao.h`. Cada tempo informa sua unidade no sufixo do nome.
+
+| Opção | Efeito | Padrão |
+| --- | --- | ---: |
+| `BRILHO_LED_RGB` | Intensidade das cores do LED | 50 |
+| `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
+| `TEMPO_TELA_VOLUME_MS` | Permanência da tela de volume | 2000 ms |
+| `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
+| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
+| `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
+| `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
+| `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
+| `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 2 |
+| `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
+
+Na rolagem do nome, um intervalo menor produz movimento mais rápido e um
+intervalo maior produz movimento mais lento. A mesma relação vale para o
+intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
+Os servidores NTP primário e secundário também ficam em `configuracao.h`.
+
 ## Arquitetura
 
 O fluxo de áudio não é executado pelo `loop()` principal. O módulo
@@ -46,9 +99,24 @@ O modo de repouso é sempre o controle de volume:
 - após dois segundos, o display volta ao nome da rádio;
 - pressionar o encoder abre a seleção de estações;
 - girar escolhe a estação;
-- após um segundo sem movimento, a escolha é confirmada e o encoder retorna
-  automaticamente ao volume;
-- pressionar novamente antes da confirmação cancela a seleção.
+- pressionar novamente confirma a estação e retorna ao controle de volume;
+- após dez segundos sem atividade, a seleção é cancelada e a estação
+  anterior permanece ativa.
+- manter o botão pressionado por dois segundos e soltá-lo interrompe o áudio,
+  apaga LED e OLED e coloca o ESP32-S3 em deep sleep;
+- pressionar o botão novamente acorda o rádio, que executa uma inicialização
+  completa.
+
+A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
+sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
+duas passagens do `loop()`, todos são aplicados. O valor
+`TRANSICOES_ENCODER_POR_DETENTE` está calibrado em `2` para o componente
+instalado.
+
+Enquanto o controle elétrico de `SD_MODE` não for instalado, o deep sleep
+interrompe o `BCLK` e os dois MAX98357A entram no standby automático. Portanto,
+os amplificadores ainda não alcançam o consumo de shutdown completo nessa
+condição.
 
 ## Lista de rádios
 
@@ -61,8 +129,15 @@ transacional:
 3. a versão íntegra anterior vira `/radios.bak`;
 4. o temporário é promovido para `/radios.json`.
 
-Na inicialização, o firmware tenta o arquivo ativo, depois o backup e por
-último a lista de reserva compilada no firmware.
+`persistencia_radios.cpp` concentra os nomes desses arquivos, a validação do
+JSON e essa transação. `api_radios.cpp` interpreta as requisições HTTP, enquanto
+`radios.cpp` monta a lista em memória usada durante a execução.
+
+Na inicialização, o firmware aplica a mesma validação usada pela API: tenta
+`radios.json`, depois `radios.bak` e por último a lista de reserva compilada.
+Um arquivo é rejeitado por inteiro se o JSON, a quantidade, um nome ou uma URL
+forem inválidos. A serial informa o arquivo escolhido e quantas estações foram
+carregadas.
 
 ## Diagnóstico
 
@@ -76,6 +151,10 @@ A resposta JSON contém estado do áudio, rádio, título, codec, bitrate,
 buffer estimado em milissegundos, eventos de stream lento, tentativas de
 reconexão, RSSI, heap, PSRAM e uptime. A porta serial também imprime um
 resumo a cada cinco segundos.
+
+O endpoint responde a consultas feitas por outro equipamento da rede. O
+ESP32 não faz uma requisição para si mesmo: `api_status.cpp` apenas cria a
+fotografia JSON quando `servidor_web.cpp` recebe um pedido externo.
 
 ## Compilação
 
@@ -102,11 +181,21 @@ versões fixadas; o script rotineiro apenas usa o ambiente já instalado.
 
 ## Interface web
 
-O arquivo-fonte da interface principal fica em `web/index.html`; a página
-de upload de manutenção está incorporada ao firmware. Os arquivos web
-precisam existir na partição FFat do dispositivo. O upload aceita nomes
-simples e faz substituição por arquivo temporário. `radios.json` recebe
-validação e backup próprios.
+Os arquivos-fonte das interfaces ficam em `web/index.html` e
+`web/upload.html`. Para o funcionamento completo, ambos precisam existir na
+raiz da partição FFat do dispositivo.
+
+A rota `/upload` tenta servir `/upload.html`. Se o arquivo estiver ausente,
+o firmware apresenta um formulário mínimo incorporado que permite restaurar
+os arquivos da interface. Esse fallback depende de a FFat ter sido montada;
+ele não recupera uma falha de montagem do sistema de arquivos.
+
+O upload aceita nomes simples e faz substituição por arquivo temporário.
+Esse fluxo fica em `upload_arquivos.cpp`, que trata separadamente o início, a
+escrita das partes, a conclusão e o cancelamento do envio. `radios.json` recebe
+validação e backup próprios por meio de `persistencia_radios.cpp`. Ao migrar
+uma instalação existente, envie `upload.html` pela página incorporada atual
+antes de gravar uma versão do firmware que passe a servi-lo da FFat.
 
 O sketch mínimo usado para comparação foi isolado em
 `examples/radio_web_exemplo_minimo/`. Ele não participa da compilação do

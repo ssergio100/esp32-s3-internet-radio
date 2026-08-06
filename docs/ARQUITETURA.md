@@ -27,11 +27,106 @@ comandos ao serviço e reage às mudanças de estado, sem alimentar o decoder.
 Uma operação HTTP lenta pode atrasar a interface, mas não interrompe a
 execução do serviço de áudio.
 
+As regras centrais de interação permanecem no arquivo principal: entrar na
+seleção de estações, navegar, confirmar, cancelar por inatividade e ajustar
+o volume. Cada transição usa uma função nomeada para que o fluxo seja legível
+sem conhecer previamente os detalhes do display ou do serviço de áudio.
+
+O Wi-Fi mantém a reconexão automática da pilha. Além disso, o `loop()`
+supervisiona a associação e solicita `WiFi.reconnect()` a cada dez segundos
+enquanto a rede estiver desconectada. A tentativa usa as credenciais
+persistidas e não fixa nem filtra BSSID. O serviço de áudio aguarda a rede e
+retoma suas próprias tentativas quando a associação volta.
+
+### Indicador LED
+
+`indicador_led.cpp` é o único módulo que escreve diretamente no LED RGB.
+O Wi-Fi solicita a animação azul durante a conexão inicial; depois disso, o
+`loop()` solicita a apresentação do estado publicado pelo serviço de áudio.
+As cores e a temporização ficam encapsuladas no indicador.
+
+### Controles
+
+`controles.cpp` configura o encoder e devolve uma `LeituraControles` contendo o
+clique curto, o clique longo e o deslocamento assinado acumulado. Os cliques são
+confirmados após a soltura, o que impede que o botão ainda pressionado provoque
+um despertar imediato ao entrar em deep sleep. A rotação usa diretamente o
+valor de `encoderChanged()`, sem manter um segundo contador, aplicar aceleração
+ou filtrar mudanças de direção. O arquivo principal decide se esse deslocamento
+altera o volume ou navega circularmente pela lista de estações.
+
+A calibração física fica em `TRANSICOES_ENCODER_POR_DETENTE`, em
+`configuracao.h`. Os tempos com nomes de clique tratam somente o botão e não
+interferem na rotação.
+
+### Sono profundo
+
+O arquivo principal mantém visível a transição de desligamento: reconhece o
+clique longo, solicita a parada ao serviço de áudio, espera a confirmação por
+um tempo limitado, apaga LED e OLED e então pede a entrada em deep sleep.
+`sono_profundo.cpp` encapsula somente as APIs específicas do ESP32-S3: configura
+o `GPIO17` ativo em nível baixo como fonte RTC de despertar, informa a causa da
+inicialização e inicia o sono.
+
+O despertar pelo botão reinicia normalmente o firmware. Como o controle físico
+de `SD_MODE` foi adiado, a interrupção de `BCLK` durante o deep sleep deixa os
+MAX98357A em standby automático, e não em shutdown completo.
+
+### Relógio
+
+`relogio.cpp` concentra a sincronização NTP, o fuso horário e a obtenção
+da data e hora locais. O arquivo principal apenas inicia o relógio. O display
+solicita a hora local e continua responsável por sua formatação e desenho.
+Fuso, ajuste de horário de verão e servidores NTP ficam em `configuracao.h`.
+
+### Telemetria
+
+`telemetria.cpp` reúne o diagnóstico periódico de temperatura, memória,
+Wi-Fi e áudio enviado à porta serial. O `loop()` apenas chama
+`registrarTelemetriaPeriodica()`, que controla internamente o intervalo sem
+bloquear as demais atividades. O intervalo ajustável fica em
+`configuracao.h`.
+
+### Diagnóstico HTTP
+
+`api_status.cpp` cria a fotografia JSON retornada por `/api/v1/status`,
+reunindo o estado publicado pelo áudio, a conexão Wi-Fi, a memória e o
+uptime. Ele não inicia requisições e não altera o estado do rádio.
+`servidor_web.cpp` continua responsável pela rota e pela resposta HTTP.
+
+### API de rádios
+
+`api_radios.cpp` implementa as respostas de `GET`, `POST` e `DELETE` da rota
+`/api/radios`. Ele interpreta os parâmetros recebidos, aplica as regras de
+cadastro e exclusão, escolhe o código HTTP e delega a leitura ou a gravação a
+`persistencia_radios.cpp`.
+
+Entre essas regras estão o limite de estações, a nota entre uma e cinco
+estrelas, a geração do próximo identificador e a proibição de excluir a última
+estação. `servidor_web.cpp` conserva apenas o registro visível dessas rotas.
+
 ### Persistência
 
-`servidor_web.cpp` administra FFat e as mutações de `radios.json`.
-`radios.cpp` carrega uma fotografia da lista durante o boot. Por projeto, a
-lista nova entra em uso depois de reiniciar.
+`persistencia_radios.cpp` é o proprietário dos arquivos `/radios.json`,
+`/radios.tmp` e `/radios.bak`. Ele concentra a validação do documento JSON e a
+transação que preserva a versão anterior antes de promover uma nova lista.
+
+`api_radios.cpp` interpreta as requisições HTTP e delega a leitura ou a gravação
+da lista persistida. `radios.cpp` monta durante o boot a fotografia em memória
+usada pelo restante do firmware e mantém a lista de reserva compilada. Por
+projeto, uma lista nova entra em uso depois de reiniciar.
+
+As interfaces web completas são arquivos físicos: `/index.html` e
+`/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas
+quando `/upload.html` está ausente, permitindo restaurar arquivos enquanto a
+FFat continuar montada.
+
+`upload_arquivos.cpp` recebe os blocos enviados, valida o nome do arquivo e
+substitui arquivos comuns usando `/.upload.tmp` e `/.upload.bak`. Quando o
+destino é `/radios.json`, ele delega a validação e a promoção para
+`persistencia_radios.cpp`. `servidor_web.cpp` apenas registra as rotas e entrega
+o pedido ao módulo apropriado. Essas garantias permanecem no firmware; o
+JavaScript não é considerado uma barreira de segurança.
 
 ## Máquina de estados
 
@@ -80,8 +175,11 @@ radios.tmp -- validação --> radios.json
 ```
 
 Uma falha antes da promoção preserva o arquivo ativo. Uma falha durante a
-promoção tenta restaurar o backup. O boot aceita somente um array cujos
-itens tenham nome e URL HTTP/HTTPS dentro dos limites suportados.
+promoção tenta restaurar o backup. Boot, API e edição usam a mesma seleção e a
+mesma validação: `radios.json`, depois `radios.bak` e por último a lista de
+reserva compilada. Um arquivo persistido somente é aceito quando contém um array
+não vazio e todos os itens possuem nome e URL HTTP/HTTPS dentro dos limites
+suportados.
 
 ## Limites atuais
 

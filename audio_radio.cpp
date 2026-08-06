@@ -911,13 +911,13 @@ bool tocarRadio(
     return enviarComando(comando);
 }
 
-void pararAudio() {
+bool pararAudio() {
     ComandoAudio comando;
 
     comando.tipo =
         TipoComandoAudio::PARAR;
 
-    enviarComando(comando);
+    return enviarComando(comando);
 }
 
 void alterarVolumeAudio(int volume) {

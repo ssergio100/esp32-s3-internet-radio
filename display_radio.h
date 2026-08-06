@@ -23,6 +23,9 @@ void mostrarSelecaoRadio(
 
 void mostrarVolume(int volume);
 
+// Apaga o painel do OLED antes da entrada em deep sleep.
+void desligarDisplay();
+
 /*
  * Deve ser chamada continuamente no loop().
  * Atualiza o relógio e movimenta o nome da estação.

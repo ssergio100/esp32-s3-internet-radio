@@ -43,7 +43,7 @@ bool tocarRadio(
     const String& url
 );
 
-void pararAudio();
+bool pararAudio();
 
 void alterarVolumeAudio(int volume);
 

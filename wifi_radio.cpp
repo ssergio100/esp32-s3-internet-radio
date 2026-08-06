@@ -1,6 +1,6 @@
 #include "wifi_radio.h"
-#include "configuracao.h"
 #include "display_radio.h"
+#include "indicador_led.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -8,36 +8,61 @@
 
 namespace {
 
-void atualizarLedConexao() {
-    static unsigned long ultimaPiscada = 0;
-    static bool ledAceso = false;
+constexpr unsigned long INTERVALO_RECONEXAO_WIFI_MS =
+    10000;
 
-    unsigned long agora = millis();
+}
 
-    if (agora - ultimaPiscada < 100) {
+void supervisionarWifi() {
+    static wl_status_t estadoAnterior =
+        WL_CONNECTED;
+    static unsigned long ultimaTentativa = 0;
+
+    wl_status_t estadoAtual = WiFi.status();
+
+    if (estadoAtual == WL_CONNECTED) {
+        if (estadoAnterior != WL_CONNECTED) {
+            Serial.println();
+            Serial.println("Wi-Fi reconectado.");
+            Serial.print("BSSID: ");
+            Serial.println(WiFi.BSSIDstr());
+            Serial.print("IP: ");
+            Serial.println(WiFi.localIP());
+        }
+
+        estadoAnterior = estadoAtual;
         return;
     }
 
-    ultimaPiscada = agora;
-    ledAceso = !ledAceso;
+    unsigned long agora = millis();
 
-    rgbLedWrite(
-        PIN_LED_RGB,
-        0,
-        0,
-        ledAceso ? BRILHO_LED_RGB : 0
+    if (estadoAnterior == WL_CONNECTED) {
+        Serial.println();
+        Serial.println("Wi-Fi desconectado.");
+
+        // Permite uma tentativa imediata ao detectar a queda.
+        ultimaTentativa =
+            agora - INTERVALO_RECONEXAO_WIFI_MS;
+    }
+
+    estadoAnterior = estadoAtual;
+
+    if (
+        agora - ultimaTentativa <
+        INTERVALO_RECONEXAO_WIFI_MS
+    ) {
+        return;
+    }
+
+    ultimaTentativa = agora;
+
+    Serial.println(
+        "Solicitando reconexao do Wi-Fi..."
     );
-}
 
-void apagarLedConexao() {
-    rgbLedWrite(
-        PIN_LED_RGB,
-        0,
-        0,
-        0
-    );
-}
-
+    // Usa as credenciais persistidas e deixa a pilha
+    // escolher normalmente o ponto de acesso disponível.
+    WiFi.reconnect();
 }
 
 bool conectarWifi() {
@@ -91,7 +116,7 @@ bool conectarWifi() {
 
     while (!conectado) {
         wifiManager.process();
-        atualizarLedConexao();
+        atualizarIndicadorConexaoWifi();
 
         conectado =
             WiFi.status() == WL_CONNECTED;
@@ -99,7 +124,7 @@ bool conectarWifi() {
         delay(10);
     }
 
-    apagarLedConexao();
+    apagarIndicadorLed();
 
     WiFi.setAutoReconnect(true);
     WiFi.setSleep(false);
