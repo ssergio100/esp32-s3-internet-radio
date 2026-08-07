@@ -1,4 +1,5 @@
 #include "wifi_radio.h"
+#include "configuracao.h"
 #include "display_radio.h"
 #include "indicador_led.h"
 
@@ -11,16 +12,176 @@ namespace {
 constexpr unsigned long INTERVALO_RECONEXAO_WIFI_MS =
     10000;
 
+String ssidSalvo;
+String senhaSalva;
+bool selecaoPontoPermitidoNecessaria = false;
+bool varreduraWifiEmAndamento = false;
+unsigned long momentoUltimaVarreduraMs = 0;
+
+bool bssidEstaBloqueado(const String& bssid) {
+    for (const char* bssidBloqueado : BSSIDS_WIFI_BLOQUEADOS) {
+        if (bssid.equalsIgnoreCase(bssidBloqueado)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void guardarCredenciaisAtuais() {
+    String ssidAtual = WiFi.SSID();
+
+    if (ssidAtual.isEmpty()) {
+        return;
+    }
+
+    ssidSalvo = ssidAtual;
+    senhaSalva = WiFi.psk();
+}
+
+bool rejeitarAssociacaoBloqueada() {
+    if (
+        WiFi.status() != WL_CONNECTED ||
+        !bssidEstaBloqueado(WiFi.BSSIDstr())
+    ) {
+        return false;
+    }
+
+    guardarCredenciaisAtuais();
+
+    Serial.println();
+    Serial.print("BSSID bloqueado rejeitado: ");
+    Serial.println(WiFi.BSSIDstr());
+
+    WiFi.disconnect(false, false);
+    selecaoPontoPermitidoNecessaria = true;
+    momentoUltimaVarreduraMs =
+        millis() - INTERVALO_RECONEXAO_WIFI_MS;
+
+    return true;
+}
+
+void conectarAoMelhorPontoPermitido(int quantidadeRedes) {
+    int melhorIndice = -1;
+    int32_t melhorRssi = INT32_MIN;
+
+    for (int indice = 0; indice < quantidadeRedes; indice++) {
+        if (
+            WiFi.SSID(indice) != ssidSalvo ||
+            bssidEstaBloqueado(WiFi.BSSIDstr(indice)) ||
+            WiFi.RSSI(indice) <= melhorRssi
+        ) {
+            continue;
+        }
+
+        melhorIndice = indice;
+        melhorRssi = WiFi.RSSI(indice);
+    }
+
+    if (melhorIndice < 0) {
+        Serial.println(
+            "Nenhum ponto de acesso permitido encontrado."
+        );
+        WiFi.scanDelete();
+        return;
+    }
+
+    uint8_t bssidEscolhido[6];
+    WiFi.BSSID(melhorIndice, bssidEscolhido);
+    int32_t canalEscolhido = WiFi.channel(melhorIndice);
+    String textoBssidEscolhido = WiFi.BSSIDstr(melhorIndice);
+
+    WiFi.scanDelete();
+
+    Serial.print("Conectando ao BSSID permitido: ");
+    Serial.println(textoBssidEscolhido);
+
+    // O BSSID escolhido vale somente para esta tentativa. As credenciais
+    // persistidas pelo WiFiManager continuam livres para uso em outro local.
+    WiFi.persistent(false);
+    WiFi.begin(
+        ssidSalvo.c_str(),
+        senhaSalva.c_str(),
+        canalEscolhido,
+        bssidEscolhido
+    );
+}
+
+void processarSelecaoPontoPermitido() {
+    if (
+        !selecaoPontoPermitidoNecessaria ||
+        ssidSalvo.isEmpty() ||
+        WiFi.status() == WL_CONNECTED
+    ) {
+        return;
+    }
+
+    if (varreduraWifiEmAndamento) {
+        int resultado = WiFi.scanComplete();
+
+        if (resultado == WIFI_SCAN_RUNNING) {
+            return;
+        }
+
+        varreduraWifiEmAndamento = false;
+        momentoUltimaVarreduraMs = millis();
+
+        if (resultado >= 0) {
+            conectarAoMelhorPontoPermitido(resultado);
+        } else {
+            Serial.println("Falha ao procurar pontos de acesso.");
+            WiFi.scanDelete();
+        }
+
+        return;
+    }
+
+    unsigned long agoraMs = millis();
+
+    if (
+        agoraMs - momentoUltimaVarreduraMs <
+        INTERVALO_RECONEXAO_WIFI_MS
+    ) {
+        return;
+    }
+
+    momentoUltimaVarreduraMs = agoraMs;
+    Serial.println("Procurando ponto de acesso permitido...");
+
+    int resultado = WiFi.scanNetworks(
+        true,
+        false,
+        false,
+        300,
+        0,
+        ssidSalvo.c_str()
+    );
+
+    if (resultado == WIFI_SCAN_RUNNING) {
+        varreduraWifiEmAndamento = true;
+    } else if (resultado >= 0) {
+        conectarAoMelhorPontoPermitido(resultado);
+    } else {
+        Serial.println("Não foi possível iniciar a varredura Wi-Fi.");
+    }
+}
+
 }
 
 void supervisionarWifi() {
     static wl_status_t estadoAnterior =
         WL_CONNECTED;
-    static unsigned long ultimaTentativa = 0;
 
     wl_status_t estadoAtual = WiFi.status();
 
+    if (rejeitarAssociacaoBloqueada()) {
+        estadoAtual = WiFi.status();
+    }
+
     if (estadoAtual == WL_CONNECTED) {
+        guardarCredenciaisAtuais();
+        selecaoPontoPermitidoNecessaria = false;
+
         if (estadoAnterior != WL_CONNECTED) {
             Serial.println();
             Serial.println("Wi-Fi reconectado.");
@@ -34,35 +195,16 @@ void supervisionarWifi() {
         return;
     }
 
-    unsigned long agora = millis();
-
     if (estadoAnterior == WL_CONNECTED) {
         Serial.println();
         Serial.println("Wi-Fi desconectado.");
-
-        // Permite uma tentativa imediata ao detectar a queda.
-        ultimaTentativa =
-            agora - INTERVALO_RECONEXAO_WIFI_MS;
+        selecaoPontoPermitidoNecessaria = true;
+        momentoUltimaVarreduraMs =
+            millis() - INTERVALO_RECONEXAO_WIFI_MS;
     }
 
     estadoAnterior = estadoAtual;
-
-    if (
-        agora - ultimaTentativa <
-        INTERVALO_RECONEXAO_WIFI_MS
-    ) {
-        return;
-    }
-
-    ultimaTentativa = agora;
-
-    Serial.println(
-        "Solicitando reconexao do Wi-Fi..."
-    );
-
-    // Usa as credenciais persistidas e deixa a pilha
-    // escolher normalmente o ponto de acesso disponível.
-    WiFi.reconnect();
+    processarSelecaoPontoPermitido();
 }
 
 void conectarWifi() {
@@ -114,20 +256,39 @@ void conectarWifi() {
         "RADIO-WEB"
     );
 
+    WiFi.setAutoReconnect(false);
+
+    if (conectado && rejeitarAssociacaoBloqueada()) {
+        conectado = false;
+
+        // O WiFiManager considerou as credenciais válidas antes de o filtro
+        // rejeitar o ponto. Reabre o portal para não prender o rádio nessa rede.
+        wifiManager.startConfigPortal("RADIO-WEB");
+    }
+
     while (!conectado) {
         wifiManager.process();
         atualizarIndicadorConexaoWifi();
 
-        conectado =
-            WiFi.status() == WL_CONNECTED;
+        if (WiFi.status() == WL_CONNECTED) {
+            conectado = !rejeitarAssociacaoBloqueada();
+
+            if (conectado) {
+                guardarCredenciaisAtuais();
+                selecaoPontoPermitidoNecessaria = false;
+            }
+        }
+
+        processarSelecaoPontoPermitido();
 
         delay(10);
     }
 
+    guardarCredenciaisAtuais();
+
     apagarIndicadorLed();
 
-    WiFi.setAutoReconnect(true);
-    WiFi.setSleep(false);
+    WiFi.setSleep(true);
 
     Serial.println();
     Serial.println("Wi-Fi conectado.");

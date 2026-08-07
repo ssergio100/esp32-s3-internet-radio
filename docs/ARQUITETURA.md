@@ -32,21 +32,41 @@ seleção de estações, navegar, confirmar, cancelar por inatividade e ajustar
 o volume. Cada transição usa uma função nomeada para que o fluxo seja legível
 sem conhecer previamente os detalhes do display ou do serviço de áudio.
 
-O Wi-Fi mantém a reconexão automática da pilha. Além disso, o `loop()`
-supervisiona a associação e solicita `WiFi.reconnect()` a cada dez segundos
-enquanto a rede estiver desconectada. A tentativa usa as credenciais
-persistidas e não fixa nem filtra BSSID. O serviço de áudio aguarda a rede e
-retoma suas próprias tentativas quando a associação volta.
+O `loop()` supervisiona a associação Wi-Fi. Se o ponto conectado estiver em
+`BSSIDS_WIFI_BLOQUEADOS`, a associação é rejeitada. Durante a conexão inicial ou
+enquanto a rede estiver desconectada, `wifi_radio.cpp` faz uma varredura
+assíncrona a cada dez segundos, considera somente o SSID salvo e escolhe o ponto
+permitido com melhor RSSI. A reconexão automática da pilha permanece desativada
+para que ela não contorne esse filtro. O WiFiManager continua responsável pelas
+credenciais e pelo portal, portanto outras redes permanecem utilizáveis.
+
+A varredura não ocorre durante uma associação permitida. O serviço de áudio
+aguarda a rede e retoma suas próprias tentativas quando a associação volta.
+O modem sleep do Wi-Fi permanece habilitado para o experimento de consumo e
+estabilidade do áudio.
 
 ### Display
 
-`display_radio.cpp` mantém independentes as duas animações da tela normal: o
-nome da estação na faixa central e o diagnóstico na faixa superior. O
-diagnóstico percorre para a direita e mostra codec, bitrate, reserva de áudio,
-RSSI e BSSID. Seus valores são renovados uma vez por segundo a partir da
-fotografia pública do serviço de áudio e de leituras passivas do Wi-Fi. O
-display não acessa a instância de `Audio` nem influencia a escolha do ponto de
-acesso.
+`display_radio.cpp` mantém independentes as duas animações da tela operacional:
+a faixa central e o diagnóstico na faixa superior. A faixa central mostra o
+nome rolante da estação e apresenta os estados de conexão e bufferização. Na
+seleção, o nome permanece estático e reduz a fonte quando não cabe no tamanho
+normal. Os estados também ficam estáticos, em fonte pequena. Quando o áudio
+começa a tocar, a faixa volta ao nome no tamanho normal e retoma a rolagem. O
+diagnóstico percorre para a direita e mostra codec,
+bitrate, reserva de áudio, RSSI e BSSID. Seus valores são renovados uma vez por
+segundo a partir da fotografia pública do serviço de áudio e de leituras
+passivas do Wi-Fi. O display não acessa a instância de `Audio` nem influencia a
+escolha do ponto de acesso.
+
+A faixa inferior invertida mostra permanentemente a reserva de áudio à esquerda
+e a posição da estação na lista à direita. A reserva também vem da fotografia
+pública do serviço de áudio; não há sondagem adicional de rede para alimentar o
+display.
+
+Durante o ajuste de volume, a mesma faixa substitui temporariamente a reserva
+por uma barra de nível e a posição da estação pelo valor atual sobre o máximo.
+O nome da estação e o diagnóstico superior continuam visíveis.
 
 Velocidade da rolagem e intervalo de renovação ficam em `configuracao.h`.
 

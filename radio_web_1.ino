@@ -40,7 +40,7 @@ int indiceRadioEmSelecao = 0;
 unsigned long momentoUltimaAlteracaoVolumeMs = 0;
 unsigned long momentoUltimaAtividadeSelecaoMs = 0;
 
-bool telaVolumeVisivel = false;
+bool barraVolumeVisivel = false;
 
 bool preparandoSonoProfundo = false;
 unsigned long momentoSolicitacaoSonoProfundoMs = 0;
@@ -70,7 +70,7 @@ void processarNavegacaoRadios(
     long deslocamentoEncoder
 );
 
-void restaurarDisplayAposTempoVolume();
+void restaurarBarraAposTempoVolume();
 void cancelarSelecaoRadioPorInatividade();
 
 void atualizarDisplayEstadoAudio(
@@ -142,7 +142,7 @@ void loop() {
     }
 
     cancelarSelecaoRadioPorInatividade();
-    restaurarDisplayAposTempoVolume();
+    restaurarBarraAposTempoVolume();
 
     atualizarIndicadorEstadoAudio();
     atualizarDisplayEstadoAudio();
@@ -204,7 +204,7 @@ void solicitarEntradaSonoProfundo() {
     momentoSolicitacaoSonoProfundoMs = millis();
 
     modoInterface = ModoInterface::VOLUME;
-    telaVolumeVisivel = false;
+    barraVolumeVisivel = false;
 
     mostrarMensagem(
         "Desligando..."
@@ -254,7 +254,7 @@ void concluirEntradaSonoProfundoQuandoAudioParar() {
 
 void entrarModoSelecaoRadio() {
     modoInterface = ModoInterface::SELECAO_RADIO;
-    telaVolumeVisivel = false;
+    barraVolumeVisivel = false;
 
     indiceRadioEmSelecao = indiceRadioAtual;
     momentoUltimaAtividadeSelecaoMs = millis();
@@ -310,7 +310,7 @@ void processarAjusteVolume(
     alterarVolumeAudio(volumeAtual);
     mostrarVolume(volumeAtual);
 
-    telaVolumeVisivel = true;
+    barraVolumeVisivel = true;
 
     momentoUltimaAlteracaoVolumeMs =
         millis();
@@ -393,7 +393,7 @@ void cancelarSelecaoRadioPorInatividade() {
 
     modoInterface = ModoInterface::VOLUME;
     indiceRadioEmSelecao = indiceRadioAtual;
-    telaVolumeVisivel = false;
+    barraVolumeVisivel = false;
 
     Serial.println(
         "Seleção cancelada por inatividade; modo: volume"
@@ -403,27 +403,27 @@ void cancelarSelecaoRadioPorInatividade() {
 }
 
 // =====================================================
-// Retorno automático da tela de volume
+// Retorno automático da barra inferior
 // =====================================================
 
-void restaurarDisplayAposTempoVolume() {
+void restaurarBarraAposTempoVolume() {
     if (modoInterface != ModoInterface::VOLUME) {
-        telaVolumeVisivel = false;
+        barraVolumeVisivel = false;
         return;
     }
 
-    if (!telaVolumeVisivel) {
+    if (!barraVolumeVisivel) {
         return;
     }
 
     if (
         millis() - momentoUltimaAlteracaoVolumeMs <
-        TEMPO_TELA_VOLUME_MS
+        TEMPO_BARRA_VOLUME_MS
     ) {
         return;
     }
 
-    telaVolumeVisivel = false;
+    barraVolumeVisivel = false;
 
     atualizarDisplayEstadoAudio(true);
 }
@@ -443,10 +443,6 @@ void solicitarReproducaoRadio(int indiceRadio) {
 
         return;
     }
-
-    mostrarMensagem(
-        "Conectando..."
-    );
 
     bool comandoAceito =
         tocarRadio(
@@ -468,6 +464,12 @@ void solicitarReproducaoRadio(int indiceRadio) {
 
     indiceRadioAtual = indiceRadio;
     indiceRadioEmSelecao = indiceRadio;
+
+    mostrarEstadoRadio(
+        "Conectando...",
+        indiceRadioAtual,
+        obterQuantidadeRadios()
+    );
 }
 
 void mostrarRadioNoDisplay(int indiceRadio) {
@@ -517,21 +519,25 @@ void atualizarDisplayEstadoAudio(
     if (
         modoInterface !=
             ModoInterface::VOLUME ||
-        telaVolumeVisivel
+        barraVolumeVisivel
     ) {
         return;
     }
 
     switch (statusAudio.estado) {
         case EstadoAudio::CONECTANDO:
-            mostrarMensagem(
-                "Conectando..."
+            mostrarEstadoRadio(
+                "Conectando...",
+                indiceRadioAtual,
+                obterQuantidadeRadios()
             );
             break;
 
         case EstadoAudio::BUFFERIZANDO:
-            mostrarMensagem(
-                "Bufferizando..."
+            mostrarEstadoRadio(
+                "Bufferizando...",
+                indiceRadioAtual,
+                obterQuantidadeRadios()
             );
             break;
 
@@ -541,14 +547,18 @@ void atualizarDisplayEstadoAudio(
             break;
 
         case EstadoAudio::RECONECTANDO:
-            mostrarMensagem(
-                "Reconectando..."
+            mostrarEstadoRadio(
+                "Reconectando...",
+                indiceRadioAtual,
+                obterQuantidadeRadios()
             );
             break;
 
         case EstadoAudio::ERRO:
-            mostrarMensagem(
-                "Erro no audio"
+            mostrarEstadoRadio(
+                "Erro no audio",
+                indiceRadioAtual,
+                obterQuantidadeRadios()
             );
             break;
 

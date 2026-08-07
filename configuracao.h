@@ -37,6 +37,13 @@ constexpr int TRANSICOES_ENCODER_POR_DETENTE = 2;
 // Comportamento ajustável pelo usuário
 // =====================================================
 
+// Wi-Fi
+// O rádio nunca se associa aos pontos de acesso abaixo. A regra considera
+// somente o BSSID: redes e pontos de acesso diferentes continuam permitidos.
+constexpr const char* BSSIDS_WIFI_BLOQUEADOS[] = {
+    "DC:33:3D:F9:C0:34"
+};
+
 // Áudio
 constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
@@ -46,7 +53,8 @@ constexpr int VOLUME_PADRAO = 10;
 // Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
 #define BRILHO_LED_RGB 50
 
-constexpr unsigned long TEMPO_TELA_VOLUME_MS = 2000;
+// Tempo durante o qual a barra inferior mostra o volume após um ajuste.
+constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
 // Tempo que o botão do encoder deve permanecer pressionado para desligar.
