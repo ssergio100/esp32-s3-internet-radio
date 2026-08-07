@@ -48,6 +48,11 @@ fotografia pública do serviço de áudio e de leituras passivas do Wi-Fi. O
 display não acessa a instância de `Audio` nem influencia a escolha do ponto de
 acesso.
 
+A faixa inferior invertida mostra permanentemente a reserva de áudio à esquerda
+e a posição da estação na lista à direita. A reserva também vem da fotografia
+pública do serviço de áudio; não há sondagem adicional de rede para alimentar o
+display.
+
 Velocidade da rolagem e intervalo de renovação ficam em `configuracao.h`.
 
 ### Indicador LED

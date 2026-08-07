@@ -84,6 +84,8 @@ Na tela normal da rádio, a faixa superior percorre para a direita mostrando
 codec, bitrate, reserva de áudio em segundos, RSSI e BSSID. Os valores são uma
 fotografia passiva do serviço de áudio e do Wi-Fi: o display não controla o
 decoder nem interfere na escolha do ponto de acesso.
+Na faixa inferior invertida, a reserva permanece visível à esquerda e a posição
+da estação na lista aparece à direita.
 
 ## Indicação do LED
 

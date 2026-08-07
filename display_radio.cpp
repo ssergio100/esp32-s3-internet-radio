@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Fonts/FreeSansBold9pt7b.h>
 
 
 namespace {
@@ -73,6 +74,7 @@ namespace {
     };
 
     String textoDiagnostico;
+    String textoBufferBarraInferior;
     EstadoFaixaRolante estadoFaixaDiagnostico;
     unsigned long momentoUltimaAtualizacaoDiagnosticoMs = 0;
 
@@ -138,8 +140,27 @@ namespace {
             " s";
     }
 
-    String montarTextoDiagnostico() {
-        StatusAudio status = obterStatusAudio();
+    String formatarBufferParaBarraInferior(
+        const StatusAudio& status
+    ) {
+        if (status.bitrate == 0) {
+            return "B--";
+        }
+
+        uint32_t decimosDeSegundo =
+            (status.bufferMilissegundos + 50) / 100;
+
+        return
+            "B" +
+            String(decimosDeSegundo / 10) +
+            "." +
+            String(decimosDeSegundo % 10) +
+            "s";
+    }
+
+    String montarTextoDiagnostico(
+        const StatusAudio& status
+    ) {
         String texto;
         texto.reserve(112);
 
@@ -322,13 +343,22 @@ namespace {
         }
 
         momentoUltimaAtualizacaoDiagnosticoMs = agoraMs;
-        String novoTexto = montarTextoDiagnostico();
+        StatusAudio status = obterStatusAudio();
+        String novoTextoDiagnostico =
+            montarTextoDiagnostico(status);
+        String novoTextoBuffer =
+            formatarBufferParaBarraInferior(status);
 
-        if (novoTexto == textoDiagnostico) {
-            return false;
+        bool barraInferiorMudou =
+            novoTextoBuffer != textoBufferBarraInferior;
+
+        textoBufferBarraInferior = novoTextoBuffer;
+
+        if (novoTextoDiagnostico == textoDiagnostico) {
+            return barraInferiorMudou;
         }
 
-        textoDiagnostico = novoTexto;
+        textoDiagnostico = novoTextoDiagnostico;
         configurarFaixaRolante(
             textoDiagnostico,
             CONFIGURACAO_FAIXA_DIAGNOSTICO,
@@ -337,6 +367,72 @@ namespace {
         );
 
         return true;
+    }
+
+    void desenharBarraInferior() {
+        constexpr int topoBarraPx = 44;
+        constexpr int alturaBarraPx =
+            DISPLAY_ALTURA - topoBarraPx;
+        constexpr int margemHorizontalPx = 2;
+
+        String textoEstacao =
+            String(indiceRadioAtual + 1) +
+            "/" +
+            String(quantidadeRadiosAtual);
+
+        display.fillRect(
+            0,
+            topoBarraPx,
+            DISPLAY_LARGURA,
+            alturaBarraPx,
+            SSD1306_WHITE
+        );
+        display.setFont(&FreeSansBold9pt7b);
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_BLACK);
+
+        int16_t x1;
+        int16_t y1;
+        uint16_t largura;
+        uint16_t altura;
+
+        display.getTextBounds(
+            textoBufferBarraInferior,
+            0,
+            0,
+            &x1,
+            &y1,
+            &largura,
+            &altura
+        );
+        int linhaBasePx =
+            topoBarraPx +
+            (alturaBarraPx - altura) / 2 -
+            y1;
+        display.setCursor(
+            margemHorizontalPx - x1,
+            linhaBasePx
+        );
+        display.print(textoBufferBarraInferior);
+
+        display.getTextBounds(
+            textoEstacao,
+            0,
+            0,
+            &x1,
+            &y1,
+            &largura,
+            &altura
+        );
+        display.setCursor(
+            DISPLAY_LARGURA - margemHorizontalPx - largura - x1,
+            linhaBasePx
+        );
+        display.print(textoEstacao);
+
+        display.setFont();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
     }
 
     void desenharTelaRadio() {
@@ -354,13 +450,7 @@ namespace {
             estadoFaixaNomeRadio
         );
 
-        escreverCentralizado(
-            String(indiceRadioAtual + 1) +
-                "/" +
-                String(quantidadeRadiosAtual),
-            54,
-            1
-        );
+        desenharBarraInferior();
 
         display.display();
     }
