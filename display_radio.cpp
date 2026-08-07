@@ -22,12 +22,19 @@ namespace {
 
     enum class TelaDisplay {
         MENSAGEM,
-        RADIO,
-        SELECAO_RADIO,
-        VOLUME
+        RADIO
     };
 
     TelaDisplay telaAtual = TelaDisplay::MENSAGEM;
+
+    enum class ModoFaixaCentral {
+        ROLAGEM,
+        SELECAO,
+        ESTADO
+    };
+
+    ModoFaixaCentral modoFaixaCentral =
+        ModoFaixaCentral::ROLAGEM;
 
     String nomeRadioAtual;
     int indiceRadioAtual = 0;
@@ -75,6 +82,8 @@ namespace {
 
     String textoDiagnostico;
     String textoBufferBarraInferior;
+    bool exibindoVolumeNaBarraInferior = false;
+    int volumeBarraInferior = VOLUME_PADRAO;
     EstadoFaixaRolante estadoFaixaDiagnostico;
     unsigned long momentoUltimaAtualizacaoDiagnosticoMs = 0;
 
@@ -375,10 +384,11 @@ namespace {
             DISPLAY_ALTURA - topoBarraPx;
         constexpr int margemHorizontalPx = 2;
 
-        String textoEstacao =
-            String(indiceRadioAtual + 1) +
-            "/" +
-            String(quantidadeRadiosAtual);
+        String textoDireita = exibindoVolumeNaBarraInferior
+            ? String(volumeBarraInferior) +
+                "/" + String(VOLUME_MAXIMO)
+            : String(indiceRadioAtual + 1) +
+                "/" + String(quantidadeRadiosAtual);
 
         display.fillRect(
             0,
@@ -396,8 +406,60 @@ namespace {
         uint16_t largura;
         uint16_t altura;
 
+        if (exibindoVolumeNaBarraInferior) {
+            constexpr int barraX = 2;
+            constexpr int barraY = 49;
+            constexpr int barraLargura = 70;
+            constexpr int barraAltura = 10;
+
+            display.drawRect(
+                barraX,
+                barraY,
+                barraLargura,
+                barraAltura,
+                SSD1306_BLACK
+            );
+
+            int larguraPreenchida = map(
+                volumeBarraInferior,
+                VOLUME_MINIMO,
+                VOLUME_MAXIMO,
+                0,
+                barraLargura - 4
+            );
+
+            if (larguraPreenchida > 0) {
+                display.fillRect(
+                    barraX + 2,
+                    barraY + 2,
+                    larguraPreenchida,
+                    barraAltura - 4,
+                    SSD1306_BLACK
+                );
+            }
+        } else {
+            display.getTextBounds(
+                textoBufferBarraInferior,
+                0,
+                0,
+                &x1,
+                &y1,
+                &largura,
+                &altura
+            );
+            int linhaBaseBufferPx =
+                topoBarraPx +
+                (alturaBarraPx - altura) / 2 -
+                y1;
+            display.setCursor(
+                margemHorizontalPx - x1,
+                linhaBaseBufferPx
+            );
+            display.print(textoBufferBarraInferior);
+        }
+
         display.getTextBounds(
-            textoBufferBarraInferior,
+            textoDireita,
             0,
             0,
             &x1,
@@ -405,18 +467,31 @@ namespace {
             &largura,
             &altura
         );
-        int linhaBasePx =
+        int linhaBaseTextoPx =
             topoBarraPx +
             (alturaBarraPx - altura) / 2 -
             y1;
         display.setCursor(
-            margemHorizontalPx - x1,
-            linhaBasePx
+            DISPLAY_LARGURA - margemHorizontalPx - largura - x1,
+            linhaBaseTextoPx
         );
-        display.print(textoBufferBarraInferior);
+        display.print(textoDireita);
+
+        display.setFont();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+    }
+
+    void desenharSelecaoNaFaixaCentral() {
+        display.setTextSize(2);
+
+        int16_t x1;
+        int16_t y1;
+        uint16_t largura;
+        uint16_t altura;
 
         display.getTextBounds(
-            textoEstacao,
+            nomeRadioAtual,
             0,
             0,
             &x1,
@@ -424,15 +499,20 @@ namespace {
             &largura,
             &altura
         );
-        display.setCursor(
-            DISPLAY_LARGURA - margemHorizontalPx - largura - x1,
-            linhaBasePx
-        );
-        display.print(textoEstacao);
 
-        display.setFont();
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
+        if (largura <= DISPLAY_LARGURA - 4) {
+            escreverCentralizado(
+                nomeRadioAtual,
+                22,
+                2
+            );
+        } else {
+            escreverCentralizado(
+                nomeRadioAtual,
+                27,
+                1
+            );
+        }
     }
 
     void desenharTelaRadio() {
@@ -444,15 +524,62 @@ namespace {
             estadoFaixaDiagnostico
         );
 
-        desenharFaixaRolante(
-            nomeRadioAtual,
-            CONFIGURACAO_FAIXA_NOME_RADIO,
-            estadoFaixaNomeRadio
-        );
+        if (modoFaixaCentral == ModoFaixaCentral::SELECAO) {
+            desenharSelecaoNaFaixaCentral();
+        } else if (modoFaixaCentral == ModoFaixaCentral::ESTADO) {
+            escreverCentralizado(
+                nomeRadioAtual,
+                27,
+                1
+            );
+        } else {
+            desenharFaixaRolante(
+                nomeRadioAtual,
+                CONFIGURACAO_FAIXA_NOME_RADIO,
+                estadoFaixaNomeRadio
+            );
+        }
 
         desenharBarraInferior();
 
         display.display();
+    }
+
+    void mostrarTextoEstaticoNaFaixaCentral(
+        const String& texto,
+        int indiceAtual,
+        int quantidadeRadios,
+        ModoFaixaCentral modo
+    ) {
+        if (!disponivel) {
+            return;
+        }
+
+        nomeRadioAtual = texto;
+        indiceRadioAtual = indiceAtual;
+        quantidadeRadiosAtual = quantidadeRadios;
+
+        bool entrandoNaTelaRadio =
+            telaAtual != TelaDisplay::RADIO;
+
+        telaAtual = TelaDisplay::RADIO;
+        exibindoVolumeNaBarraInferior = false;
+        modoFaixaCentral = modo;
+        atualizarTextoDiagnostico(true);
+
+        if (
+            entrandoNaTelaRadio ||
+            estadoFaixaDiagnostico.larguraTextoPx == 0
+        ) {
+            configurarFaixaRolante(
+                textoDiagnostico,
+                CONFIGURACAO_FAIXA_DIAGNOSTICO,
+                estadoFaixaDiagnostico,
+                true
+            );
+        }
+
+        desenharTelaRadio();
     }
 
 }
@@ -519,8 +646,12 @@ void mostrarNomeRadio(
 
     bool entrandoNaTelaRadio =
         telaAtual != TelaDisplay::RADIO;
+    bool faixaCentralEstavaEstatica =
+        modoFaixaCentral != ModoFaixaCentral::ROLAGEM;
 
     telaAtual = TelaDisplay::RADIO;
+    exibindoVolumeNaBarraInferior = false;
+    modoFaixaCentral = ModoFaixaCentral::ROLAGEM;
     atualizarTextoDiagnostico(true);
 
     if (
@@ -537,6 +668,7 @@ void mostrarNomeRadio(
 
     if (
         radioMudou ||
+        faixaCentralEstavaEstatica ||
         estadoFaixaNomeRadio.larguraTextoPx == 0
     ) {
         configurarFaixaRolante(
@@ -557,122 +689,40 @@ void mostrarSelecaoRadio(
     int indiceSelecionado,
     int quantidadeRadios
 ) {
-    if (!disponivel) {
-        return;
-    }
-
-    telaAtual = TelaDisplay::SELECAO_RADIO;
-
-    prepararTela();
-
-    escreverCentralizado(
-        "<  ESTACOES  >",
-        2,
-        1
-    );
-
-    display.setTextSize(2);
-
-    int16_t x1;
-    int16_t y1;
-    uint16_t largura;
-    uint16_t altura;
-
-    display.getTextBounds(
+    mostrarTextoEstaticoNaFaixaCentral(
         nome,
-        0,
-        0,
-        &x1,
-        &y1,
-        &largura,
-        &altura
+        indiceSelecionado,
+        quantidadeRadios,
+        ModoFaixaCentral::SELECAO
     );
+}
 
-    if (largura <= DISPLAY_LARGURA - 4) {
-        escreverCentralizado(
-            nome,
-            22,
-            2
-        );
-    } else {
-        escreverCentralizado(
-            nome,
-            27,
-            1
-        );
-    }
-
-    escreverCentralizado(
-        String(indiceSelecionado + 1) +
-            "/" +
-            String(quantidadeRadios) +
-            "  Clique: OK",
-        54,
-        1
+void mostrarEstadoRadio(
+    const String& estado,
+    int indiceAtual,
+    int quantidadeRadios
+) {
+    mostrarTextoEstaticoNaFaixaCentral(
+        estado,
+        indiceAtual,
+        quantidadeRadios,
+        ModoFaixaCentral::ESTADO
     );
-
-    display.display();
 }
 
 void mostrarVolume(
     int volume
 ) {
-    if (!disponivel) {
+    if (
+        !disponivel ||
+        telaAtual != TelaDisplay::RADIO
+    ) {
         return;
     }
 
-    telaAtual = TelaDisplay::VOLUME;
-
-    prepararTela();
-
-    // escreverCentralizado(
-    //     "VOLUME",
-    //     2,
-    //     1
-    // );
-
-  String volumeExibido = (volume == 0)
-    ? "Mudo"
-    : String(volume) + "/" + String(VOLUME_MAXIMO);
-
-    escreverCentralizado(
-        volumeExibido,
-        17,
-        3
-    );
-
-    constexpr int barraX = 9;
-    constexpr int barraY = 51;
-    constexpr int barraLargura = 110;
-    constexpr int barraAltura = 11;
-
-    display.drawRect(
-        barraX,
-        barraY,
-        barraLargura,
-        barraAltura,
-        SSD1306_WHITE
-    );
-
-    int larguraPreenchida = map(
-        volume,
-        VOLUME_MINIMO,
-        VOLUME_MAXIMO,
-        0,
-        barraLargura - 4
-    );
-
-    if (larguraPreenchida > 0) {
-        display.fillRect(
-            barraX + 2,
-            barraY + 2,
-            larguraPreenchida,
-            barraAltura - 4,
-            SSD1306_WHITE
-        );
-    }
-
-    display.display();
+    volumeBarraInferior = volume;
+    exibindoVolumeNaBarraInferior = true;
+    desenharTelaRadio();
 }
 
 void desligarDisplay() {
@@ -737,6 +787,7 @@ void processarDisplay() {
     }
 
     if (
+        modoFaixaCentral == ModoFaixaCentral::ROLAGEM &&
         avancarFaixaRolante(
             CONFIGURACAO_FAIXA_NOME_RADIO,
             estadoFaixaNomeRadio,

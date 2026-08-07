@@ -41,8 +41,9 @@ As opções que normalmente precisam ser adaptadas ficam em
 | Opção | Efeito | Padrão |
 | --- | --- | ---: |
 | `BRILHO_LED_RGB` | Intensidade das cores do LED | 50 |
+| `BSSIDS_WIFI_BLOQUEADOS` | Pontos de acesso que o rádio deve ignorar | `DC:33:3D:F9:C0:34` |
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
-| `TEMPO_TELA_VOLUME_MS` | Permanência da tela de volume | 2000 ms |
+| `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
@@ -57,6 +58,11 @@ Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
 vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
+
+O Wi-Fi aceita normalmente redes novas configuradas pelo portal. Quando há
+mais de um ponto para o SSID salvo, a reconexão escolhe o sinal mais forte cujo
+BSSID não esteja em `BSSIDS_WIFI_BLOQUEADOS`. A busca é assíncrona e ocorre
+somente durante a conexão ou enquanto o rádio está sem Wi-Fi.
 
 ## Arquitetura
 
@@ -85,7 +91,15 @@ codec, bitrate, reserva de áudio em segundos, RSSI e BSSID. Os valores são uma
 fotografia passiva do serviço de áudio e do Wi-Fi: o display não controla o
 decoder nem interfere na escolha do ponto de acesso.
 Na faixa inferior invertida, a reserva permanece visível à esquerda e a posição
-da estação na lista aparece à direita.
+da estação na lista aparece à direita. Ao ajustar o volume, a reserva dá lugar
+temporariamente à barra de nível e o valor atual, como `10/21`, substitui a
+posição da estação.
+
+A faixa central é a única área usada para o conteúdo principal: mostra o nome
+rolante da rádio e, durante a abertura do stream, os estados `Conectando...` e
+`Bufferizando...`, estáticos e em fonte pequena. Na seleção, o nome fica parado
+e usa uma fonte menor quando não cabe no tamanho normal. Ao confirmar e iniciar
+a reprodução, o nome retorna ao tamanho normal e à rolagem.
 
 ## Indicação do LED
 
@@ -104,9 +118,9 @@ do percentual do buffer.
 
 O modo de repouso é sempre o controle de volume:
 
-- girar o encoder mostra e altera o volume;
-- após dois segundos, o display volta ao nome da rádio;
-- pressionar o encoder abre a seleção de estações;
+- girar o encoder altera o volume e o mostra na barra inferior;
+- após dois segundos, a barra volta a mostrar buffer e posição da estação;
+- pressionar o encoder inicia a seleção na própria faixa central;
 - girar escolhe a estação;
 - pressionar novamente confirma a estação e retorna ao controle de volume;
 - após dez segundos sem atividade, a seleção é cancelada e a estação

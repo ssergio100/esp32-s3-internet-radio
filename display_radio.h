@@ -21,6 +21,12 @@ void mostrarSelecaoRadio(
     int quantidadeRadios
 );
 
+void mostrarEstadoRadio(
+    const String& estado,
+    int indiceAtual,
+    int quantidadeRadios
+);
+
 void mostrarVolume(int volume);
 
 // Apaga o painel do OLED antes da entrada em deep sleep.
@@ -28,7 +34,7 @@ void desligarDisplay();
 
 /*
  * Deve ser chamada continuamente no loop().
- * Atualiza e movimenta o diagnóstico e o nome da estação.
+ * Atualiza e movimenta o diagnóstico e a faixa central.
  */
 void processarDisplay();
 
