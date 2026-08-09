@@ -91,6 +91,18 @@ A calibração física fica em `TRANSICOES_ENCODER_POR_DETENTE`, em
 `configuracao.h`. Os tempos com nomes de clique tratam somente o botão e não
 interferem na rotação.
 
+### Teste do Breakout
+
+`jogo_breakout.cpp` mantém a física, as colisões, os níveis e a fotografia
+visual do jogo. Ele não acessa diretamente o OLED. `display_radio.cpp` recebe
+essa fotografia e continua sendo o único proprietário do display.
+
+O teste temporário sem botões é habilitado por
+`ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER`, em `configuracao.h`. Nesse modo, o
+clique curto alterna entre rádio e jogo, e a rotação move a raquete. A lógica
+usa quadros temporizados sem `delay()`, portanto Wi-Fi, servidor, telemetria e
+o serviço dedicado de áudio continuam sendo atendidos durante a partida.
+
 ### Sono profundo
 
 O arquivo principal mantém visível a transição de desligamento: reconhece o

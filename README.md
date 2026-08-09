@@ -19,6 +19,7 @@ separados por responsabilidade:
 | `display_radio.cpp` | Telas e animações do nome e do diagnóstico da estação |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
+| `jogo_breakout.cpp` | Lógica não bloqueante do teste do jogo Breakout |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Sincronização NTP e obtenção da hora local |
@@ -43,6 +44,7 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `BRILHO_LED_RGB` | Intensidade das cores do LED | 50 |
 | `BSSIDS_WIFI_BLOQUEADOS` | Pontos de acesso que o rádio deve ignorar | `DC:33:3D:F9:C0:34` |
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
+| `ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER` | Troca temporariamente a seleção física pelo jogo | `false` |
 | `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
@@ -115,6 +117,14 @@ As cores indicam o estado operacional, não apenas uma leitura instantânea
 do percentual do buffer.
 
 ## Encoder
+
+Enquanto `ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER` estiver habilitado para o
+teste sem botões adicionais, um clique curto entra ou sai do Breakout e a
+rotação move a raquete. A seleção física de estações fica temporariamente
+indisponível; o clique longo continua desligando o aparelho e o áudio continua
+tocando durante o jogo.
+
+Ao desabilitar o teste, o comportamento normal do encoder volta a ser:
 
 O modo de repouso é sempre o controle de volume:
 
