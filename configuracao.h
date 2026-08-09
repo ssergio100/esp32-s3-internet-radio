@@ -57,6 +57,11 @@ constexpr int VOLUME_PADRAO = 10;
 constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
+// Teste temporário do Breakout antes da instalação dos dois botões.
+// Quando ativo, o clique curto entra/sai do jogo e a rotação move a raquete;
+// a seleção física de estações fica temporariamente indisponível.
+constexpr bool ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER = false;
+
 // Tempo que o botão do encoder deve permanecer pressionado para desligar.
 // Aumente para reduzir acionamentos acidentais; diminua para desligar mais rápido.
 constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
