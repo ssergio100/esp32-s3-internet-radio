@@ -17,18 +17,17 @@
 #include "display_radio.h"
 #include "wifi_radio.h"
 #include "audio_radio.h"
+#include "arquivos_audio.h"
 #include "controles.h"
 #include "indicador_led.h"
 #include "relogio.h"
 #include "servidor_web.h"
 #include "sono_profundo.h"
 #include "telemetria.h"
-#include "jogo_breakout.h"
 
 enum class ModoInterface {
     VOLUME,
-    SELECAO_RADIO,
-    JOGO_BREAKOUT
+    SELECAO_RADIO
 };
 
 // Estado da interação com o encoder e o display.
@@ -56,8 +55,6 @@ void solicitarReproducaoRadio(int indiceRadio);
 
 void entrarModoSelecaoRadio();
 void confirmarSelecaoRadio();
-void entrarModoJogoBreakout();
-void sairModoJogoBreakout();
 
 void solicitarEntradaSonoProfundo();
 void concluirEntradaSonoProfundoQuandoAudioParar();
@@ -106,6 +103,9 @@ void setup() {
 
     carregarRadios();
 
+    // A ausência do cartão não impede a função principal de rádio web.
+    iniciarArquivosAudio();
+
     iniciarRelogio();
 
     if (!iniciarAudio(volumeAtual)) {
@@ -145,8 +145,6 @@ void loop() {
         return;
     }
 
-    processarJogoBreakout();
-
     cancelarSelecaoRadioPorInatividade();
     restaurarBarraAposTempoVolume();
 
@@ -169,16 +167,6 @@ void processarLeituraControles(
     }
 
     if (leitura.cliqueDetectado) {
-        if (ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER) {
-            if (modoInterface == ModoInterface::JOGO_BREAKOUT) {
-                sairModoJogoBreakout();
-            } else {
-                entrarModoJogoBreakout();
-            }
-
-            return;
-        }
-
         if (modoInterface == ModoInterface::VOLUME) {
             entrarModoSelecaoRadio();
         } else {
@@ -189,13 +177,6 @@ void processarLeituraControles(
     }
 
     if (leitura.deslocamentoEncoder == 0) {
-        return;
-    }
-
-    if (modoInterface == ModoInterface::JOGO_BREAKOUT) {
-        moverRaqueteJogoBreakout(
-            leitura.deslocamentoEncoder
-        );
         return;
     }
 
@@ -227,7 +208,6 @@ void solicitarEntradaSonoProfundo() {
     momentoSolicitacaoSonoProfundoMs = millis();
 
     modoInterface = ModoInterface::VOLUME;
-    encerrarJogoBreakout();
     barraVolumeVisivel = false;
 
     mostrarMensagem(
@@ -244,24 +224,6 @@ void solicitarEntradaSonoProfundo() {
     Serial.println(
         "Clique longo: preparando sono profundo."
     );
-}
-
-// =====================================================
-// Teste temporário do Breakout com o encoder
-// =====================================================
-
-void entrarModoJogoBreakout() {
-    modoInterface = ModoInterface::JOGO_BREAKOUT;
-    barraVolumeVisivel = false;
-    iniciarJogoBreakout();
-}
-
-void sairModoJogoBreakout() {
-    encerrarJogoBreakout();
-    modoInterface = ModoInterface::VOLUME;
-    barraVolumeVisivel = false;
-    atualizarDisplayEstadoAudio(true);
-    Serial.println("Breakout encerrado; modo: volume");
 }
 
 void concluirEntradaSonoProfundoQuandoAudioParar() {

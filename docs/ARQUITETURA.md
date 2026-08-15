@@ -13,6 +13,14 @@ Comandos externos são estruturas POD copiadas para uma fila FreeRTOS. O
 estado publicado também é POD e é copiado sob mutex. Assim, nenhuma
 referência para `String` ou memória temporária cruza tarefas.
 
+Além dos streams, a fila aceita a reprodução de um arquivo local por
+`tocarArquivoAudio()`. `arquivos_audio.cpp` monta o microSD pelo SPI, cria o
+diretório previsível `/sons` e lista as faixas aceitas. O módulo apenas gerencia
+o sistema de arquivos; a abertura pela ESP32-audioI2S continua acontecendo na
+tarefa de áudio por meio de `connecttoFS()`. Ao receber o fim de um arquivo, o
+serviço entra em `PARADO`; retomar uma rádio será uma decisão explícita do
+futuro agendador, não uma reconexão acidental tratada como falha de stream.
+
 Há duas tarefas relacionadas ao áudio:
 
 - decodificador/I2S da ESP32-audioI2S, no núcleo 0;
@@ -84,24 +92,11 @@ clique curto, o clique longo e o deslocamento assinado acumulado. Os cliques sã
 confirmados após a soltura, o que impede que o botão ainda pressionado provoque
 um despertar imediato ao entrar em deep sleep. A rotação usa diretamente o
 valor de `encoderChanged()`, sem manter um segundo contador, aplicar aceleração
-ou filtrar mudanças de direção. O arquivo principal decide se esse deslocamento
-altera o volume ou navega circularmente pela lista de estações.
+ou filtrar mudanças de direção.
 
 A calibração física fica em `TRANSICOES_ENCODER_POR_DETENTE`, em
 `configuracao.h`. Os tempos com nomes de clique tratam somente o botão e não
 interferem na rotação.
-
-### Teste do Breakout
-
-`jogo_breakout.cpp` mantém a física, as colisões, os níveis e a fotografia
-visual do jogo. Ele não acessa diretamente o OLED. `display_radio.cpp` recebe
-essa fotografia e continua sendo o único proprietário do display.
-
-O teste temporário sem botões é habilitado por
-`ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER`, em `configuracao.h`. Nesse modo, o
-clique curto alterna entre rádio e jogo, e a rotação move a raquete. A lógica
-usa quadros temporizados sem `delay()`, portanto Wi-Fi, servidor, telemetria e
-o serviço dedicado de áudio continuam sendo atendidos durante a partida.
 
 ### Sono profundo
 
@@ -165,8 +160,10 @@ As interfaces web completas são arquivos físicos: `/index.html` e
 quando `/upload.html` está ausente, permitindo restaurar arquivos enquanto a
 FFat continuar montada.
 
-`servidor_web.cpp` monta a FFat antes de registrar as rotas HTTP. Se a montagem
-falhar, o servidor não é iniciado e o arquivo principal apresenta o erro de
+`servidor_web.cpp` monta a FFat antes de registrar as rotas HTTP. Para permitir
+o primeiro upload em um ESP32 novo, uma falha de montagem aciona a formatação
+da partição e uma nova tentativa de montagem. Se essa tentativa também falhar,
+o servidor não é iniciado e o arquivo principal apresenta o erro de
 armazenamento.
 
 `upload_arquivos.cpp` recebe os blocos enviados, valida o nome do arquivo e
