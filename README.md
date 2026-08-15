@@ -15,11 +15,11 @@ separados por responsabilidade:
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
+| `arquivos_audio.cpp` | Montagem do microSD e listagem das faixas locais |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
 | `display_radio.cpp` | Telas e animações do nome e do diagnóstico da estação |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
-| `jogo_breakout.cpp` | Lógica não bloqueante do teste do jogo Breakout |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Sincronização NTP e obtenção da hora local |
@@ -44,7 +44,6 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `BRILHO_LED_RGB` | Intensidade das cores do LED | 50 |
 | `BSSIDS_WIFI_BLOQUEADOS` | Pontos de acesso que o rádio deve ignorar | `DC:33:3D:F9:C0:34` |
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
-| `ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER` | Troca temporariamente a seleção física pelo jogo | `false` |
 | `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
@@ -53,13 +52,19 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
-| `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 2 |
+| `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 4 |
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 
 Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
 vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
+
+O leitor microSD usa SPI com `SCK=GPIO11`, `MISO=GPIO12`, `MOSI=GPIO13` e
+`CS=GPIO14`. O firmware monta o cartão sem tornar sua presença obrigatória e
+cria o diretório `/sons` quando necessário. A comunicação começa em 1 MHz para
+favorecer módulos com conversores de nível e ligações por fios. O cartão deve
+estar em FAT16 ou FAT32.
 
 O Wi-Fi aceita normalmente redes novas configuradas pelo portal. Quando há
 mais de um ponto para o SSID salvo, a reconexão escolhe o sinal mais forte cujo
@@ -87,6 +92,42 @@ reconexão progressiva de 1, 2, 5, 10 e 30 segundos. Se o Wi-Fi cair, ele
 aguarda a rede voltar antes de abrir uma nova conexão.
 
 Veja os detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+
+## Arquivos de áudio no microSD
+
+`arquivos_audio.cpp` fornece a base para futuras associações entre sons e
+eventos. `obterListaArquivosAudio()` devolve, em ordem alfabética, caminho e
+tamanho das faixas diretamente dentro de `/sons`. São reconhecidos MP3, M4A,
+AAC, WAV, FLAC, OGG, OGA e Opus.
+
+`tocarArquivoAudio()` envia o caminho escolhido à mesma fila usada pelas
+rádios. Somente a tarefa dedicada acessa a instância `Audio` e abre o arquivo
+com `connecttoFS()`. A fonte atual é interrompida e, ao terminar o arquivo, o
+serviço fica parado. A futura regra de eventos decidirá explicitamente se deve
+retomar a rádio anterior.
+
+O sketch independente
+`examples/leitor_micro_sd_com_encoder/leitor_micro_sd_com_encoder.ino` testa
+todo o caminho de hardware sem iniciar Wi-Fi nem servidor. O encoder principal
+navega pela lista; seu clique toca a faixa. Durante a reprodução, o giro ajusta
+o volume e o clique para a música e retorna à lista. Para facilitar o teste, o
+sketch procura arquivos compatíveis na raiz e nas subpastas do cartão; o módulo
+do firmware completo permanece deliberadamente restrito a `/sons`. Na partida,
+o exemplo faz até três tentativas de montar o cartão e reinicia o barramento SPI
+entre elas, para tolerar a inicialização mais lenta observada logo após o upload.
+
+Uso básico no firmware:
+
+```cpp
+std::vector<ArquivoAudioDisponivel> arquivos;
+
+if (
+    obterListaArquivosAudio(arquivos) &&
+    !arquivos.empty()
+) {
+    tocarArquivoAudio(arquivos[0].caminho);
+}
+```
 
 Na tela normal da rádio, a faixa superior percorre para a direita mostrando
 codec, bitrate, reserva de áudio em segundos, RSSI e BSSID. Os valores são uma
@@ -118,15 +159,8 @@ do percentual do buffer.
 
 ## Encoder
 
-Enquanto `ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER` estiver habilitado para o
-teste sem botões adicionais, um clique curto entra ou sai do Breakout e a
-rotação move a raquete. A seleção física de estações fica temporariamente
-indisponível; o clique longo continua desligando o aparelho e o áudio continua
-tocando durante o jogo.
-
-Ao desabilitar o teste, o comportamento normal do encoder volta a ser:
-
-O modo de repouso é sempre o controle de volume:
+O firmware usa um encoder com `CLK`, `DT` e botão nos GPIOs 16, 15 e 17. Seu
+modo de repouso é sempre o controle de volume:
 
 - girar o encoder altera o volume e o mostra na barra inferior;
 - após dois segundos, a barra volta a mostrar buffer e posição da estação;
@@ -143,7 +177,7 @@ O modo de repouso é sempre o controle de volume:
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
 duas passagens do `loop()`, todos são aplicados. O valor
-`TRANSICOES_ENCODER_POR_DETENTE` está calibrado em `2` para o componente
+`TRANSICOES_ENCODER_POR_DETENTE` está calibrado em `4` para o componente
 instalado.
 
 Enquanto o controle elétrico de `SD_MODE` não for instalado, o deep sleep
@@ -220,8 +254,10 @@ raiz da partição FFat do dispositivo.
 
 A rota `/upload` tenta servir `/upload.html`. Se o arquivo estiver ausente,
 o firmware apresenta um formulário mínimo incorporado que permite restaurar
-os arquivos da interface. Esse fallback depende de a FFat ter sido montada;
-ele não recupera uma falha de montagem do sistema de arquivos.
+os arquivos da interface. Em um ESP32 novo, se a primeira montagem da FFat
+falhar porque a partição ainda não está formatada, o firmware formata a
+partição e tenta montá-la novamente. Se nem assim a montagem funcionar, o
+servidor web não é iniciado.
 
 O upload aceita nomes simples e faz substituição por arquivo temporário.
 Esse fluxo fica em `upload_arquivos.cpp`, que trata separadamente o início, a

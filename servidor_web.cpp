@@ -151,7 +151,10 @@ void responderStatusSistema() {
 }
 
 bool iniciarArmazenamentoEServidorWeb() {
-    if (!FFat.begin(false)) {
+    // Um ESP32 novo ainda não possui um sistema de arquivos na partição.
+    // A formatação na falha torna o formulário incorporado de /upload
+    // acessível para fazer o primeiro envio de index.html e upload.html.
+    if (!FFat.begin(true)) {
         Serial.println(
             "Falha ao iniciar o FFat."
         );

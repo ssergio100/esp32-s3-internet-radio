@@ -63,6 +63,24 @@
             background: #125ea9;
         }
 
+        .acoes-cabecalho {
+            display: flex;
+            flex-shrink: 0;
+            gap: 10px;
+        }
+
+        .btn-pesquisar {
+            padding: 12px 18px;
+            background: white;
+            color: #1976d2;
+            border: 1px solid #1976d2;
+            font-weight: bold;
+        }
+
+        .btn-pesquisar:hover {
+            background: #eaf3fb;
+        }
+
         .painel {
             overflow: hidden;
             background: white;
@@ -280,6 +298,188 @@
             background: #125ea9;
         }
 
+        .modal-pesquisa-conteudo {
+            display: flex;
+            width: 100%;
+            max-width: 900px;
+            max-height: calc(100vh - 40px);
+            flex-direction: column;
+        }
+
+        .filtros-pesquisa {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .campo-pesquisa label {
+            display: block;
+            margin-bottom: 6px;
+            color: #546168;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .campo-pesquisa input,
+        .campo-pesquisa select {
+            width: 100%;
+            min-width: 0;
+            padding: 11px 12px;
+            border: 1px solid #cfd6da;
+            border-radius: 6px;
+            background: white;
+            outline: none;
+            font-size: 15px;
+        }
+
+        .campo-pesquisa input:focus,
+        .campo-pesquisa select:focus {
+            border-color: #1976d2;
+            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.12);
+        }
+
+        .linha-pesquisa {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .linha-pesquisa .campo-pesquisa {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .btn-buscar {
+            padding: 11px 20px;
+            background: #1976d2;
+            color: white;
+            font-weight: bold;
+        }
+
+        .dica-pesquisa {
+            margin: 10px 0 0;
+            color: #546168;
+            font-size: 12px;
+        }
+
+        .preview {
+            display: none;
+            align-items: center;
+            gap: 15px;
+            margin-top: 18px;
+            padding: 12px 14px;
+            background: #eef6fd;
+            border-radius: 7px;
+        }
+
+        .preview.ativo {
+            display: flex;
+        }
+
+        .preview-informacao {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .preview-informacao strong,
+        .preview-informacao span {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .preview-informacao span {
+            margin-top: 3px;
+            color: #607d8b;
+            font-size: 12px;
+        }
+
+        .preview audio {
+            width: 300px;
+            max-width: 100%;
+            height: 38px;
+        }
+
+        .resultados-pesquisa {
+            min-height: 150px;
+            max-height: 55vh;
+            overflow-y: auto;
+            padding: 0 22px 22px;
+        }
+
+        .mensagem-pesquisa {
+            padding: 38px 15px;
+            color: #7b878d;
+            text-align: center;
+        }
+
+        .resultado-radio {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 15px 0;
+            border-bottom: 1px solid #e6e9ec;
+        }
+
+        .resultado-radio:last-child {
+            border-bottom: 0;
+        }
+
+        .resultado-informacao {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .resultado-nome {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+
+        .resultado-detalhes {
+            color: #68757d;
+            font-size: 13px;
+        }
+
+        .resultado-url {
+            display: block;
+            overflow: hidden;
+            margin-top: 5px;
+            color: #78909c;
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .resultado-acoes {
+            display: flex;
+            flex-shrink: 0;
+            gap: 8px;
+        }
+
+        .btn-testar,
+        .btn-importar {
+            padding: 9px 13px;
+            font-weight: bold;
+        }
+
+        .btn-testar {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .btn-testar.tocando {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .btn-importar {
+            background: #1976d2;
+            color: white;
+        }
+
         @media (max-width: 650px) {
             body {
                 padding: 15px;
@@ -290,7 +490,12 @@
                 flex-direction: column;
             }
 
-            .btn-nova {
+            .acoes-cabecalho {
+                flex-direction: column;
+            }
+
+            .btn-nova,
+            .btn-pesquisar {
                 width: 100%;
             }
 
@@ -310,6 +515,34 @@
             .btn-excluir::after {
                 content: "Excluir";
             }
+
+            .filtros-pesquisa {
+                grid-template-columns: 1fr;
+            }
+
+            .linha-pesquisa,
+            .preview,
+            .resultado-radio {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .btn-buscar {
+                width: 100%;
+            }
+
+            .preview audio {
+                width: 100%;
+            }
+
+            .resultado-acoes {
+                width: 100%;
+            }
+
+            .btn-testar,
+            .btn-importar {
+                flex: 1;
+            }
         }
     </style>
 </head>
@@ -322,9 +555,19 @@
                 <p id="quantidadeRadios">Nenhuma rádio cadastrada</p>
             </div>
 
-            <button type="button" class="btn-nova" id="btnNovaRadio">
-                + Nova rádio
-            </button>
+            <div class="acoes-cabecalho">
+                <button
+                    type="button"
+                    class="btn-pesquisar"
+                    id="btnPesquisarRadio"
+                >
+                    Pesquisar rádios
+                </button>
+
+                <button type="button" class="btn-nova" id="btnNovaRadio">
+                    + Nova rádio
+                </button>
+            </div>
         </header>
 
         <section class="painel">
@@ -420,6 +663,113 @@
         </div>
     </div>
 
+    <div class="modal" id="modalPesquisa">
+        <div class="modal-conteudo modal-pesquisa-conteudo">
+            <div class="modal-cabecalho">
+                <h2>Pesquisar rádios</h2>
+
+                <button
+                    type="button"
+                    class="btn-fechar"
+                    id="btnFecharPesquisa"
+                    aria-label="Fechar"
+                >
+                    &times;
+                </button>
+            </div>
+
+            <div class="modal-corpo">
+                <form class="pesquisa-form" id="formPesquisa">
+                    <div class="filtros-pesquisa">
+                        <div class="campo-pesquisa">
+                            <label for="paisPesquisa">País</label>
+
+                            <select id="paisPesquisa">
+                                <option value="">Todos os países</option>
+                                <option value="BR" selected>Brasil</option>
+                                <option value="AR">Argentina</option>
+                                <option value="AU">Austrália</option>
+                                <option value="CA">Canadá</option>
+                                <option value="CL">Chile</option>
+                                <option value="CO">Colômbia</option>
+                                <option value="DE">Alemanha</option>
+                                <option value="ES">Espanha</option>
+                                <option value="FR">França</option>
+                                <option value="GB">Reino Unido</option>
+                                <option value="IT">Itália</option>
+                                <option value="JP">Japão</option>
+                                <option value="MX">México</option>
+                                <option value="NZ">New Zealand</option>
+                                <option value="NL">Países Baixos</option>
+                                <option value="PT">Portugal</option>
+                                <option value="US">Estados Unidos</option>
+                                <option value="UY">Uruguai</option>
+                            </select>
+                        </div>
+
+                        <div class="campo-pesquisa">
+                            <label for="generoPesquisa">Gênero</label>
+
+                            <select id="generoPesquisa">
+                                <option value="">Todos os gêneros</option>
+                                <option value="rock">Rock</option>
+                                <option value="pop">Pop</option>
+                                <option value="jazz">Jazz</option>
+                                <option value="blues">Blues</option>
+                                <option value="electronic">Eletrônica</option>
+                                <option value="classical">Clássica</option>
+                                <option value="country">Country</option>
+                                <option value="mpb">MPB</option>
+                                <option value="sertanejo">Sertanejo</option>
+                                <option value="gospel">Gospel</option>
+                                <option value="news">Notícias</option>
+                                <option value="sports">Esportes</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="linha-pesquisa">
+                        <div class="campo-pesquisa">
+                            <label for="termoPesquisa">
+                                Nome da rádio (opcional)
+                            </label>
+
+                            <input
+                                type="search"
+                                id="termoPesquisa"
+                                placeholder="Ex.: Antena 1, Alpha FM..."
+                                autocomplete="off"
+                            >
+                        </div>
+
+                        <button type="submit" class="btn-buscar">
+                            Buscar
+                        </button>
+                    </div>
+                </form>
+
+                <p class="dica-pesquisa">
+                    Você pode combinar país, gênero e nome.
+                </p>
+
+                <div class="preview" id="areaPreview">
+                    <div class="preview-informacao">
+                        <strong id="nomePreview"></strong>
+                        <span id="statusPreview">Carregando transmissão...</span>
+                    </div>
+
+                    <audio id="playerPreview" controls></audio>
+                </div>
+            </div>
+
+            <div class="resultados-pesquisa" id="resultadosPesquisa">
+                <div class="mensagem-pesquisa">
+                    Digite o nome de uma rádio para pesquisar.
+                </div>
+            </div>
+        </div>
+    </div>
+
    <script>
     const corpoTabela = document.getElementById("corpoTabela");
     const listaVazia = document.getElementById("listaVazia");
@@ -430,12 +780,27 @@
     const campoNome = document.getElementById("nome");
     const campoUrl = document.getElementById("url");
 
+    const modalPesquisa = document.getElementById("modalPesquisa");
+    const formPesquisa = document.getElementById("formPesquisa");
+    const termoPesquisa = document.getElementById("termoPesquisa");
+    const paisPesquisa = document.getElementById("paisPesquisa");
+    const generoPesquisa = document.getElementById("generoPesquisa");
+    const resultadosPesquisa = document.getElementById(
+        "resultadosPesquisa"
+    );
+    const areaPreview = document.getElementById("areaPreview");
+    const nomePreview = document.getElementById("nomePreview");
+    const statusPreview = document.getElementById("statusPreview");
+    const playerPreview = document.getElementById("playerPreview");
+
     const botoesEstrelas = document.querySelectorAll(
         "#seletorEstrelas button"
     );
 
     let estrelasSelecionadas = 3;
     let radios = [];
+    let radiosEncontradas = [];
+    let indicePreview = -1;
 
     function escaparHtml(texto) {
         const elemento = document.createElement("div");
@@ -544,11 +909,14 @@
         }
     }
 
-    function abrirModal() {
+    function abrirModal(nome, url) {
         formRadio.reset();
 
         estrelasSelecionadas = 3;
         atualizarSeletorEstrelas();
+
+        campoNome.value = nome || "";
+        campoUrl.value = url || "";
 
         modalRadio.classList.add("aberto");
         campoNome.focus();
@@ -567,6 +935,258 @@
                 valor <= estrelasSelecionadas
             );
         });
+    }
+
+    function abrirPesquisa() {
+        modalPesquisa.classList.add("aberto");
+        termoPesquisa.focus();
+    }
+
+    function pararPreview() {
+        playerPreview.pause();
+        playerPreview.removeAttribute("src");
+        playerPreview.load();
+
+        areaPreview.classList.remove("ativo");
+        indicePreview = -1;
+
+        resultadosPesquisa
+            .querySelectorAll(".btn-testar")
+            .forEach(function (botao) {
+                botao.classList.remove("tocando");
+                botao.textContent = "Testar";
+            });
+    }
+
+    function fecharPesquisa() {
+        pararPreview();
+        modalPesquisa.classList.remove("aberto");
+    }
+
+    function obterUrlRadio(radio) {
+        return radio.url_resolved || radio.url || "";
+    }
+
+    function criarDetalhesRadio(radio) {
+        const detalhes = [];
+
+        if (radio.state) {
+            detalhes.push(radio.state);
+        } else if (radio.country) {
+            detalhes.push(radio.country);
+        }
+
+        if (radio.codec) {
+            detalhes.push(radio.codec);
+        }
+
+        if (Number(radio.bitrate) > 0) {
+            detalhes.push(radio.bitrate + " kbps");
+        }
+
+        detalhes.push((Number(radio.votes) || 0) + " votos");
+
+        return detalhes.join(" · ");
+    }
+
+    function renderizarResultadosPesquisa() {
+        if (radiosEncontradas.length === 0) {
+            resultadosPesquisa.innerHTML = `
+                <div class="mensagem-pesquisa">
+                    Nenhuma rádio encontrada.
+                </div>
+            `;
+
+            return;
+        }
+
+        resultadosPesquisa.innerHTML =
+            radiosEncontradas.map(function (radio, indice) {
+                const url = obterUrlRadio(radio);
+
+                return `
+                    <div class="resultado-radio">
+                        <div class="resultado-informacao">
+                            <strong class="resultado-nome">
+                                ${escaparHtml(radio.name || "Sem nome")}
+                            </strong>
+
+                            <span class="resultado-detalhes">
+                                ${escaparHtml(criarDetalhesRadio(radio))}
+                            </span>
+
+                            <span
+                                class="resultado-url"
+                                title="${escaparHtml(url)}"
+                            >
+                                ${escaparHtml(url)}
+                            </span>
+                        </div>
+
+                        <div class="resultado-acoes">
+                            <button
+                                type="button"
+                                class="btn-testar"
+                                data-indice="${indice}"
+                            >
+                                Testar
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn-importar"
+                                data-indice="${indice}"
+                            >
+                                Adicionar
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+    }
+
+    async function pesquisarRadios() {
+        const termo = termoPesquisa.value.trim();
+        const pais = paisPesquisa.value;
+        const genero = generoPesquisa.value;
+
+        pararPreview();
+
+        resultadosPesquisa.innerHTML = `
+            <div class="mensagem-pesquisa">
+                Pesquisando...
+            </div>
+        `;
+
+        const parametros = new URLSearchParams({
+            hidebroken: "true",
+            order: "votes",
+            reverse: "true",
+            limit: "30"
+        });
+
+        if (termo) {
+            parametros.set("name", termo);
+        }
+
+        if (pais) {
+            parametros.set("countrycode", pais);
+        }
+
+        if (genero) {
+            parametros.set("tag", genero);
+        }
+
+        const servidores = [
+            "https://de1.api.radio-browser.info",
+            "https://at1.api.radio-browser.info",
+            "https://nl1.api.radio-browser.info"
+        ];
+
+        let ultimoErro = null;
+
+        for (const servidor of servidores) {
+            try {
+                const resposta = await fetch(
+                    servidor +
+                    "/json/stations/search?" +
+                    parametros.toString()
+                );
+
+                if (!resposta.ok) {
+                    throw new Error("Servidor indisponível");
+                }
+
+                const dados = await resposta.json();
+
+                radiosEncontradas = Array.isArray(dados)
+                    ? dados.filter(function (radio) {
+                        return Boolean(obterUrlRadio(radio));
+                    })
+                    : [];
+
+                renderizarResultadosPesquisa();
+
+                return;
+            } catch (erro) {
+                ultimoErro = erro;
+            }
+        }
+
+        radiosEncontradas = [];
+        resultadosPesquisa.innerHTML = `
+            <div class="mensagem-pesquisa">
+                Não foi possível consultar o Radio Browser.
+                Verifique a internet e tente novamente.
+            </div>
+        `;
+
+        console.error(ultimoErro);
+    }
+
+    function testarRadio(indice) {
+        const radio = radiosEncontradas[indice];
+
+        if (!radio) {
+            return;
+        }
+
+        if (indicePreview === indice && !playerPreview.paused) {
+            playerPreview.pause();
+
+            const botaoAtual = resultadosPesquisa.querySelector(
+                '.btn-testar[data-indice="' + indice + '"]'
+            );
+
+            if (botaoAtual) {
+                botaoAtual.classList.remove("tocando");
+                botaoAtual.textContent = "Testar";
+            }
+
+            return;
+        }
+
+        pararPreview();
+
+        indicePreview = indice;
+        nomePreview.textContent = radio.name || "Sem nome";
+        statusPreview.textContent = "Carregando transmissão...";
+        areaPreview.classList.add("ativo");
+
+        const botao = resultadosPesquisa.querySelector(
+            '.btn-testar[data-indice="' + indice + '"]'
+        );
+
+        if (botao) {
+            botao.classList.add("tocando");
+            botao.textContent = "Parar";
+        }
+
+        playerPreview.src = obterUrlRadio(radio);
+
+        playerPreview.play().catch(function () {
+            statusPreview.textContent =
+                "O navegador não conseguiu reproduzir esta transmissão.";
+
+            if (botao) {
+                botao.classList.remove("tocando");
+                botao.textContent = "Testar";
+            }
+        });
+    }
+
+    function prepararRadioParaAdicionar(indice) {
+        const radio = radiosEncontradas[indice];
+
+        if (!radio) {
+            return;
+        }
+
+        const nome = (radio.name || "").trim().slice(0, 50);
+        const url = obterUrlRadio(radio);
+
+        fecharPesquisa();
+        abrirModal(nome, url);
     }
 
     async function adicionarRadio(nome, url) {
@@ -640,7 +1260,13 @@
 
     document
         .getElementById("btnNovaRadio")
-        .addEventListener("click", abrirModal);
+        .addEventListener("click", function () {
+            abrirModal();
+        });
+
+    document
+        .getElementById("btnPesquisarRadio")
+        .addEventListener("click", abrirPesquisa);
 
     document
         .getElementById("btnFecharModal")
@@ -649,6 +1275,45 @@
     document
         .getElementById("btnCancelar")
         .addEventListener("click", fecharModal);
+
+    document
+        .getElementById("btnFecharPesquisa")
+        .addEventListener("click", fecharPesquisa);
+
+    formPesquisa.addEventListener("submit", function (evento) {
+        evento.preventDefault();
+        pesquisarRadios();
+    });
+
+    resultadosPesquisa.addEventListener("click", function (evento) {
+        const botaoTestar = evento.target.closest(".btn-testar");
+
+        if (botaoTestar) {
+            testarRadio(Number(botaoTestar.dataset.indice));
+            return;
+        }
+
+        const botaoImportar = evento.target.closest(".btn-importar");
+
+        if (botaoImportar) {
+            prepararRadioParaAdicionar(
+                Number(botaoImportar.dataset.indice)
+            );
+        }
+    });
+
+    playerPreview.addEventListener("playing", function () {
+        statusPreview.textContent = "Reproduzindo prévia";
+    });
+
+    playerPreview.addEventListener("waiting", function () {
+        statusPreview.textContent = "Carregando transmissão...";
+    });
+
+    playerPreview.addEventListener("error", function () {
+        statusPreview.textContent =
+            "Esta transmissão não pôde ser reproduzida no navegador.";
+    });
 
     botoesEstrelas.forEach(function (botao) {
         botao.addEventListener("click", function () {
@@ -709,9 +1374,16 @@
         }
     });
 
+    modalPesquisa.addEventListener("click", function (evento) {
+        if (evento.target === modalPesquisa) {
+            fecharPesquisa();
+        }
+    });
+
     document.addEventListener("keydown", function (evento) {
         if (evento.key === "Escape") {
             fecharModal();
+            fecharPesquisa();
         }
     });
 

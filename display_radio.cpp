@@ -22,8 +22,7 @@ namespace {
 
     enum class TelaDisplay {
         MENSAGEM,
-        RADIO,
-        JOGO_BREAKOUT
+        RADIO
     };
 
     TelaDisplay telaAtual = TelaDisplay::MENSAGEM;
@@ -745,100 +744,6 @@ void mostrarVolume(
     volumeBarraInferior = volume;
     exibindoVolumeNaBarraInferior = true;
     desenharTelaRadio();
-}
-
-void mostrarJogoBreakout(
-    const QuadroJogoBreakout& quadro
-) {
-    if (!disponivel) {
-        return;
-    }
-
-    telaAtual = TelaDisplay::JOGO_BREAKOUT;
-    prepararTela();
-
-    if (quadro.tela == TelaJogoBreakout::INSTRUCOES) {
-        escreverCentralizado("BREAKOUT", 14, 2);
-        escreverCentralizado("Gire para mover", 39, 1);
-        escreverCentralizado("Clique para sair", 51, 1);
-        display.display();
-        return;
-    }
-
-    if (quadro.tela == TelaJogoBreakout::FIM_DE_JOGO) {
-        escreverCentralizado("FIM DE JOGO", 9, 1);
-        escreverCentralizado(
-            "Pontos " + String(quadro.pontuacao),
-            27,
-            1
-        );
-        escreverCentralizado(
-            "Nivel " + String(quadro.nivel),
-            39,
-            1
-        );
-        escreverCentralizado("Clique para sair", 53, 1);
-        display.display();
-        return;
-    }
-
-    display.setTextSize(1);
-    display.setCursor(2, 0);
-    display.print("P:");
-    display.print(quadro.pontuacao);
-    display.setCursor(92, 0);
-    display.print("N:");
-    display.print(quadro.nivel);
-    display.drawFastHLine(
-        0,
-        9,
-        DISPLAY_LARGURA,
-        SSD1306_WHITE
-    );
-
-    for (int indice = 0;
-         indice < QUANTIDADE_BLOCOS_BREAKOUT;
-         indice++) {
-        if (!quadro.blocoVisivel[indice]) {
-            continue;
-        }
-
-        int coluna = indice % COLUNAS_BLOCOS_BREAKOUT;
-        int linha = indice / COLUNAS_BLOCOS_BREAKOUT;
-
-        display.fillRect(
-            POSICAO_X_PRIMEIRO_BLOCO_BREAKOUT_PX +
-                coluna * (
-                    LARGURA_BLOCO_BREAKOUT_PX +
-                    ESPACO_HORIZONTAL_BLOCOS_BREAKOUT_PX
-                ),
-            POSICAO_Y_PRIMEIRO_BLOCO_BREAKOUT_PX +
-                linha * (
-                    ALTURA_BLOCO_BREAKOUT_PX +
-                    ESPACO_VERTICAL_BLOCOS_BREAKOUT_PX
-                ),
-            LARGURA_BLOCO_BREAKOUT_PX,
-            ALTURA_BLOCO_BREAKOUT_PX,
-            SSD1306_WHITE
-        );
-    }
-
-    display.fillRect(
-        quadro.bolaX,
-        quadro.bolaY,
-        LARGURA_BOLA_BREAKOUT_PX,
-        ALTURA_BOLA_BREAKOUT_PX,
-        SSD1306_WHITE
-    );
-    display.fillRect(
-        quadro.raqueteX,
-        POSICAO_Y_RAQUETE_BREAKOUT_PX,
-        LARGURA_RAQUETE_BREAKOUT_PX,
-        ALTURA_RAQUETE_BREAKOUT_PX,
-        SSD1306_WHITE
-    );
-
-    display.display();
 }
 
 void desligarDisplay() {

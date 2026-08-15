@@ -23,15 +23,25 @@ constexpr int DISPLAY_LARGURA  = 128;
 constexpr int DISPLAY_ALTURA   = 64;
 constexpr int DISPLAY_ENDERECO = 0x3C;
 
-// Encoder rotativo
-constexpr int PIN_ENCODER_CLK = 15;
-constexpr int PIN_ENCODER_DT  = 16;
+// Encoder rotativo principal
+constexpr int PIN_ENCODER_CLK = 16;
+constexpr int PIN_ENCODER_DT  = 15;
 constexpr int PIN_ENCODER_SW  = 17;
 constexpr int PIN_ENCODER_VCC = -1;
 
-// Valor calibrado para o encoder instalado: cada detente produz duas
+// Leitor microSD no barramento SPI
+constexpr int PIN_CARTAO_MICRO_SD_SCK  = 11;
+constexpr int PIN_CARTAO_MICRO_SD_MISO = 12;
+constexpr int PIN_CARTAO_MICRO_SD_MOSI = 13;
+constexpr int PIN_CARTAO_MICRO_SD_CS   = 14;
+
+// Frequência conservadora para módulos com conversores de nível e fios longos.
+// Aumente somente depois de confirmar a leitura estável do cartão.
+constexpr uint32_t FREQUENCIA_CARTAO_MICRO_SD_HZ = 1000000;
+
+// Valor calibrado para o encoder instalado: cada detente produz quatro
 // transições válidas reconhecidas pela biblioteca.
-constexpr int TRANSICOES_ENCODER_POR_DETENTE = 2;
+constexpr int TRANSICOES_ENCODER_POR_DETENTE = 4;
 
 // =====================================================
 // Comportamento ajustável pelo usuário
@@ -56,11 +66,6 @@ constexpr int VOLUME_PADRAO = 10;
 // Tempo durante o qual a barra inferior mostra o volume após um ajuste.
 constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
-
-// Teste temporário do Breakout antes da instalação dos dois botões.
-// Quando ativo, o clique curto entra/sai do jogo e a rotação move a raquete;
-// a seleção física de estações fica temporariamente indisponível.
-constexpr bool ATIVAR_TESTE_JOGO_BREAKOUT_COM_ENCODER = false;
 
 // Tempo que o botão do encoder deve permanecer pressionado para desligar.
 // Aumente para reduzir acionamentos acidentais; diminua para desligar mais rápido.

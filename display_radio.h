@@ -3,8 +3,6 @@
 
 #include <Arduino.h>
 
-#include "jogo_breakout.h"
-
 void iniciarDisplay();
 
 void mostrarConfiguracaoWifi();
@@ -30,10 +28,6 @@ void mostrarEstadoRadio(
 );
 
 void mostrarVolume(int volume);
-
-void mostrarJogoBreakout(
-    const QuadroJogoBreakout& quadro
-);
 
 // Apaga o painel do OLED antes da entrada em deep sleep.
 void desligarDisplay();
