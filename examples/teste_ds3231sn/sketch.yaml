@@ -1,0 +1,15 @@
+profiles:
+  esp32s3:
+    notes: Mesmo ESP32-S3 e mesmas opções usadas pelo firmware do rádio web.
+    fqbn: esp32:esp32:esp32s3:UploadSpeed=460800,USBMode=hwcdc,CDCOnBoot=default,MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,CPUFreq=240,FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,DebugLevel=none,PSRAM=opi,LoopCore=1,EventsCore=1,EraseFlash=none,JTAGAdapter=default,ZigbeeMode=default
+    platforms:
+      - platform: esp32:esp32 (3.3.10)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - RTClib (2.1.4)
+      - dependency: Adafruit BusIO (1.17.4)
+
+default_profile: esp32s3
+default_fqbn: esp32:esp32:esp32s3:UploadSpeed=460800,USBMode=hwcdc,CDCOnBoot=default,MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,CPUFreq=240,FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,DebugLevel=none,PSRAM=opi,LoopCore=1,EventsCore=1,EraseFlash=none,JTAGAdapter=default,ZigbeeMode=default
+default_port_config:
+  baudrate: 115200

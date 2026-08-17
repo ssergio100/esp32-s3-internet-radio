@@ -66,6 +66,12 @@ cria o diretório `/sons` quando necessário. A comunicação começa em 1 MHz p
 favorecer módulos com conversores de nível e ligações por fios. O cartão deve
 estar em FAT16 ou FAT32.
 
+O sketch independente
+`examples/teste_ds3231sn/teste_ds3231sn.ino` valida o RTC DS3231SN pela porta
+serial antes de sua integração ao firmware. Ele compartilha com o OLED o I2C
+em `SDA=GPIO9` e `SCL=GPIO10`, identifica os dispositivos do barramento e lê
+data, hora, temperatura e o indicador de perda de alimentação.
+
 O Wi-Fi aceita normalmente redes novas configuradas pelo portal. Quando há
 mais de um ponto para o SSID salvo, a reconexão escolhe o sinal mais forte cujo
 BSSID não esteja em `BSSIDS_WIFI_BLOQUEADOS`. A busca é assíncrona e ocorre
@@ -245,6 +251,12 @@ feita automaticamente pelo script.
 O perfil `esp32s3` de `sketch.yaml` registra a configuração completa e pode
 provisionar uma máquina nova. Esse modo permite que o Arduino CLI instale as
 versões fixadas; o script rotineiro apenas usa o ambiente já instalado.
+
+A Arduino IDE 2 ainda não importa automaticamente desse arquivo a placa e as
+opções dos menus. Na primeira abertura pela IDE, selecione `ESP32S3 Dev Module`
+e reproduza as opções de [docs/DEPENDENCIAS.md](docs/DEPENDENCIAS.md); depois
+disso, a IDE associa a seleção localmente ao caminho do sketch. Cada exemplo
+que precisa de um perfil reproduzível possui seu próprio `sketch.yaml`.
 
 ## Interface web
 
