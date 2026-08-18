@@ -61,11 +61,13 @@ nome rolante da estação e apresenta os estados de conexão e bufferização. N
 seleção, o nome permanece estático e reduz a fonte quando não cabe no tamanho
 normal. Os estados também ficam estáticos, em fonte pequena. Quando o áudio
 começa a tocar, a faixa volta ao nome no tamanho normal e retoma a rolagem. O
-diagnóstico percorre para a direita e mostra codec,
+diagnóstico percorre para a direita e mostra data e hora locais, codec,
 bitrate, reserva de áudio, RSSI e BSSID. Seus valores são renovados uma vez por
-segundo a partir da fotografia pública do serviço de áudio e de leituras
-passivas do Wi-Fi. O display não acessa a instância de `Audio` nem influencia a
-escolha do ponto de acesso.
+segundo a partir do relógio do sistema, da fotografia pública do serviço de
+áudio e de leituras passivas do Wi-Fi. A hora do sistema já foi iniciada pelo
+DS3231, portanto o display não acrescenta consultas I2C periódicas ao RTC. Ele
+também não acessa a instância de `Audio` nem influencia a escolha do ponto de
+acesso.
 
 A faixa inferior invertida mostra permanentemente a reserva de áudio à esquerda
 e a posição da estação na lista à direita. A reserva também vem da fotografia
@@ -104,7 +106,7 @@ O arquivo principal mantém visível a transição de desligamento: reconhece o
 clique longo, solicita a parada ao serviço de áudio, espera a confirmação por
 um tempo limitado, apaga LED e OLED e então pede a entrada em deep sleep.
 `sono_profundo.cpp` encapsula somente as APIs específicas do ESP32-S3: configura
-o `GPIO17` ativo em nível baixo como fonte RTC de despertar, informa a causa da
+o `GPIO7` ativo em nível baixo como fonte RTC de despertar, informa a causa da
 inicialização e inicia o sono.
 
 O despertar pelo botão reinicia normalmente o firmware. Como o controle físico
@@ -113,10 +115,24 @@ MAX98357A em standby automático, e não em shutdown completo.
 
 ### Relógio
 
-`relogio.cpp` concentra a sincronização NTP, o fuso horário e a obtenção
-da data e hora locais. O arquivo principal continua iniciando o relógio para
-mantê-lo disponível ao firmware, embora a tela normal não o exiba atualmente.
-Fuso, ajuste de horário de verão e servidores NTP ficam em `configuracao.h`.
+`relogio.cpp` define a política entre as fontes de horário. No boot, ele tenta
+iniciar o relógio do sistema com o instante UTC preservado pelo DS3231 e inicia
+o SNTP sem bloquear. O callback de rede apenas publica que ocorreu uma
+sincronização; o `loop()` chama `processarRelogio()`, que mantém todo acesso ao
+I2C fora da tarefa de rede e corrige o RTC quando necessário.
+
+`relogio_rtc.cpp` é o único proprietário da instância `RTC_DS3231`. Ele
+encapsula RTClib e oferece inicialização, diagnóstico de perda de alimentação,
+leitura e ajuste em UTC e temperatura. O firmware não armazena hora local no
+RTC: fuso e horário de verão são aplicados pelo relógio do sistema somente na
+apresentação. Alarmes e `INT/SQW` permanecem sem uso enquanto não houver uma
+regra concreta de agendamento.
+
+O SNTP é a referência de precisão e o RTC é a referência de continuidade. A
+pilha consulta a rede no intervalo configurado, mas o DS3231 só é regravado
+quando perdeu sua referência ou quando a diferença alcançou o limiar definido
+em `configuracao.h`. A hora local aparece no diagnóstico superior da tela
+normal.
 
 ### Telemetria
 

@@ -92,7 +92,7 @@ bool iniciarArquivosAudio() {
             "Falha ao montar o cartao microSD."
         );
         Serial.println(
-            "Confira SCK=11, MISO=12, MOSI=13, CS=14 e FAT32."
+            "Confira SCK=42, MISO=41, MOSI=40, CS=39 e FAT32."
         );
         SPI.end();
 

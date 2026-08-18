@@ -1,6 +1,7 @@
 #include "display_radio.h"
 #include "audio_radio.h"
 #include "configuracao.h"
+#include "relogio.h"
 
 #include <Wire.h>
 #include <WiFi.h>
@@ -167,11 +168,38 @@ namespace {
             "s";
     }
 
+    String formatarDataHoraParaDiagnostico() {
+        struct tm dataHora = {};
+
+        if (!obterDataHoraLocal(dataHora)) {
+            return "--/--/---- --:--:--";
+        }
+
+        char textoDataHora[20];
+
+        snprintf(
+            textoDataHora,
+            sizeof(textoDataHora),
+            "%02d/%02d/%04d %02d:%02d:%02d",
+            dataHora.tm_mday,
+            dataHora.tm_mon + 1,
+            dataHora.tm_year + 1900,
+            dataHora.tm_hour,
+            dataHora.tm_min,
+            dataHora.tm_sec
+        );
+
+        return String(textoDataHora);
+    }
+
     String montarTextoDiagnostico(
         const StatusAudio& status
     ) {
         String texto;
-        texto.reserve(112);
+        texto.reserve(136);
+
+        texto += formatarDataHoraParaDiagnostico();
+        texto += " | ";
 
         texto += (
             status.codec[0] != '\0'
@@ -607,8 +635,8 @@ namespace {
 
 void iniciarDisplay() {
     Wire.begin(
-        PIN_DISPLAY_SDA,
-        PIN_DISPLAY_SCL
+        PIN_BARRAMENTO_I2C_SDA,
+        PIN_BARRAMENTO_I2C_SCL
     );
 
     disponivel = display.begin(

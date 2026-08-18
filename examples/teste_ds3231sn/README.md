@@ -32,8 +32,8 @@ correta.
 | --- | --- |
 | `VCC` | `3V3` |
 | `GND` | `GND` |
-| `SDA` | `GPIO9` |
-| `SCL` | `GPIO10` |
+| `SDA` | `GPIO17` |
+| `SCL` | `GPIO18` |
 
 O RTC compartilha o I²C com o OLED: o DS3231SN responde em `0x68` e o OLED
 em `0x3C`. O sketch detecta ambos, mas não escreve no display. Alimente o
@@ -64,3 +64,7 @@ a alimentação principal, aguardar alguns minutos com a bateria instalada e
 religar o circuito para confirmar que a hora continuou avançando e que
 `OSF=0`. O valor gravado pelo comando `a` pode ficar alguns segundos atrasado,
 pois representa o momento da compilação e usa o relógio local do computador.
+
+O firmware principal armazena UTC no DS3231. Portanto, o valor local gravado
+por este teste serve somente à validação inicial; na primeira sincronização do
+firmware completo, o NTP substituirá esse valor pela representação UTC correta.

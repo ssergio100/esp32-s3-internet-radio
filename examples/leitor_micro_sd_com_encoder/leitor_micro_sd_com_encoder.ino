@@ -26,24 +26,24 @@
 #include "Audio.h"
 
 // Display OLED SSD1306
-constexpr int PIN_DISPLAY_SDA = 9;
-constexpr int PIN_DISPLAY_SCL = 10;
+constexpr int PIN_DISPLAY_SDA = 17;
+constexpr int PIN_DISPLAY_SCL = 18;
 constexpr int DISPLAY_LARGURA = 128;
 constexpr int DISPLAY_ALTURA = 64;
 constexpr int DISPLAY_ENDERECO = 0x3C;
 
 // Encoder principal
-constexpr int PIN_ENCODER_CLK = 16;
-constexpr int PIN_ENCODER_DT = 15;
-constexpr int PIN_ENCODER_SW = 17;
+constexpr int PIN_ENCODER_CLK = 15;
+constexpr int PIN_ENCODER_DT = 16;
+constexpr int PIN_ENCODER_SW = 7;
 constexpr int PIN_ENCODER_VCC = -1;
 constexpr int TRANSICOES_ENCODER_POR_DETENTE = 4;
 
 // Leitor microSD SPI
-constexpr int PIN_CARTAO_SCK = 11;
-constexpr int PIN_CARTAO_MISO = 12;
-constexpr int PIN_CARTAO_MOSI = 13;
-constexpr int PIN_CARTAO_CS = 14;
+constexpr int PIN_CARTAO_SCK = 42;
+constexpr int PIN_CARTAO_MISO = 41;
+constexpr int PIN_CARTAO_MOSI = 40;
+constexpr int PIN_CARTAO_CS = 39;
 constexpr uint32_t FREQUENCIA_CARTAO_HZ = 1000000;
 constexpr int TENTATIVAS_INICIALIZACAO_CARTAO = 3;
 constexpr unsigned long INTERVALO_TENTATIVAS_CARTAO_MS = 500;
@@ -51,7 +51,7 @@ constexpr unsigned long INTERVALO_TENTATIVAS_CARTAO_MS = 500;
 // Saída I2S para o MAX98357A
 constexpr int PIN_I2S_BCLK = 5;
 constexpr int PIN_I2S_LRC = 6;
-constexpr int PIN_I2S_DIN = 7;
+constexpr int PIN_I2S_DIN = 4;
 
 constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
@@ -501,7 +501,7 @@ void setup() {
         mostrarMensagem("Falha no microSD");
         Serial.println("Falha ao montar o microSD.");
         Serial.println(
-            "Confira: SCK=11, MISO=12, MOSI=13, CS=14."
+            "Confira: SCK=42, MISO=41, MOSI=40, CS=39."
         );
         Serial.println(
             "Use GND comum e cartao formatado em FAT16/FAT32."

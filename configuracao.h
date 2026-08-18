@@ -13,27 +13,34 @@
 // Amplificador de áudio I2S MAX98357A
 constexpr int PIN_MAX98357A_BCLK = 5;
 constexpr int PIN_MAX98357A_LRC  = 6;
-constexpr int PIN_MAX98357A_DIN  = 7;
+constexpr int PIN_MAX98357A_DIN  = 4;
 
-// Display OLED SSD1306
-constexpr int PIN_DISPLAY_SDA = 9;
-constexpr int PIN_DISPLAY_SCL = 10;
+// Barramento I2C compartilhado pelo display OLED e pelo RTC DS3231.
+// Estes pinos mantêm o barramento fora do grupo reservado às válvulas Nixie.
+constexpr int PIN_BARRAMENTO_I2C_SDA = 17;
+constexpr int PIN_BARRAMENTO_I2C_SCL = 18;
 
 constexpr int DISPLAY_LARGURA  = 128;
 constexpr int DISPLAY_ALTURA   = 64;
 constexpr int DISPLAY_ENDERECO = 0x3C;
 
 // Encoder rotativo principal
-constexpr int PIN_ENCODER_CLK = 16;
-constexpr int PIN_ENCODER_DT  = 15;
-constexpr int PIN_ENCODER_SW  = 17;
+constexpr int PIN_ENCODER_CLK = 15;
+constexpr int PIN_ENCODER_DT  = 16;
+constexpr int PIN_ENCODER_SW  = 7;
 constexpr int PIN_ENCODER_VCC = -1;
 
-// Leitor microSD no barramento SPI
-constexpr int PIN_CARTAO_MICRO_SD_SCK  = 11;
-constexpr int PIN_CARTAO_MICRO_SD_MISO = 12;
-constexpr int PIN_CARTAO_MICRO_SD_MOSI = 13;
-constexpr int PIN_CARTAO_MICRO_SD_CS   = 14;
+// Leitor microSD no barramento SPI, no lado oposto ao futuro conjunto das
+// válvulas Nixie. O uso destes GPIOs substitui a função JTAG externa deles.
+constexpr int PIN_CARTAO_MICRO_SD_SCK  = 42;
+constexpr int PIN_CARTAO_MICRO_SD_MISO = 41;
+constexpr int PIN_CARTAO_MICRO_SD_MOSI = 40;
+constexpr int PIN_CARTAO_MICRO_SD_CS   = 39;
+
+// Reservados para o futuro driver das quatro válvulas Nixie:
+// BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
+// Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
+// O GPIO46, situado entre esses grupos na placa, permanece sem conexão.
 
 // Frequência conservadora para módulos com conversores de nível e fios longos.
 // Aumente somente depois de confirmar a leitura estável do cartão.
@@ -94,6 +101,13 @@ constexpr int FUSO_HORARIO_UTC_HORAS = -3;
 constexpr int AJUSTE_HORARIO_VERAO_HORAS = 0;
 constexpr const char* SERVIDOR_NTP_PRIMARIO = "pool.ntp.org";
 constexpr const char* SERVIDOR_NTP_SECUNDARIO = "time.nist.gov";
+
+// O SNTP corrige o relógio do sistema neste intervalo. O DS3231 só é gravado
+// quando a diferença alcançar o limiar abaixo ou quando perder a referência.
+// Aumente o intervalo para reduzir consultas; diminua para corrigir a deriva
+// do sistema com maior frequência enquanto houver rede.
+constexpr uint32_t INTERVALO_SINCRONIZACAO_NTP_MS = 3600000;
+constexpr uint32_t DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS = 2;
 
 // =====================================================
 // Ajustes internos

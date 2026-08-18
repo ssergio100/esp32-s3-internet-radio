@@ -22,7 +22,8 @@ separados por responsabilidade:
 | `indicador_led.cpp` | Cores e animações do LED RGB |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
-| `relogio.cpp` | Sincronização NTP e obtenção da hora local |
+| `relogio.cpp` | Política entre RTC, sincronização NTP e hora do sistema |
+| `relogio_rtc.cpp` | Acesso ao DS3231 por meio da RTClib |
 | `servidor_web.cpp` | Montagem da FFat, inicialização do servidor e mapa das rotas HTTP |
 | `sono_profundo.cpp` | Configuração do despertar e entrada em deep sleep |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
@@ -47,30 +48,55 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
-| `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 50 ms |
-| `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 50 ms |
+| `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 40 ms |
+| `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 13 ms |
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
 | `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 4 |
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
+| `INTERVALO_SINCRONIZACAO_NTP_MS` | Intervalo entre correções pela rede | 3600000 ms |
+| `DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS` | Diferença mínima para regravar o DS3231 | 2 segundos |
 
 Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
 vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
 
-O leitor microSD usa SPI com `SCK=GPIO11`, `MISO=GPIO12`, `MOSI=GPIO13` e
-`CS=GPIO14`. O firmware monta o cartão sem tornar sua presença obrigatória e
+O leitor microSD usa SPI com `SCK=GPIO42`, `MISO=GPIO41`, `MOSI=GPIO40` e
+`CS=GPIO39`. O firmware monta o cartão sem tornar sua presença obrigatória e
 cria o diretório `/sons` quando necessário. A comunicação começa em 1 MHz para
 favorecer módulos com conversores de nível e ligações por fios. O cartão deve
-estar em FAT16 ou FAT32.
+estar em FAT16 ou FAT32. Esses quatro GPIOs deixam de ficar disponíveis para
+um depurador JTAG externo.
 
 O sketch independente
 `examples/teste_ds3231sn/teste_ds3231sn.ino` valida o RTC DS3231SN pela porta
 serial antes de sua integração ao firmware. Ele compartilha com o OLED o I2C
-em `SDA=GPIO9` e `SCL=GPIO10`, identifica os dispositivos do barramento e lê
+em `SDA=GPIO17` e `SCL=GPIO18`, identifica os dispositivos do barramento e lê
 data, hora, temperatura e o indicador de perda de alimentação.
+
+A organização física reserva oito pinos na parte inferior do mesmo lado da
+placa para o futuro driver das Nixies: `GPIO8`, `GPIO3`, `GPIO9` e `GPIO10`
+formarão o barramento BCD, enquanto `GPIO11` a `GPIO14` selecionarão os quatro
+ânodos independentemente, com um GPIO dedicado para cada válvula. Os ânodos
+não usam conversão binária de dois para quatro. O I2C fica logo acima em
+`GPIO17/18`; o sinal `DIN` do I2S foi movido para o `GPIO4` e o botão do
+encoder para o `GPIO7`. O pino de strapping
+`GPIO46`, situado entre os grupos físicos, permanece sem conexão.
+
+Permanece como pendência implementar o driver das Nixies nesses oito pinos.
+Até essa etapa, o firmware não configura nem aciona `GPIO8`, `GPIO3` e
+`GPIO9` a `GPIO14` como parte do relógio. A implementação deverá primeiro ser
+validada em um exemplo independente, incluindo a saída BCD de quatro bits, a
+seleção direta dos quatro ânodos, o brilho e a multiplexação por timer do
+ESP32-S3.
+
+No firmware principal, o DS3231 conserva o horário em UTC e inicia o relógio
+do sistema antes da conexão Wi-Fi. O SNTP continua sendo a referência de
+precisão: após uma sincronização confirmada, o `loop()` corrige o RTC somente
+se ele perdeu a referência ou se o desvio chegou ao limite configurado. Fuso e
+horário de verão são aplicados apenas ao apresentar a hora local.
 
 O Wi-Fi aceita normalmente redes novas configuradas pelo portal. Quando há
 mais de um ponto para o SSID salvo, a reconexão escolhe o sinal mais forte cujo
@@ -109,8 +135,8 @@ AAC, WAV, FLAC, OGG, OGA e Opus.
 `tocarArquivoAudio()` envia o caminho escolhido à mesma fila usada pelas
 rádios. Somente a tarefa dedicada acessa a instância `Audio` e abre o arquivo
 com `connecttoFS()`. A fonte atual é interrompida e, ao terminar o arquivo, o
-serviço fica parado. A futura regra de eventos decidirá explicitamente se deve
-retomar a rádio anterior.
+serviço fica parado. Uma futura regra de eventos decidirá explicitamente se
+deve retomar a rádio anterior.
 
 O sketch independente
 `examples/leitor_micro_sd_com_encoder/leitor_micro_sd_com_encoder.ino` testa
@@ -136,9 +162,11 @@ if (
 ```
 
 Na tela normal da rádio, a faixa superior percorre para a direita mostrando
-codec, bitrate, reserva de áudio em segundos, RSSI e BSSID. Os valores são uma
-fotografia passiva do serviço de áudio e do Wi-Fi: o display não controla o
-decoder nem interfere na escolha do ponto de acesso.
+data e hora locais, codec, bitrate, reserva de áudio em segundos, RSSI e BSSID.
+O horário vem do relógio do sistema, iniciado pelo DS3231 e posteriormente
+corrigido pelo NTP; a atualização visual não faz leituras I2C periódicas do RTC.
+Os demais valores são uma fotografia passiva do serviço de áudio e do Wi-Fi: o
+display não controla o decoder nem interfere na escolha do ponto de acesso.
 Na faixa inferior invertida, a reserva permanece visível à esquerda e a posição
 da estação na lista aparece à direita. Ao ajustar o volume, a reserva dá lugar
 temporariamente à barra de nível e o valor atual, como `10/21`, substitui a
@@ -165,7 +193,7 @@ do percentual do buffer.
 
 ## Encoder
 
-O firmware usa um encoder com `CLK`, `DT` e botão nos GPIOs 16, 15 e 17. Seu
+O firmware usa um encoder com `CLK`, `DT` e botão nos GPIOs 15, 16 e 7. Seu
 modo de repouso é sempre o controle de volume:
 
 - girar o encoder altera o volume e o mostra na barra inferior;

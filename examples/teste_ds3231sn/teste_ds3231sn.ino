@@ -4,8 +4,8 @@
  * Ligacoes:
  *   DS3231SN VCC -> 3V3
  *   DS3231SN GND -> GND
- *   DS3231SN SDA -> GPIO9
- *   DS3231SN SCL -> GPIO10
+ *   DS3231SN SDA -> GPIO17
+ *   DS3231SN SCL -> GPIO18
  *
  * O RTC compartilha o barramento I2C com o OLED. O sketch usa somente a
  * porta serial e nao altera o display.
@@ -22,8 +22,8 @@
 #error "Placa incorreta: selecione esp32 > ESP32S3 Dev Module na Arduino IDE."
 #endif
 
-constexpr int PIN_I2C_SDA = 9;
-constexpr int PIN_I2C_SCL = 10;
+constexpr int PIN_I2C_SDA = 17;
+constexpr int PIN_I2C_SCL = 18;
 constexpr uint32_t FREQUENCIA_I2C_HZ = 100000;
 constexpr uint8_t ENDERECO_DS3231 = 0x68;
 constexpr unsigned long INTERVALO_LEITURA_MS = 1000;

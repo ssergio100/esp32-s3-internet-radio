@@ -1,8 +1,8 @@
 /*
  * Arquivo principal e mapa de execução do firmware.
  *
- * O setup() inicializa, nesta ordem: interface física, Wi-Fi,
- * armazenamento/servidor, lista de estações, relógio e serviço de áudio.
+ * O setup() inicializa, nesta ordem: interface física, relógio, Wi-Fi,
+ * armazenamento/servidor, lista de estações e serviço de áudio.
  *
  * O loop() apenas coordena os módulos. A reprodução de áudio acontece em
  * uma tarefa dedicada implementada em audio_radio.cpp.
@@ -91,6 +91,9 @@ void setup() {
     iniciarDisplay();
     iniciarControles();
 
+    // O RTC fornece hora imediatamente; o NTP o corrige quando a rede entrar.
+    iniciarRelogio();
+
     conectarWifi();
 
     if (!iniciarArmazenamentoEServidorWeb()) {
@@ -105,8 +108,6 @@ void setup() {
 
     // A ausência do cartão não impede a função principal de rádio web.
     iniciarArquivosAudio();
-
-    iniciarRelogio();
 
     if (!iniciarAudio(volumeAtual)) {
         mostrarMensagem(
@@ -133,6 +134,7 @@ void loop() {
     }
 
     supervisionarWifi();
+    processarRelogio();
     processarDisplay();
     processarServidorWeb();
 

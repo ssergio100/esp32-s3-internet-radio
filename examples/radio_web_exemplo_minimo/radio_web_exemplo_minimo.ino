@@ -10,7 +10,7 @@ const char* URL_ANTENA_1 =
 
 const int PIN_BCLK = 5;
 const int PIN_LRC = 6;
-const int PIN_DIN = 7;
+const int PIN_DIN = 4;
 
 Audio audio;
 

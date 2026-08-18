@@ -26,6 +26,12 @@ compatibilidade com versões anteriores; o argumento de capacidade de
 O suporte ao leitor microSD usa `SD`, `SPI` e `FS`, fornecidos pelo próprio
 Arduino core ESP32 3.3.10; não acrescenta biblioteca externa ao perfil.
 
+O teste independente do DS3231 foi validado em hardware com RTClib 2.1.4. A
+integração dessa mesma versão ao firmware principal está registrada em
+`sketch.yaml`, mas ainda aguarda compilação e validação no rádio completo. O
+RTC compartilha com o OLED o `Wire` fornecido pelo Arduino core; Adafruit BusIO
+1.17.4 atende às dependências do display e do RTC.
+
 Não atualize uma biblioteca isoladamente em uma versão destinada ao
 hardware. Crie uma nova combinação, compile e execute o teste de
 estabilidade antes de promovê-la.
