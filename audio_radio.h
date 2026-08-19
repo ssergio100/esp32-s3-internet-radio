@@ -47,6 +47,11 @@ bool tocarArquivoAudio(
     const String& caminho
 );
 
+// Dispara o chime horário do relógio. Se uma rádio web estiver tocando,
+// o chime é mixado em tempo real com ducking suave sem interromper a transmissão.
+// Se o áudio estiver parado, toca o chime como arquivo individual.
+bool dispararChimeRelogio();
+
 bool pararAudio();
 
 void alterarVolumeAudio(int volume);

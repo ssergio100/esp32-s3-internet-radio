@@ -18,6 +18,7 @@
 #include "wifi_radio.h"
 #include "audio_radio.h"
 #include "arquivos_audio.h"
+#include "chime_audio.h"
 #include "controles.h"
 #include "indicador_led.h"
 #include "relogio.h"
@@ -78,6 +79,8 @@ void atualizarDisplayEstadoAudio(
     bool forcarAtualizacao = false
 );
 
+void supervisionarChimeRelogio();
+
 // =====================================================
 // Setup
 // =====================================================
@@ -109,6 +112,10 @@ void setup() {
     // A ausência do cartão não impede a função principal de rádio web.
     iniciarArquivosAudio();
 
+    if (arquivosAudioDisponiveis()) {
+        iniciarChimeAudio();
+    }
+
     if (!iniciarAudio(volumeAtual)) {
         mostrarMensagem(
             "Erro no audio"
@@ -135,6 +142,7 @@ void loop() {
 
     supervisionarWifi();
     processarRelogio();
+    supervisionarChimeRelogio();
     processarDisplay();
     processarServidorWeb();
 
@@ -570,5 +578,50 @@ void atualizarDisplayEstadoAudio(
 
         default:
             break;
+    }
+}
+
+// =====================================================
+// Supervisão horária do Chime
+// =====================================================
+
+void supervisionarChimeRelogio() {
+    if (!CHIME_RELOGIO_HABILITADO) {
+        return;
+    }
+
+    static int ultimoMinutoDisparado = -1;
+
+    struct tm dataHora;
+    if (!obterDataHoraLocal(dataHora)) {
+        return;
+    }
+
+    int intervaloMinutos = constrain(CHIME_INTERVALO_MINUTOS, 1, 60);
+    int minutoAtualNoDia = dataHora.tm_hour * 60 + dataHora.tm_min;
+
+    // Dispara quando o minuto for múltiplo do intervalo configurado
+    if ((dataHora.tm_min % intervaloMinutos) == 0) {
+        if (ultimoMinutoDisparado != minutoAtualNoDia) {
+            ultimoMinutoDisparado = minutoAtualNoDia;
+
+            bool horarioPermitido = (CHIME_HORA_INICIO <= CHIME_HORA_FIM)
+                ? (dataHora.tm_hour >= CHIME_HORA_INICIO && dataHora.tm_hour <= CHIME_HORA_FIM)
+                : (dataHora.tm_hour >= CHIME_HORA_INICIO || dataHora.tm_hour <= CHIME_HORA_FIM);
+
+            if (horarioPermitido) {
+                Serial.printf(
+                    "Chime disparado às %02d:%02d (intervalo: %d min).\n",
+                    dataHora.tm_hour,
+                    dataHora.tm_min,
+                    intervaloMinutos
+                );
+
+                dispararChimeRelogio();
+            }
+        }
+    } else {
+        // Rearma o gatilho quando sair do minuto de disparo
+        ultimoMinutoDisparado = -1;
     }
 }

@@ -4,6 +4,7 @@
 #include <WiFi.h>
 
 #include "audio_radio.h"
+#include "chime_audio.h"
 #include "configuracao.h"
 
 namespace {
@@ -65,6 +66,27 @@ namespace {
         );
     }
 
+    void registrarChime() {
+        if (!CHIME_RELOGIO_HABILITADO) {
+            Serial.println("Chime: desabilitado nas configuracoes");
+            return;
+        }
+
+        if (chimeDisponivel()) {
+            Serial.printf(
+                "Chime: %s | PSRAM: %u KB | %u Hz %s (%.1fs) | Ducking: %.0f%%\n",
+                obterTextoEstadoChime(),
+                static_cast<unsigned int>(obterMemoriaChimeBytes() / 1024),
+                obterTaxaAmostragemChime(),
+                obterCanaisChime() == 1 ? "mono" : "estereo",
+                obterDuracaoChimeSegundos(),
+                obterFatorDuckingAtual() * 100.0f
+            );
+        } else {
+            Serial.println("Chime: nao carregado (/sons/chime.wav ausente no microSD)");
+        }
+    }
+
 }
 
 void registrarTelemetriaPeriodica() {
@@ -84,4 +106,5 @@ void registrarTelemetriaPeriodica() {
     registrarTemperaturaEMemoria();
     registrarConexaoWifi();
     registrarAudio();
+    registrarChime();
 }

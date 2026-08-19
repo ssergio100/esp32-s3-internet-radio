@@ -109,6 +109,30 @@ constexpr const char* SERVIDOR_NTP_SECUNDARIO = "time.nist.gov";
 constexpr uint32_t INTERVALO_SINCRONIZACAO_NTP_MS = 3600000;
 constexpr uint32_t DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS = 2;
 
+// Chime do relógio
+// Habilita a reprodução do aviso sonoro do relógio.
+constexpr bool CHIME_RELOGIO_HABILITADO = true;
+
+// Intervalo de repetição em minutos (1 a 60).
+// 60 = de hora em hora (padrão de relógio).
+// Valores como 1, 2, 5, 15 ou 30 facilitam testes rápidos em bancada.
+constexpr int CHIME_INTERVALO_MINUTOS = 1;
+
+// Caminho do arquivo WAV no microSD (esperado: PCM 16-bit linear, mono ou estéreo).
+constexpr const char* CAMINHO_ARQUIVO_CHIME = "/sons/chime.wav";
+
+// Volume do chime (0.0 a 1.5; 0.9 = 90% do volume nominal).
+constexpr float VOLUME_CHIME_PADRAO = 0.5f;
+
+// Fator de atenuação (ducking) da rádio web durante a reprodução do chime.
+// 0.25 atenua a rádio para 25% do volume original durante o toque.
+constexpr float FATOR_DUCKING_RADIO_CHIME = 0.25f;
+
+// Janela horária autorizada para o chime (ex: das 7h às 22h).
+// Defina 0 e 23 para autorizar todas as 24 horas.
+constexpr int CHIME_HORA_INICIO = 0;
+constexpr int CHIME_HORA_FIM    = 22;
+
 // =====================================================
 // Ajustes internos
 // =====================================================

@@ -1,5 +1,6 @@
 #include "audio_radio.h"
 #include "arquivos_audio.h"
+#include "chime_audio.h"
 #include "configuracao.h"
 #include "radios.h"
 
@@ -36,6 +37,7 @@ constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
 enum class TipoComandoAudio : uint8_t {
     TOCAR_RADIO,
     TOCAR_ARQUIVO,
+    TOCAR_CHIME,
     PARAR,
     VOLUME
 };
@@ -773,6 +775,16 @@ void processarComando(
             );
             break;
 
+        case TipoComandoAudio::TOCAR_CHIME:
+            if (fonteAudioAtiva == FonteAudioAtiva::RADIO && audio.isRunning()) {
+                dispararChime();
+            } else if (chimeDisponivel()) {
+                abrirArquivoAgora(
+                    CAMINHO_ARQUIVO_CHIME
+                );
+            }
+            break;
+
         case TipoComandoAudio::PARAR:
             nomeDesejado[0] = '\0';
             urlDesejada[0] = '\0';
@@ -1017,6 +1029,30 @@ bool tocarArquivoAudio(
     );
 
     return enviarComando(comando);
+}
+
+bool dispararChimeRelogio() {
+    ComandoAudio comando;
+    comando.tipo =
+        TipoComandoAudio::TOCAR_CHIME;
+
+    return enviarComando(comando);
+}
+
+void audio_process_i2s(
+    int32_t* outBuff,
+    int16_t validSamples,
+    bool* continueI2S
+) {
+    (void)continueI2S;
+
+    if (outBuff != nullptr && validSamples > 0) {
+        processarMixagemChime(
+            outBuff,
+            validSamples,
+            audio.getSampleRate()
+        );
+    }
 }
 
 bool pararAudio() {
