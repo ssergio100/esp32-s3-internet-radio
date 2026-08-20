@@ -13,14 +13,6 @@ Comandos externos são estruturas POD copiadas para uma fila FreeRTOS. O
 estado publicado também é POD e é copiado sob mutex. Assim, nenhuma
 referência para `String` ou memória temporária cruza tarefas.
 
-Além dos streams, a fila aceita a reprodução de um arquivo local por
-`tocarArquivoAudio()`. `arquivos_audio.cpp` monta o microSD pelo SPI, cria o
-diretório previsível `/sons` e lista as faixas aceitas. O módulo apenas gerencia
-o sistema de arquivos; a abertura pela ESP32-audioI2S continua acontecendo na
-tarefa de áudio por meio de `connecttoFS()`. Ao receber o fim de um arquivo, o
-serviço entra em `PARADO`; retomar uma rádio será uma decisão explícita do
-futuro agendador, não uma reconexão acidental tratada como falha de stream.
-
 Há duas tarefas relacionadas ao áudio:
 
 - decodificador/I2S da ESP32-audioI2S, no núcleo 0;

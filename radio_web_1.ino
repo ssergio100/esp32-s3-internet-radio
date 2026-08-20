@@ -17,7 +17,6 @@
 #include "display_radio.h"
 #include "wifi_radio.h"
 #include "audio_radio.h"
-#include "arquivos_audio.h"
 #include "controles.h"
 #include "indicador_led.h"
 #include "relogio.h"
@@ -105,9 +104,6 @@ void setup() {
     }
 
     carregarRadios();
-
-    // A ausência do cartão não impede a função principal de rádio web.
-    iniciarArquivosAudio();
 
     if (!iniciarAudio(volumeAtual)) {
         mostrarMensagem(

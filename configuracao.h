@@ -30,21 +30,10 @@ constexpr int PIN_ENCODER_DT  = 16;
 constexpr int PIN_ENCODER_SW  = 7;
 constexpr int PIN_ENCODER_VCC = -1;
 
-// Leitor microSD no barramento SPI, no lado oposto ao futuro conjunto das
-// válvulas Nixie. O uso destes GPIOs substitui a função JTAG externa deles.
-constexpr int PIN_CARTAO_MICRO_SD_SCK  = 42;
-constexpr int PIN_CARTAO_MICRO_SD_MISO = 41;
-constexpr int PIN_CARTAO_MICRO_SD_MOSI = 40;
-constexpr int PIN_CARTAO_MICRO_SD_CS   = 39;
-
 // Reservados para o futuro driver das quatro válvulas Nixie:
 // BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
 // Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
 // O GPIO46, situado entre esses grupos na placa, permanece sem conexão.
-
-// Frequência conservadora para módulos com conversores de nível e fios longos.
-// Aumente somente depois de confirmar a leitura estável do cartão.
-constexpr uint32_t FREQUENCIA_CARTAO_MICRO_SD_HZ = 1000000;
 
 // Valor calibrado para o encoder instalado: cada detente produz quatro
 // transições válidas reconhecidas pela biblioteca.
