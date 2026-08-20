@@ -1,10 +1,10 @@
 #include "audio_radio.h"
-#include "arquivos_audio.h"
 #include "configuracao.h"
 #include "radios.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <atomic>
 #include <cstring>
 #include "Audio.h"
 
@@ -34,16 +34,11 @@ constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
     250;
 
 enum class TipoComandoAudio : uint8_t {
-    TOCAR_RADIO,
-    TOCAR_ARQUIVO,
+    TOCAR,
     PARAR,
-    VOLUME
-};
-
-enum class FonteAudioAtiva : uint8_t {
-    NENHUMA,
-    RADIO,
-    ARQUIVO
+    VOLUME,
+    SUSPENDER,
+    RETOMAR
 };
 
 struct ComandoAudio {
@@ -54,9 +49,6 @@ struct ComandoAudio {
 
     char nome[TAMANHO_NOME_RADIO] = "";
     char url[TAMANHO_URL_RADIO] = "";
-    char caminhoArquivo[
-        TAMANHO_MAXIMO_CAMINHO_ARQUIVO_AUDIO
-    ] = "";
 };
 
 Audio audio;
@@ -64,6 +56,7 @@ Audio audio;
 QueueHandle_t filaComandos = nullptr;
 SemaphoreHandle_t mutexStatus = nullptr;
 TaskHandle_t tarefaAudioHandle = nullptr;
+std::atomic<bool> servicoAudioAtivo{true};
 
 StatusAudio statusAudio;
 
@@ -76,8 +69,6 @@ uint32_t proximaTentativa = 0;
 uint32_t ultimaAmostraStatus = 0;
 
 uint8_t falhasConsecutivas = 0;
-FonteAudioAtiva fonteAudioAtiva =
-    FonteAudioAtiva::NENHUMA;
 
 bool bloquearStatus(
     TickType_t espera = pdMS_TO_TICKS(20)
@@ -213,10 +204,7 @@ uint32_t calcularEsperaReconexao() {
 void agendarReconexao(
     const char* motivo
 ) {
-    if (
-        fonteAudioAtiva != FonteAudioAtiva::RADIO ||
-        urlDesejada[0] == '\0'
-    ) {
+    if (urlDesejada[0] == '\0') {
         definirEstado(
             EstadoAudio::PARADO
         );
@@ -269,15 +257,11 @@ void conectarAgora(
             : EstadoAudio::CONECTANDO
     );
 
-    // Neutraliza eventos de fim pertencentes à fonte anterior.
-    fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
     audio.stopSong();
 
     vTaskDelay(
         pdMS_TO_TICKS(100)
     );
-
-    fonteAudioAtiva = FonteAudioAtiva::RADIO;
 
     bool conectado =
         audio.connecttohost(
@@ -297,49 +281,6 @@ void conectarAgora(
     definirEstado(
         EstadoAudio::BUFFERIZANDO
     );
-}
-
-void abrirArquivoAgora(
-    const char* caminho
-) {
-    fs::FS* sistemaArquivos =
-        obterSistemaArquivosAudio();
-
-    if (sistemaArquivos == nullptr) {
-        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-        definirErro(
-            "Cartao microSD indisponivel"
-        );
-        definirEstado(EstadoAudio::ERRO);
-        return;
-    }
-
-    fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-    proximaTentativa = 0;
-    inicioDegradacao = 0;
-
-    atualizarRadioStatus(caminho);
-    limparErro();
-    definirEstado(EstadoAudio::BUFFERIZANDO);
-
-    audio.stopSong();
-
-    vTaskDelay(
-        pdMS_TO_TICKS(20)
-    );
-
-    fonteAudioAtiva = FonteAudioAtiva::ARQUIVO;
-
-    if (!audio.connecttoFS(*sistemaArquivos, caminho)) {
-        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-        definirErro(
-            "Falha ao abrir arquivo de audio"
-        );
-        definirEstado(EstadoAudio::ERRO);
-        return;
-    }
-
-    inicioBufferizacao = millis();
 }
 
 void marcarStreamPronto() {
@@ -539,16 +480,10 @@ void tratarEventoAudio(
             break;
 
         case Audio::evt_eof:
-            if (fonteAudioAtiva == FonteAudioAtiva::RADIO) {
+            if (urlDesejada[0] != '\0') {
                 agendarReconexao(
                     "Fim inesperado do fluxo"
                 );
-            } else if (
-                fonteAudioAtiva == FonteAudioAtiva::ARQUIVO
-            ) {
-                fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-                inicioBufferizacao = 0;
-                definirEstado(EstadoAudio::PARADO);
             }
 
             break;
@@ -659,17 +594,9 @@ void supervisionarAudio() {
     ) {
         audio.stopSong();
 
-        if (fonteAudioAtiva == FonteAudioAtiva::RADIO) {
-            agendarReconexao(
-                "Tempo limite ao preparar a radio"
-            );
-        } else {
-            fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-            definirErro(
-                "Tempo limite ao preparar arquivo"
-            );
-            definirEstado(EstadoAudio::ERRO);
-        }
+        agendarReconexao(
+            "Tempo limite ao preparar a radio"
+        );
 
         return;
     }
@@ -685,14 +612,9 @@ void supervisionarAudio() {
         ) &&
         !audio.isRunning()
     ) {
-        if (fonteAudioAtiva == FonteAudioAtiva::RADIO) {
-            agendarReconexao(
-                "Conexao de audio encerrada"
-            );
-        } else {
-            fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-            definirEstado(EstadoAudio::PARADO);
-        }
+        agendarReconexao(
+            "Conexao de audio encerrada"
+        );
 
         return;
     }
@@ -738,7 +660,7 @@ void processarComando(
     const ComandoAudio& comando
 ) {
     switch (comando.tipo) {
-        case TipoComandoAudio::TOCAR_RADIO:
+        case TipoComandoAudio::TOCAR:
             copiarTexto(
                 nomeDesejado,
                 sizeof(nomeDesejado),
@@ -763,23 +685,12 @@ void processarComando(
             conectarAgora(false);
             break;
 
-        case TipoComandoAudio::TOCAR_ARQUIVO:
-            falhasConsecutivas = 0;
-            proximaTentativa = 0;
-            inicioDegradacao = 0;
-
-            abrirArquivoAgora(
-                comando.caminhoArquivo
-            );
-            break;
-
         case TipoComandoAudio::PARAR:
             nomeDesejado[0] = '\0';
             urlDesejada[0] = '\0';
             proximaTentativa = 0;
             falhasConsecutivas = 0;
             inicioDegradacao = 0;
-            fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
 
             audio.stopSong();
 
@@ -793,6 +704,35 @@ void processarComando(
                 comando.volume
             );
             break;
+
+        case TipoComandoAudio::SUSPENDER:
+            nomeDesejado[0] = '\0';
+            urlDesejada[0] = '\0';
+            proximaTentativa = 0;
+            falhasConsecutivas = 0;
+            inicioDegradacao = 0;
+
+            audio.stopSong();
+            audio.setMute(true);
+
+            atualizarRadioStatus("");
+            definirEstado(EstadoAudio::DESLIGADO);
+            ulTaskNotifyTake(pdTRUE, 0);
+            servicoAudioAtivo.store(
+                false,
+                std::memory_order_release
+            );
+            break;
+
+        case TipoComandoAudio::RETOMAR:
+            servicoAudioAtivo.store(
+                true,
+                std::memory_order_release
+            );
+            audio.setMute(false);
+            audio.setVolume(comando.volume);
+            definirEstado(EstadoAudio::PARADO);
+            break;
     }
 }
 
@@ -804,6 +744,17 @@ void tarefaAudio(
     ComandoAudio comando;
 
     while (true) {
+        if (!servicoAudioAtivo.load(
+            std::memory_order_acquire
+        )) {
+            ulTaskNotifyTake(
+                pdTRUE,
+                portMAX_DELAY
+            );
+
+            continue;
+        }
+
         while (
             xQueueReceive(
                 filaComandos,
@@ -971,7 +922,7 @@ bool tocarRadio(
     ComandoAudio comando;
 
     comando.tipo =
-        TipoComandoAudio::TOCAR_RADIO;
+        TipoComandoAudio::TOCAR;
 
     copiarTexto(
         comando.nome,
@@ -988,37 +939,6 @@ bool tocarRadio(
     return enviarComando(comando);
 }
 
-bool tocarArquivoAudio(
-    const String& caminho
-) {
-    if (
-        caminho.length() == 0 ||
-        caminho.length() >=
-            TAMANHO_MAXIMO_CAMINHO_ARQUIVO_AUDIO ||
-        !caminhoArquivoAudioSuportado(
-            caminho.c_str()
-        )
-    ) {
-        definirErro(
-            "Caminho de arquivo de audio invalido"
-        );
-
-        return false;
-    }
-
-    ComandoAudio comando;
-    comando.tipo =
-        TipoComandoAudio::TOCAR_ARQUIVO;
-
-    copiarTexto(
-        comando.caminhoArquivo,
-        sizeof(comando.caminhoArquivo),
-        caminho.c_str()
-    );
-
-    return enviarComando(comando);
-}
-
 bool pararAudio() {
     ComandoAudio comando;
 
@@ -1026,6 +946,46 @@ bool pararAudio() {
         TipoComandoAudio::PARAR;
 
     return enviarComando(comando);
+}
+
+bool suspenderAudio() {
+    ComandoAudio comando;
+
+    comando.tipo =
+        TipoComandoAudio::SUSPENDER;
+
+    return enviarComando(comando);
+}
+
+bool retomarAudio(int volume) {
+    if (tarefaAudioHandle == nullptr) {
+        return false;
+    }
+
+    ComandoAudio comando;
+
+    comando.tipo =
+        TipoComandoAudio::RETOMAR;
+    comando.volume =
+        static_cast<uint8_t>(
+            constrain(
+                volume,
+                VOLUME_MINIMO,
+                VOLUME_MAXIMO
+            )
+        );
+
+    if (!enviarComando(comando)) {
+        return false;
+    }
+
+    servicoAudioAtivo.store(
+        true,
+        std::memory_order_release
+    );
+    xTaskNotifyGive(tarefaAudioHandle);
+
+    return true;
 }
 
 void alterarVolumeAudio(int volume) {

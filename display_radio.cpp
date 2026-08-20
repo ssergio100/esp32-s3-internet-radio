@@ -23,7 +23,8 @@ namespace {
 
     enum class TelaDisplay {
         MENSAGEM,
-        RADIO
+        RADIO,
+        RELOGIO
     };
 
     TelaDisplay telaAtual = TelaDisplay::MENSAGEM;
@@ -81,6 +82,15 @@ namespace {
         SentidoRolagem::PARA_ESQUERDA               // sentido do movimento
     };
 
+    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_DATA_RELOGIO = {
+        55,                                         // rodapé, em px
+        1,                                          // tamanho do texto
+        2,                                          // margem horizontal, em px
+        24,                                         // espaço entre cópias, em px
+        INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS,    // velocidade
+        SentidoRolagem::PARA_ESQUERDA               // sentido do movimento
+    };
+
     String textoDiagnostico;
     String textoBufferBarraInferior;
     bool exibindoVolumeNaBarraInferior = false;
@@ -89,6 +99,14 @@ namespace {
     unsigned long momentoUltimaAtualizacaoDiagnosticoMs = 0;
 
     EstadoFaixaRolante estadoFaixaNomeRadio;
+
+    String textoDataRelogio;
+    EstadoFaixaRolante estadoFaixaDataRelogio;
+    int minutoRelogioExibido = -1;
+    int diaRelogioExibido = -1;
+    unsigned long momentoUltimaConsultaRelogioMs = 0;
+    struct tm ultimaDataHoraRelogio = {};
+    bool horarioRelogioDisponivel = false;
 
     void escreverCentralizado(
         const String& texto,
@@ -385,6 +403,226 @@ namespace {
         }
 
         return true;
+    }
+
+    String formatarDataRelogio(
+        const struct tm& dataHora
+    ) {
+        static const char* DIAS_SEMANA[] = {
+            "domingo",
+            "segunda",
+            "terca",
+            "quarta",
+            "quinta",
+            "sexta",
+            "sabado"
+        };
+
+        static const char* MESES[] = {
+            "janeiro",
+            "fevereiro",
+            "marco",
+            "abril",
+            "maio",
+            "junho",
+            "julho",
+            "agosto",
+            "setembro",
+            "outubro",
+            "novembro",
+            "dezembro"
+        };
+
+        return
+            String(DIAS_SEMANA[dataHora.tm_wday]) +
+            ", " +
+            String(dataHora.tm_mday) +
+            " de " +
+            MESES[dataHora.tm_mon] +
+            " de " +
+            String(dataHora.tm_year + 1900);
+    }
+
+    void desenharDigitoFlip(
+        char digito,
+        int posicaoX
+    ) {
+        constexpr int POSICAO_Y = 1;
+        constexpr int LARGURA = 24;
+        constexpr int ALTURA = 44;
+
+        display.drawRoundRect(
+            posicaoX,
+            POSICAO_Y,
+            LARGURA,
+            ALTURA,
+            2,
+            SSD1306_WHITE
+        );
+
+        display.setFont(&FreeSansBold9pt7b);
+        display.setTextSize(2);
+
+        String texto(digito);
+        int16_t x1;
+        int16_t y1;
+        uint16_t largura;
+        uint16_t altura;
+
+        display.getTextBounds(
+            texto,
+            0,
+            0,
+            &x1,
+            &y1,
+            &largura,
+            &altura
+        );
+
+        int cursorX =
+            posicaoX +
+            (LARGURA - largura) / 2 -
+            x1;
+        int linhaBase =
+            POSICAO_Y +
+            (ALTURA - altura) / 2 -
+            y1;
+
+        display.setCursor(cursorX, linhaBase);
+        display.print(texto);
+
+        // O corte no glifo reproduz a divisão horizontal da placa flip.
+        int posicaoDivisaoY = POSICAO_Y + ALTURA / 2;
+        display.drawFastHLine(
+            posicaoX + 1,
+            posicaoDivisaoY,
+            LARGURA - 2,
+            SSD1306_BLACK
+        );
+        display.drawPixel(
+            posicaoX,
+            posicaoDivisaoY,
+            SSD1306_WHITE
+        );
+        display.drawPixel(
+            posicaoX + LARGURA - 1,
+            posicaoDivisaoY,
+            SSD1306_WHITE
+        );
+
+        display.setFont();
+        display.setTextSize(1);
+    }
+
+    void desenharTelaRelogio() {
+        prepararTela();
+
+        char horario[] = "--:--";
+
+        if (horarioRelogioDisponivel) {
+            snprintf(
+                horario,
+                sizeof(horario),
+                "%02d:%02d",
+                ultimaDataHoraRelogio.tm_hour,
+                ultimaDataHoraRelogio.tm_min
+            );
+        }
+
+        desenharDigitoFlip(horario[0], 9);
+        desenharDigitoFlip(horario[1], 35);
+
+        display.fillCircle(64, 15, 2, SSD1306_WHITE);
+        display.fillCircle(64, 31, 2, SSD1306_WHITE);
+
+        desenharDigitoFlip(horario[3], 69);
+        desenharDigitoFlip(horario[4], 95);
+
+        display.drawFastHLine(
+            2,
+            49,
+            DISPLAY_LARGURA - 4,
+            SSD1306_WHITE
+        );
+
+        desenharFaixaRolante(
+            textoDataRelogio,
+            CONFIGURACAO_DATA_RELOGIO,
+            estadoFaixaDataRelogio
+        );
+
+        display.display();
+    }
+
+    void atualizarTelaRelogio(
+        bool forcarAtualizacao
+    ) {
+        unsigned long agoraMs = millis();
+        bool dataRolou = avancarFaixaRolante(
+            CONFIGURACAO_DATA_RELOGIO,
+            estadoFaixaDataRelogio,
+            agoraMs
+        );
+        bool deveConsultarHorario =
+            forcarAtualizacao ||
+            agoraMs - momentoUltimaConsultaRelogioMs >= 500;
+        bool horarioMudou = false;
+
+        if (deveConsultarHorario) {
+            struct tm dataHora = {};
+            bool disponivelAgora =
+                obterDataHoraLocal(dataHora);
+
+            momentoUltimaConsultaRelogioMs = agoraMs;
+
+            if (!disponivelAgora) {
+                horarioMudou = horarioRelogioDisponivel;
+                horarioRelogioDisponivel = false;
+
+                if (textoDataRelogio != "horario indisponivel") {
+                    textoDataRelogio = "horario indisponivel";
+                    configurarFaixaRolante(
+                        textoDataRelogio,
+                        CONFIGURACAO_DATA_RELOGIO,
+                        estadoFaixaDataRelogio,
+                        true
+                    );
+                    horarioMudou = true;
+                }
+            } else {
+                bool disponibilidadeMudou =
+                    !horarioRelogioDisponivel;
+                bool minutoMudou =
+                    dataHora.tm_min != minutoRelogioExibido;
+                bool diaMudou =
+                    dataHora.tm_yday != diaRelogioExibido;
+
+                ultimaDataHoraRelogio = dataHora;
+                horarioRelogioDisponivel = true;
+
+                if (diaMudou || textoDataRelogio.isEmpty()) {
+                    textoDataRelogio =
+                        formatarDataRelogio(dataHora);
+                    configurarFaixaRolante(
+                        textoDataRelogio,
+                        CONFIGURACAO_DATA_RELOGIO,
+                        estadoFaixaDataRelogio,
+                        true
+                    );
+                }
+
+                minutoRelogioExibido = dataHora.tm_min;
+                diaRelogioExibido = dataHora.tm_yday;
+                horarioMudou =
+                    disponibilidadeMudou ||
+                    minutoMudou ||
+                    diaMudou;
+            }
+        }
+
+        if (forcarAtualizacao || horarioMudou || dataRolou) {
+            desenharTelaRelogio();
+        }
     }
 
     bool atualizarTextoDiagnostico(
@@ -774,16 +1012,18 @@ void mostrarVolume(
     desenharTelaRadio();
 }
 
-void desligarDisplay() {
+void mostrarTelaRelogio() {
     if (!disponivel) {
         return;
     }
 
-    display.clearDisplay();
-    display.display();
-    display.ssd1306_command(SSD1306_DISPLAYOFF);
+    telaAtual = TelaDisplay::RELOGIO;
+    minutoRelogioExibido = -1;
+    diaRelogioExibido = -1;
+    momentoUltimaConsultaRelogioMs = 0;
+    horarioRelogioDisponivel = false;
 
-    disponivel = false;
+    atualizarTelaRelogio(true);
 }
 
 void mostrarConfiguracaoWifi() {
@@ -811,6 +1051,11 @@ void mostrarConfiguracaoWifi() {
 
 void processarDisplay() {
     if (!disponivel) {
+        return;
+    }
+
+    if (telaAtual == TelaDisplay::RELOGIO) {
+        atualizarTelaRelogio(false);
         return;
     }
 

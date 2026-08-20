@@ -40,14 +40,13 @@ bool tocarRadio(
     const String& url
 );
 
-// Interrompe a fonte atual e reproduz um arquivo do diretório /sons no cartão.
-// Ao terminar, o serviço permanece parado; a retomada da rádio será uma regra
-// explícita do futuro agendador de eventos.
-bool tocarArquivoAudio(
-    const String& caminho
-);
-
 bool pararAudio();
+
+// Para o stream e suspende a tarefa dedicada até o modo Rádio Web voltar.
+bool suspenderAudio();
+
+// Reativa a tarefa dedicada e restaura o volume de operação.
+bool retomarAudio(int volume);
 
 void alterarVolumeAudio(int volume);
 

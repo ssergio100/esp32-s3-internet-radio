@@ -4,6 +4,9 @@
 // Monta a FFat e, somente depois, registra e inicia as rotas HTTP.
 bool iniciarArmazenamentoEServidorWeb();
 
+void desativarServidorWeb();
+void reativarServidorWeb();
+
 void processarServidorWeb();
 
 #endif

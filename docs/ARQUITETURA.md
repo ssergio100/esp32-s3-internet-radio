@@ -13,20 +13,16 @@ Comandos externos são estruturas POD copiadas para uma fila FreeRTOS. O
 estado publicado também é POD e é copiado sob mutex. Assim, nenhuma
 referência para `String` ou memória temporária cruza tarefas.
 
-Além dos streams, a fila aceita a reprodução de um arquivo local por
-`tocarArquivoAudio()`. `arquivos_audio.cpp` monta o microSD pelo SPI, cria o
-diretório previsível `/sons` e lista as faixas aceitas. O módulo apenas gerencia
-o sistema de arquivos; a abertura pela ESP32-audioI2S continua acontecendo na
-tarefa de áudio por meio de `connecttoFS()`. Ao receber o fim de um arquivo, o
-serviço entra em `PARADO`; retomar uma rádio será uma decisão explícita do
-futuro agendador, não uma reconexão acidental tratada como falha de stream.
-
 Há duas tarefas relacionadas ao áudio:
 
 - decodificador/I2S da ESP32-audioI2S, no núcleo 0;
 - conexão, preenchimento e supervisão, no núcleo 1.
 
 Os valores de núcleo, pilha e prioridade ficam em `configuracao.h`.
+Ao entrar no estado Relógio, um comando encerra o stream, silencia a saída e
+faz `AudioService` aguardar uma notificação sem consumir ciclos continuamente.
+O retorno ao estado Rádio Web acorda a mesma tarefa antes de solicitar a
+estação que já estava selecionada.
 
 ### Aplicação
 
@@ -37,7 +33,8 @@ execução do serviço de áudio.
 
 As regras centrais de interação permanecem no arquivo principal: entrar na
 seleção de estações, navegar, confirmar, cancelar por inatividade e ajustar
-o volume. Cada transição usa uma função nomeada para que o fluxo seja legível
+o volume. As transições entre Rádio Web e Relógio também permanecem explícitas
+nesse arquivo. Cada transição usa uma função nomeada para que o fluxo seja legível
 sem conhecer previamente os detalhes do display ou do serviço de áudio.
 
 O `loop()` supervisiona a associação Wi-Fi. Se o ponto conectado estiver em
@@ -80,6 +77,11 @@ O nome da estação e o diagnóstico superior continuam visíveis.
 
 Velocidade da rolagem e intervalo de renovação ficam em `configuracao.h`.
 
+No estado Relógio, o mesmo módulo desenha quatro cartões grandes para `HH:MM`,
+com um corte horizontal que simula dígitos flip. A data completa ocupa uma
+faixa rolante no rodapé. Essa tela consulta somente o relógio do sistema; o RTC
+continua encapsulado em `relogio_rtc.cpp` e não é lido a cada quadro.
+
 ### Indicador LED
 
 `indicador_led.cpp` é o único módulo que escreve diretamente no LED RGB.
@@ -91,8 +93,7 @@ As cores e a temporização ficam encapsuladas no indicador.
 
 `controles.cpp` configura o encoder e devolve uma `LeituraControles` contendo o
 clique curto, o clique longo e o deslocamento assinado acumulado. Os cliques são
-confirmados após a soltura, o que impede que o botão ainda pressionado provoque
-um despertar imediato ao entrar em deep sleep. A rotação usa diretamente o
+confirmados após a soltura. A rotação usa diretamente o
 valor de `encoderChanged()`, sem manter um segundo contador, aplicar aceleração
 ou filtrar mudanças de direção.
 
@@ -100,18 +101,23 @@ A calibração física fica em `TRANSICOES_ENCODER_POR_DETENTE`, em
 `configuracao.h`. Os tempos com nomes de clique tratam somente o botão e não
 interferem na rotação.
 
-### Sono profundo
+### Estados do equipamento
 
-O arquivo principal mantém visível a transição de desligamento: reconhece o
-clique longo, solicita a parada ao serviço de áudio, espera a confirmação por
-um tempo limitado, apaga LED e OLED e então pede a entrada em deep sleep.
-`sono_profundo.cpp` encapsula somente as APIs específicas do ESP32-S3: configura
-o `GPIO7` ativo em nível baixo como fonte RTC de despertar, informa a causa da
-inicialização e inicia o sono.
+O firmware possui somente `RADIO_WEB` e `RELOGIO`. Um clique longo confirmado
+alterna entre eles. Ao entrar em Relógio, o OLED muda imediatamente; depois o
+arquivo principal apaga o LED, interrompe o servidor, solicita a suspensão do
+áudio e desliga o rádio Wi-Fi. O `loop()` continua atendendo somente relógio,
+display e encoder. Clique curto e rotação são ignorados nesse estado.
 
-O despertar pelo botão reinicia normalmente o firmware. Como o controle físico
-de `SD_MODE` foi adiado, a interrupção de `BCLK` durante o deep sleep deixa os
-MAX98357A em standby automático, e não em shutdown completo.
+Outro clique longo conecta novamente o Wi-Fi, reabre o mesmo servidor, acorda
+a tarefa de áudio e solicita a estação que estava selecionada. A FFat e a lista
+em memória permanecem preservadas entre as transições; não há reinicialização
+do ESP32 nem remontagem do armazenamento.
+
+O estado Relógio não é um modo de baixo consumo. A versão instalada da
+ESP32-audioI2S encerra o stream, mas não oferece uma chamada pública para parar
+o I2S; sem controlar fisicamente `SD_MODE`, o firmware não garante shutdown dos
+amplificadores.
 
 ### Relógio
 

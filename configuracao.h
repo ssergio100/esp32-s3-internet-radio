@@ -30,21 +30,10 @@ constexpr int PIN_ENCODER_DT  = 16;
 constexpr int PIN_ENCODER_SW  = 7;
 constexpr int PIN_ENCODER_VCC = -1;
 
-// Leitor microSD no barramento SPI, no lado oposto ao futuro conjunto das
-// válvulas Nixie. O uso destes GPIOs substitui a função JTAG externa deles.
-constexpr int PIN_CARTAO_MICRO_SD_SCK  = 42;
-constexpr int PIN_CARTAO_MICRO_SD_MISO = 41;
-constexpr int PIN_CARTAO_MICRO_SD_MOSI = 40;
-constexpr int PIN_CARTAO_MICRO_SD_CS   = 39;
-
 // Reservados para o futuro driver das quatro válvulas Nixie:
 // BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
 // Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
 // O GPIO46, situado entre esses grupos na placa, permanece sem conexão.
-
-// Frequência conservadora para módulos com conversores de nível e fios longos.
-// Aumente somente depois de confirmar a leitura estável do cartão.
-constexpr uint32_t FREQUENCIA_CARTAO_MICRO_SD_HZ = 1000000;
 
 // Valor calibrado para o encoder instalado: cada detente produz quatro
 // transições válidas reconhecidas pela biblioteca.
@@ -74,8 +63,8 @@ constexpr int VOLUME_PADRAO = 10;
 constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
-// Tempo que o botão do encoder deve permanecer pressionado para desligar.
-// Aumente para reduzir acionamentos acidentais; diminua para desligar mais rápido.
+// Tempo que o botão deve permanecer pressionado para alternar entre os estados
+// Rádio Web e Relógio. Aumente para reduzir acionamentos acidentais.
 constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
 
 // O LED alterna entre azul e apagado a cada intervalo.
@@ -91,6 +80,9 @@ constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 40;
 // O segundo controla a frequência de renovação dos valores exibidos.
 constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS = 13;
 constexpr unsigned long INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS = 1000;
+
+// A data completa no rodapé do relógio avança um pixel a cada passo.
+constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS = 80;
 
 // Diagnóstico
 constexpr unsigned long INTERVALO_TELEMETRIA_SERIAL_MS = 5000;
@@ -122,10 +114,6 @@ constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
 // Tratamento dos controles
 constexpr unsigned long TEMPO_VALIDACAO_CLIQUE_ENCODER_MS = 30;
 constexpr unsigned long INTERVALO_MINIMO_CLIQUES_ENCODER_MS = 200;
-
-// Evita impedir o sono indefinidamente caso o serviço de áudio não confirme
-// a parada. No deep sleep, o próprio ESP32 interrompe os periféricos.
-constexpr unsigned long TEMPO_MAXIMO_PARADA_AUDIO_ANTES_SONO_MS = 1000;
 
 // Atualização dos indicadores
 constexpr unsigned long INTERVALO_VERIFICACAO_LED_AUDIO_MS = 250;

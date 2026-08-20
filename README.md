@@ -15,9 +15,8 @@ separados por responsabilidade:
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
-| `arquivos_audio.cpp` | Montagem do microSD e listagem das faixas locais |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
-| `display_radio.cpp` | Telas e animações do nome e do diagnóstico da estação |
+| `display_radio.cpp` | Telas dos estados Rádio Web e Relógio |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
@@ -25,7 +24,6 @@ separados por responsabilidade:
 | `relogio.cpp` | Política entre RTC, sincronização NTP e hora do sistema |
 | `relogio_rtc.cpp` | Acesso ao DS3231 por meio da RTClib |
 | `servidor_web.cpp` | Montagem da FFat, inicialização do servidor e mapa das rotas HTTP |
-| `sono_profundo.cpp` | Configuração do despertar e entrada em deep sleep |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
 | `web/index.html` | Página principal da administração |
@@ -47,10 +45,11 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
 | `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
-| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
+| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para alternar Rádio Web/Relógio | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 40 ms |
 | `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 13 ms |
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
+| `INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS` | Intervalo para a data do relógio avançar um pixel | 80 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
 | `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 4 |
@@ -62,13 +61,6 @@ Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
 vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
-
-O leitor microSD usa SPI com `SCK=GPIO42`, `MISO=GPIO41`, `MOSI=GPIO40` e
-`CS=GPIO39`. O firmware monta o cartão sem tornar sua presença obrigatória e
-cria o diretório `/sons` quando necessário. A comunicação começa em 1 MHz para
-favorecer módulos com conversores de nível e ligações por fios. O cartão deve
-estar em FAT16 ou FAT32. Esses quatro GPIOs deixam de ficar disponíveis para
-um depurador JTAG externo.
 
 O sketch independente
 `examples/teste_ds3231sn/teste_ds3231sn.ino` valida o RTC DS3231SN pela porta
@@ -118,48 +110,17 @@ O `loop()` principal fica responsável por:
 - apresentação do estado publicado pelo serviço de áudio;
 - telemetria periódica.
 
+O equipamento possui dois estados operacionais. Em `Rádio Web`, todos esses
+serviços funcionam normalmente. Em `Relógio`, o stream e sua tarefa ficam
+suspensos, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
+apagado; somente relógio, encoder e OLED continuam sendo processados.
+
 O serviço de áudio publica estados explícitos (`conectando`,
 `bufferizando`, `tocando`, `degradado`, `reconectando` e `erro`) e usa
 reconexão progressiva de 1, 2, 5, 10 e 30 segundos. Se o Wi-Fi cair, ele
 aguarda a rede voltar antes de abrir uma nova conexão.
 
 Veja os detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
-
-## Arquivos de áudio no microSD
-
-`arquivos_audio.cpp` fornece a base para futuras associações entre sons e
-eventos. `obterListaArquivosAudio()` devolve, em ordem alfabética, caminho e
-tamanho das faixas diretamente dentro de `/sons`. São reconhecidos MP3, M4A,
-AAC, WAV, FLAC, OGG, OGA e Opus.
-
-`tocarArquivoAudio()` envia o caminho escolhido à mesma fila usada pelas
-rádios. Somente a tarefa dedicada acessa a instância `Audio` e abre o arquivo
-com `connecttoFS()`. A fonte atual é interrompida e, ao terminar o arquivo, o
-serviço fica parado. Uma futura regra de eventos decidirá explicitamente se
-deve retomar a rádio anterior.
-
-O sketch independente
-`examples/leitor_micro_sd_com_encoder/leitor_micro_sd_com_encoder.ino` testa
-todo o caminho de hardware sem iniciar Wi-Fi nem servidor. O encoder principal
-navega pela lista; seu clique toca a faixa. Durante a reprodução, o giro ajusta
-o volume e o clique para a música e retorna à lista. Para facilitar o teste, o
-sketch procura arquivos compatíveis na raiz e nas subpastas do cartão; o módulo
-do firmware completo permanece deliberadamente restrito a `/sons`. Na partida,
-o exemplo faz até três tentativas de montar o cartão e reinicia o barramento SPI
-entre elas, para tolerar a inicialização mais lenta observada logo após o upload.
-
-Uso básico no firmware:
-
-```cpp
-std::vector<ArquivoAudioDisponivel> arquivos;
-
-if (
-    obterListaArquivosAudio(arquivos) &&
-    !arquivos.empty()
-) {
-    tocarArquivoAudio(arquivos[0].caminho);
-}
-```
 
 Na tela normal da rádio, a faixa superior percorre para a direita mostrando
 data e hora locais, codec, bitrate, reserva de áudio em segundos, RSSI e BSSID.
@@ -177,6 +138,10 @@ rolante da rádio e, durante a abertura do stream, os estados `Conectando...` e
 `Bufferizando...`, estáticos e em fonte pequena. Na seleção, o nome fica parado
 e usa uma fonte menor quando não cabe no tamanho normal. Ao confirmar e iniciar
 a reprodução, o nome retorna ao tamanho normal e à rolagem.
+
+No estado `Relógio`, o OLED mostra `HH:MM` em quatro cartões grandes com uma
+divisão horizontal inspirada em mostradores flip. O rodapé percorre a data
+completa em português, por exemplo `sexta, 12 de agosto de 2026`.
 
 ## Indicação do LED
 
@@ -203,10 +168,11 @@ modo de repouso é sempre o controle de volume:
 - pressionar novamente confirma a estação e retorna ao controle de volume;
 - após dez segundos sem atividade, a seleção é cancelada e a estação
   anterior permanece ativa.
-- manter o botão pressionado por dois segundos e soltá-lo interrompe o áudio,
-  apaga LED e OLED e coloca o ESP32-S3 em deep sleep;
-- pressionar o botão novamente acorda o rádio, que executa uma inicialização
-  completa.
+- manter o botão pressionado por dois segundos e soltá-lo alterna do estado
+  `Rádio Web` para `Relógio`;
+- no estado `Relógio`, rotação e clique curto não executam ações;
+- outro clique longo reativa Wi-Fi, servidor e áudio e retorna à estação que
+  estava selecionada.
 
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
@@ -214,10 +180,10 @@ duas passagens do `loop()`, todos são aplicados. O valor
 `TRANSICOES_ENCODER_POR_DETENTE` está calibrado em `4` para o componente
 instalado.
 
-Enquanto o controle elétrico de `SD_MODE` não for instalado, o deep sleep
-interrompe o `BCLK` e os dois MAX98357A entram no standby automático. Portanto,
-os amplificadores ainda não alcançam o consumo de shutdown completo nessa
-condição.
+O estado `Relógio` encerra o stream e suspende a tarefa de serviço, mas a
+biblioteca ESP32-audioI2S não expõe ao firmware a parada pública do I2S. Sem um
+controle elétrico de `SD_MODE`, não se deve interpretar esse estado como
+shutdown de baixo consumo dos amplificadores.
 
 ## Lista de rádios
 
