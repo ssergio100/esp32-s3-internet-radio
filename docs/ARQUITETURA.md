@@ -5,7 +5,7 @@
 ### Serviço de áudio
 
 `audio_radio.cpp` encapsula a instância de `Audio`. Chamadas como
-`connecttohost()`, `stopSong()`, `setVolume()` e `loop()` acontecem somente
+`connecttohost()`, `connecttoFS()`, `stopSong()`, `setVolume()` e `loop()` acontecem somente
 na tarefa `AudioService`. Display, encoder e servidor não acessam a
 biblioteca diretamente.
 
@@ -103,16 +103,23 @@ interferem na rotação.
 
 ### Estados do equipamento
 
-O firmware possui somente `RADIO_WEB` e `RELOGIO`. Um clique longo confirmado
-alterna entre eles. Ao entrar em Relógio, o OLED muda imediatamente; depois o
+O firmware possui `RADIO_WEB`, `PLAYER` e `RELOGIO`. Um clique longo confirmado
+leva qualquer fonte ativa ao Relógio. Ao entrar nele, o OLED muda imediatamente; depois o
 arquivo principal apaga o LED, interrompe o servidor, solicita a suspensão do
 áudio e desliga o rádio Wi-Fi. O `loop()` continua atendendo somente relógio,
-display e encoder. Clique curto e rotação são ignorados nesse estado.
+display e encoder. O clique longo não executa ação nesse estado.
 
-Outro clique longo conecta novamente o Wi-Fi, reabre o mesmo servidor, acorda
-a tarefa de áudio e solicita a estação que estava selecionada. A FFat e a lista
-em memória permanecem preservadas entre as transições; não há reinicialização
-do ESP32 nem remontagem do armazenamento.
+No Relógio, o giro percorre um catálogo central de estados. Cada opção substitui
+toda a tela; um clique curto confirma a opção exibida. Escolher Rádio Web
+conecta o Wi-Fi, reabre o servidor, acorda a tarefa e retoma a estação. Escolher
+Player mantém a rede desligada, monta o microSD quando necessário, cria o
+catálogo MP3 de `/sons` na primeira entrada e acorda a mesma tarefa de áudio.
+
+`player.cpp` limita o catálogo a 100 MP3 diretamente em `/sons`, sem busca
+recursiva. A listagem ocorre somente na primeira entrada bem-sucedida e nunca durante a
+reprodução. O arquivo é decodificado progressivamente por `connecttoFS()`; não
+há arquivo completo em RAM, mixer, anel PCM ou segundo decoder. A FFat, o
+catálogo e as seleções permanecem preservados entre transições.
 
 O estado Relógio não é um modo de baixo consumo. A versão instalada da
 ESP32-audioI2S encerra o stream, mas não oferece uma chamada pública para parar

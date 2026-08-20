@@ -1,5 +1,6 @@
 #include "audio_radio.h"
 #include "configuracao.h"
+#include "player.h"
 #include "radios.h"
 
 #include <Arduino.h>
@@ -34,11 +35,18 @@ constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
     250;
 
 enum class TipoComandoAudio : uint8_t {
-    TOCAR,
+    TOCAR_RADIO,
+    TOCAR_ARQUIVO,
     PARAR,
     VOLUME,
     SUSPENDER,
     RETOMAR
+};
+
+enum class FonteAudioAtiva : uint8_t {
+    NENHUMA,
+    RADIO,
+    ARQUIVO
 };
 
 struct ComandoAudio {
@@ -49,6 +57,7 @@ struct ComandoAudio {
 
     char nome[TAMANHO_NOME_RADIO] = "";
     char url[TAMANHO_URL_RADIO] = "";
+    char caminhoArquivo[TAMANHO_MAXIMO_CAMINHO_PLAYER] = "";
 };
 
 Audio audio;
@@ -69,6 +78,8 @@ uint32_t proximaTentativa = 0;
 uint32_t ultimaAmostraStatus = 0;
 
 uint8_t falhasConsecutivas = 0;
+FonteAudioAtiva fonteAudioAtiva =
+    FonteAudioAtiva::NENHUMA;
 
 bool bloquearStatus(
     TickType_t espera = pdMS_TO_TICKS(20)
@@ -205,6 +216,7 @@ void agendarReconexao(
     const char* motivo
 ) {
     if (urlDesejada[0] == '\0') {
+        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
         definirEstado(
             EstadoAudio::PARADO
         );
@@ -263,6 +275,8 @@ void conectarAgora(
         pdMS_TO_TICKS(100)
     );
 
+    fonteAudioAtiva = FonteAudioAtiva::RADIO;
+
     bool conectado =
         audio.connecttohost(
             urlDesejada
@@ -281,6 +295,52 @@ void conectarAgora(
     definirEstado(
         EstadoAudio::BUFFERIZANDO
     );
+}
+
+void abrirArquivoAgora(
+    const char* caminho
+) {
+    fs::FS* sistemaArquivos =
+        obterSistemaArquivosPlayer();
+
+    if (sistemaArquivos == nullptr) {
+        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
+        definirErro("Cartao microSD indisponivel");
+        definirEstado(EstadoAudio::ERRO);
+        return;
+    }
+
+    if (!sistemaArquivos->exists(caminho)) {
+        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
+        definirErro("Arquivo MP3 nao encontrado");
+        definirEstado(EstadoAudio::ERRO);
+        Serial.print("Player: arquivo inexistente: ");
+        Serial.println(caminho);
+        return;
+    }
+
+    nomeDesejado[0] = '\0';
+    urlDesejada[0] = '\0';
+    proximaTentativa = 0;
+    inicioDegradacao = 0;
+    fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
+
+    atualizarRadioStatus(caminho);
+    limparErro();
+    definirEstado(EstadoAudio::BUFFERIZANDO);
+
+    audio.stopSong();
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    if (!audio.connecttoFS(*sistemaArquivos, caminho)) {
+        definirErro("Falha ao abrir arquivo MP3");
+        definirEstado(EstadoAudio::ERRO);
+        return;
+    }
+
+    fonteAudioAtiva = FonteAudioAtiva::ARQUIVO;
+    inicioBufferizacao = 0;
+    definirEstado(EstadoAudio::TOCANDO);
 }
 
 void marcarStreamPronto() {
@@ -433,6 +493,7 @@ void tratarEventoAudio(
             ) {
                 marcarStreamPronto();
             } else if (
+                fonteAudioAtiva == FonteAudioAtiva::RADIO &&
                 strstr(
                     mensagem,
                     "slow stream"
@@ -480,10 +541,14 @@ void tratarEventoAudio(
             break;
 
         case Audio::evt_eof:
-            if (urlDesejada[0] != '\0') {
+            if (fonteAudioAtiva == FonteAudioAtiva::RADIO) {
                 agendarReconexao(
                     "Fim inesperado do fluxo"
                 );
+            } else if (fonteAudioAtiva == FonteAudioAtiva::ARQUIVO) {
+                fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
+                definirEstado(EstadoAudio::PARADO);
+                Serial.println("Player: arquivo finalizado.");
             }
 
             break;
@@ -660,7 +725,7 @@ void processarComando(
     const ComandoAudio& comando
 ) {
     switch (comando.tipo) {
-        case TipoComandoAudio::TOCAR:
+        case TipoComandoAudio::TOCAR_RADIO:
             copiarTexto(
                 nomeDesejado,
                 sizeof(nomeDesejado),
@@ -685,12 +750,21 @@ void processarComando(
             conectarAgora(false);
             break;
 
+        case TipoComandoAudio::TOCAR_ARQUIVO:
+            falhasConsecutivas = 0;
+            proximaTentativa = 0;
+            inicioDegradacao = 0;
+
+            abrirArquivoAgora(comando.caminhoArquivo);
+            break;
+
         case TipoComandoAudio::PARAR:
             nomeDesejado[0] = '\0';
             urlDesejada[0] = '\0';
             proximaTentativa = 0;
             falhasConsecutivas = 0;
             inicioDegradacao = 0;
+            fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
 
             audio.stopSong();
 
@@ -711,6 +785,7 @@ void processarComando(
             proximaTentativa = 0;
             falhasConsecutivas = 0;
             inicioDegradacao = 0;
+            fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
 
             audio.stopSong();
             audio.setMute(true);
@@ -922,7 +997,7 @@ bool tocarRadio(
     ComandoAudio comando;
 
     comando.tipo =
-        TipoComandoAudio::TOCAR;
+        TipoComandoAudio::TOCAR_RADIO;
 
     copiarTexto(
         comando.nome,
@@ -934,6 +1009,28 @@ bool tocarRadio(
         comando.url,
         sizeof(comando.url),
         url.c_str()
+    );
+
+    return enviarComando(comando);
+}
+
+bool tocarArquivoPlayer(const String& caminho) {
+    if (
+        caminho.length() == 0 ||
+        caminho.length() >= TAMANHO_MAXIMO_CAMINHO_PLAYER ||
+        !caminhoPlayerValido(caminho.c_str())
+    ) {
+        definirErro("Caminho de arquivo MP3 invalido");
+        return false;
+    }
+
+    ComandoAudio comando;
+    comando.tipo = TipoComandoAudio::TOCAR_ARQUIVO;
+
+    copiarTexto(
+        comando.caminhoArquivo,
+        sizeof(comando.caminhoArquivo),
+        caminho.c_str()
     );
 
     return enviarComando(comando);

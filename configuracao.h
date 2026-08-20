@@ -30,6 +30,12 @@ constexpr int PIN_ENCODER_DT  = 16;
 constexpr int PIN_ENCODER_SW  = 7;
 constexpr int PIN_ENCODER_VCC = -1;
 
+// Cartão microSD do Player, em barramento SPI dedicado por software.
+constexpr int PIN_CARTAO_PLAYER_SCK  = 42;
+constexpr int PIN_CARTAO_PLAYER_MISO = 41;
+constexpr int PIN_CARTAO_PLAYER_MOSI = 40;
+constexpr int PIN_CARTAO_PLAYER_CS   = 39;
+
 // Reservados para o futuro driver das quatro válvulas Nixie:
 // BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
 // Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
@@ -54,6 +60,10 @@ constexpr const char* BSSIDS_WIFI_BLOQUEADOS[] = {
 constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
 constexpr int VOLUME_PADRAO = 10;
+
+// A frequência conservadora prioriza compatibilidade. MP3 a 128 kbps exige
+// aproximadamente 16 KB/s, bem abaixo da vazão deste barramento.
+constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 1000000;
 
 // Interface
 // Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).

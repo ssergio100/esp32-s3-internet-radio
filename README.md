@@ -14,11 +14,12 @@ separados por responsabilidade:
 | `configuracao.h` | Ligações do hardware e parâmetros ajustáveis |
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
-| `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
+| `audio_radio.cpp` | Serviço exclusivo para rádio web ou arquivo local |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
 | `display_radio.cpp` | Telas dos estados Rádio Web e Relógio |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
+| `player.cpp` | Montagem do microSD e catálogo MP3 de `/sons` |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `relogio.cpp` | Política entre RTC, sincronização NTP e hora do sistema |
@@ -56,6 +57,7 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 | `INTERVALO_SINCRONIZACAO_NTP_MS` | Intervalo entre correções pela rede | 3600000 ms |
 | `DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS` | Diferença mínima para regravar o DS3231 | 2 segundos |
+| `FREQUENCIA_CARTAO_PLAYER_HZ` | Frequência SPI do microSD | 1000000 Hz |
 
 Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
@@ -76,6 +78,8 @@ não usam conversão binária de dois para quatro. O I2C fica logo acima em
 `GPIO17/18`; o sinal `DIN` do I2S foi movido para o `GPIO4` e o botão do
 encoder para o `GPIO7`. O pino de strapping
 `GPIO46`, situado entre os grupos físicos, permanece sem conexão.
+O microSD do Player usa `SCK=GPIO42`, `MISO=GPIO41`, `MOSI=GPIO40` e
+`CS=GPIO39`.
 
 Permanece como pendência implementar o driver das Nixies nesses oito pinos.
 Até essa etapa, o firmware não configura nem aciona `GPIO8`, `GPIO3` e
@@ -110,8 +114,10 @@ O `loop()` principal fica responsável por:
 - apresentação do estado publicado pelo serviço de áudio;
 - telemetria periódica.
 
-O equipamento possui dois estados operacionais. Em `Rádio Web`, todos esses
-serviços funcionam normalmente. Em `Relógio`, o stream e sua tarefa ficam
+O equipamento possui três estados operacionais: `Rádio Web`, `Player` e
+`Relógio`. Em `Rádio Web`, os serviços de rede funcionam normalmente. Em
+`Player`, Wi-Fi e servidor permanecem desligados e o mesmo decoder/I2S reproduz
+progressivamente um MP3 de `/sons`. Em `Relógio`, a fonte e sua tarefa ficam
 suspensos, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
 apagado; somente relógio, encoder e OLED continuam sendo processados.
 
@@ -142,6 +148,8 @@ a reprodução, o nome retorna ao tamanho normal e à rolagem.
 No estado `Relógio`, o OLED mostra `HH:MM` em quatro cartões grandes com uma
 divisão horizontal inspirada em mostradores flip. O rodapé percorre a data
 completa em português, por exemplo `sexta, 12 de agosto de 2026`.
+Ao girar o encoder, essa interface é substituída integralmente por `PLAYER` ou
+`RADIO WEB` em letras grandes. Um clique curto ativa a opção mostrada.
 
 ## Indicação do LED
 
@@ -158,8 +166,8 @@ do percentual do buffer.
 
 ## Encoder
 
-O firmware usa um encoder com `CLK`, `DT` e botão nos GPIOs 15, 16 e 7. Seu
-modo de repouso é sempre o controle de volume:
+O firmware usa um encoder com `CLK`, `DT` e botão nos GPIOs 15, 16 e 7. Nos
+estados de áudio, seu modo de repouso é o controle de volume:
 
 - girar o encoder altera o volume e o mostra na barra inferior;
 - após dois segundos, a barra volta a mostrar buffer e posição da estação;
@@ -168,11 +176,19 @@ modo de repouso é sempre o controle de volume:
 - pressionar novamente confirma a estação e retorna ao controle de volume;
 - após dez segundos sem atividade, a seleção é cancelada e a estação
   anterior permanece ativa.
-- manter o botão pressionado por dois segundos e soltá-lo alterna do estado
-  `Rádio Web` para `Relógio`;
-- no estado `Relógio`, rotação e clique curto não executam ações;
-- outro clique longo reativa Wi-Fi, servidor e áudio e retorna à estação que
-  estava selecionada.
+- manter o botão pressionado por dois segundos em Rádio Web ou Player leva ao
+  `Relógio`;
+- no Relógio, o giro substitui toda a tela pelas opções `PLAYER`, `RADIO WEB`
+  e pela própria tela do relógio;
+- um clique curto ativa a opção exibida; clique longo no Relógio não executa
+  ação.
+
+No Player, um clique curto abre a lista de até 100 arquivos MP3 diretamente em
+`/sons`; o giro navega e outro clique começa a reprodução. Fora da lista, o
+giro controla o volume. O Player não carrega o arquivo inteiro em memória e não
+executa simultaneamente com a rádio web.
+O catálogo é mantido em memória depois da primeira leitura; alterações físicas
+no conteúdo do cartão exigem reinicialização nesta primeira versão.
 
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre

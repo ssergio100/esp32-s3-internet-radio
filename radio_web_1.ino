@@ -6,7 +6,7 @@
  *
  * O loop() apenas coordena os módulos. A reprodução de áudio acontece em
  * uma tarefa dedicada implementada em audio_radio.cpp.
- * As regras de volume e seleção de estação permanecem neste arquivo para
+ * As regras de estados, volume, estações e arquivos permanecem neste arquivo para
  * que o fluxo principal do produto possa ser lido em um só lugar.
  */
 
@@ -19,18 +19,27 @@
 #include "audio_radio.h"
 #include "controles.h"
 #include "indicador_led.h"
+#include "player.h"
 #include "relogio.h"
 #include "servidor_web.h"
 #include "telemetria.h"
 
 enum class EstadoEquipamento {
     RADIO_WEB,
+    PLAYER,
     RELOGIO
 };
 
 enum class ModoInterface {
     VOLUME,
-    SELECAO_RADIO
+    SELECAO_RADIO,
+    SELECAO_ARQUIVO
+};
+
+constexpr EstadoEquipamento ORDEM_SELETOR_ESTADOS[] = {
+    EstadoEquipamento::RELOGIO,
+    EstadoEquipamento::PLAYER,
+    EstadoEquipamento::RADIO_WEB
 };
 
 // Estado da interação com o encoder e o display.
@@ -42,6 +51,9 @@ int volumeAtual = VOLUME_PADRAO;
 
 int indiceRadioAtual = 0;
 int indiceRadioEmSelecao = 0;
+int indiceArquivoAtual = 0;
+int indiceArquivoEmSelecao = 0;
+int indiceEstadoSelecionado = 0;
 
 unsigned long momentoUltimaAlteracaoVolumeMs = 0;
 unsigned long momentoUltimaAtividadeSelecaoMs = 0;
@@ -60,6 +72,10 @@ void confirmarSelecaoRadio();
 
 void entrarEstadoRelogio();
 void entrarEstadoRadioWeb();
+void entrarEstadoPlayer();
+
+void processarNavegacaoEstados(long deslocamentoEncoder);
+void confirmarEstadoSelecionado();
 
 void processarLeituraControles(
     const LeituraControles& leitura
@@ -72,6 +88,12 @@ void processarAjusteVolume(
 void processarNavegacaoRadios(
     long deslocamentoEncoder
 );
+
+void entrarModoSelecaoArquivo();
+void processarNavegacaoArquivos(long deslocamentoEncoder);
+void confirmarSelecaoArquivo();
+void mostrarArquivoAtualPlayer(bool emSelecao = false);
+void cancelarSelecaoArquivoPorInatividade();
 
 void restaurarBarraAposTempoVolume();
 void cancelarSelecaoRadioPorInatividade();
@@ -137,10 +159,14 @@ void loop() {
         return;
     }
 
-    supervisionarWifi();
-    processarServidorWeb();
+    if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+        supervisionarWifi();
+        processarServidorWeb();
+        cancelarSelecaoRadioPorInatividade();
+    } else {
+        cancelarSelecaoArquivoPorInatividade();
+    }
 
-    cancelarSelecaoRadioPorInatividade();
     restaurarBarraAposTempoVolume();
 
     atualizarIndicadorEstadoAudio();
@@ -157,24 +183,34 @@ void processarLeituraControles(
     const LeituraControles& leitura
 ) {
     if (leitura.cliqueLongoDetectado) {
-        if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+        if (estadoEquipamento != EstadoEquipamento::RELOGIO) {
             entrarEstadoRelogio();
-        } else {
-            entrarEstadoRadioWeb();
         }
 
         return;
     }
 
     if (estadoEquipamento == EstadoEquipamento::RELOGIO) {
+        if (leitura.cliqueDetectado) {
+            confirmarEstadoSelecionado();
+        } else if (leitura.deslocamentoEncoder != 0) {
+            processarNavegacaoEstados(leitura.deslocamentoEncoder);
+        }
+
         return;
     }
 
     if (leitura.cliqueDetectado) {
         if (modoInterface == ModoInterface::VOLUME) {
-            entrarModoSelecaoRadio();
-        } else {
+            if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+                entrarModoSelecaoRadio();
+            } else {
+                entrarModoSelecaoArquivo();
+            }
+        } else if (modoInterface == ModoInterface::SELECAO_RADIO) {
             confirmarSelecaoRadio();
+        } else {
+            confirmarSelecaoArquivo();
         }
 
         return;
@@ -188,8 +224,12 @@ void processarLeituraControles(
         processarAjusteVolume(
             leitura.deslocamentoEncoder
         );
-    } else {
+    } else if (modoInterface == ModoInterface::SELECAO_RADIO) {
         processarNavegacaoRadios(
+            leitura.deslocamentoEncoder
+        );
+    } else {
+        processarNavegacaoArquivos(
             leitura.deslocamentoEncoder
         );
     }
@@ -201,6 +241,7 @@ void processarLeituraControles(
 
 void entrarEstadoRelogio() {
     estadoEquipamento = EstadoEquipamento::RELOGIO;
+    indiceEstadoSelecionado = 0;
     modoInterface = ModoInterface::VOLUME;
     barraVolumeVisivel = false;
 
@@ -219,6 +260,55 @@ void entrarEstadoRelogio() {
     desligarWifi();
 
     Serial.println("Estado do equipamento: Relogio.");
+}
+
+void processarNavegacaoEstados(long deslocamentoEncoder) {
+    constexpr int QUANTIDADE_ESTADOS =
+        sizeof(ORDEM_SELETOR_ESTADOS) /
+        sizeof(ORDEM_SELETOR_ESTADOS[0]);
+
+    long novoIndice =
+        indiceEstadoSelecionado + deslocamentoEncoder;
+    novoIndice %= QUANTIDADE_ESTADOS;
+
+    if (novoIndice < 0) {
+        novoIndice += QUANTIDADE_ESTADOS;
+    }
+
+    indiceEstadoSelecionado = static_cast<int>(novoIndice);
+
+    switch (ORDEM_SELETOR_ESTADOS[indiceEstadoSelecionado]) {
+        case EstadoEquipamento::RELOGIO:
+            mostrarTelaRelogio();
+            Serial.println("Seletor: Relogio.");
+            break;
+
+        case EstadoEquipamento::PLAYER:
+            mostrarOpcaoEstado("PLAYER");
+            Serial.println("Seletor: Player.");
+            break;
+
+        case EstadoEquipamento::RADIO_WEB:
+            mostrarOpcaoEstado("RADIO WEB");
+            Serial.println("Seletor: Radio Web.");
+            break;
+    }
+}
+
+void confirmarEstadoSelecionado() {
+    switch (ORDEM_SELETOR_ESTADOS[indiceEstadoSelecionado]) {
+        case EstadoEquipamento::RELOGIO:
+            mostrarTelaRelogio();
+            break;
+
+        case EstadoEquipamento::PLAYER:
+            entrarEstadoPlayer();
+            break;
+
+        case EstadoEquipamento::RADIO_WEB:
+            entrarEstadoRadioWeb();
+            break;
+    }
 }
 
 void entrarEstadoRadioWeb() {
@@ -242,6 +332,40 @@ void entrarEstadoRadioWeb() {
     solicitarReproducaoRadio(indiceRadioAtual);
 
     Serial.println("Estado do equipamento: Radio Web.");
+}
+
+void entrarEstadoPlayer() {
+    mostrarMensagem("Lendo cartao");
+
+    bool catalogoDisponivel = prepararPlayer();
+
+    if (!retomarAudio(volumeAtual)) {
+        Serial.println("Player: falha ao retomar o servico de audio.");
+        mostrarTelaRelogio();
+        return;
+    }
+
+    estadoEquipamento = EstadoEquipamento::PLAYER;
+    modoInterface = ModoInterface::VOLUME;
+    barraVolumeVisivel = false;
+
+    int quantidadeArquivos = obterQuantidadeArquivosPlayer();
+
+    if (!catalogoDisponivel) {
+        mostrarMensagem("Player indisponivel");
+    } else if (quantidadeArquivos == 0) {
+        mostrarMensagem("Sem MP3 em /sons");
+    } else {
+        indiceArquivoAtual = constrain(
+            indiceArquivoAtual,
+            0,
+            quantidadeArquivos - 1
+        );
+        indiceArquivoEmSelecao = indiceArquivoAtual;
+        mostrarArquivoAtualPlayer();
+    }
+
+    Serial.println("Estado do equipamento: Player.");
 }
 
 void entrarModoSelecaoRadio() {
@@ -275,6 +399,92 @@ void confirmarSelecaoRadio() {
     }
 
     Serial.println("Rádio confirmada; modo: volume");
+}
+
+void entrarModoSelecaoArquivo() {
+    int quantidadeArquivos = obterQuantidadeArquivosPlayer();
+
+    if (quantidadeArquivos <= 0) {
+        mostrarMensagem("Sem MP3 em /sons");
+        return;
+    }
+
+    modoInterface = ModoInterface::SELECAO_ARQUIVO;
+    barraVolumeVisivel = false;
+    indiceArquivoEmSelecao = indiceArquivoAtual;
+    momentoUltimaAtividadeSelecaoMs = millis();
+
+    mostrarArquivoAtualPlayer(true);
+    Serial.println("Player: selecao de arquivo.");
+}
+
+void processarNavegacaoArquivos(long deslocamentoEncoder) {
+    int quantidadeArquivos = obterQuantidadeArquivosPlayer();
+
+    if (quantidadeArquivos <= 0) {
+        return;
+    }
+
+    long novoIndice =
+        indiceArquivoEmSelecao + deslocamentoEncoder;
+    novoIndice %= quantidadeArquivos;
+
+    if (novoIndice < 0) {
+        novoIndice += quantidadeArquivos;
+    }
+
+    indiceArquivoEmSelecao = static_cast<int>(novoIndice);
+    momentoUltimaAtividadeSelecaoMs = millis();
+    mostrarArquivoAtualPlayer(true);
+
+    const ArquivoPlayer* arquivo =
+        obterArquivoPlayer(indiceArquivoEmSelecao);
+
+    if (arquivo != nullptr) {
+        Serial.print("Player selecionado: ");
+        Serial.println(arquivo->caminho);
+    }
+}
+
+void confirmarSelecaoArquivo() {
+    const ArquivoPlayer* arquivo =
+        obterArquivoPlayer(indiceArquivoEmSelecao);
+
+    if (arquivo == nullptr) {
+        mostrarMensagem("Arquivo invalido");
+        return;
+    }
+
+    if (!tocarArquivoPlayer(arquivo->caminho)) {
+        mostrarMensagem("Comando rejeitado");
+        return;
+    }
+
+    indiceArquivoAtual = indiceArquivoEmSelecao;
+    modoInterface = ModoInterface::VOLUME;
+    mostrarArquivoAtualPlayer();
+
+    Serial.print("Player reproduzindo: ");
+    Serial.println(arquivo->caminho);
+}
+
+void mostrarArquivoAtualPlayer(bool emSelecao) {
+    int indice = emSelecao
+        ? indiceArquivoEmSelecao
+        : indiceArquivoAtual;
+    const ArquivoPlayer* arquivo = obterArquivoPlayer(indice);
+
+    if (arquivo == nullptr) {
+        mostrarMensagem("Sem MP3 em /sons");
+        return;
+    }
+
+    mostrarArquivoPlayer(
+        arquivo->nome,
+        indice,
+        obterQuantidadeArquivosPlayer(),
+        emSelecao
+    );
 }
 
 // =====================================================
@@ -394,6 +604,26 @@ void cancelarSelecaoRadioPorInatividade() {
     atualizarDisplayEstadoAudio(true);
 }
 
+void cancelarSelecaoArquivoPorInatividade() {
+    if (modoInterface != ModoInterface::SELECAO_ARQUIVO) {
+        return;
+    }
+
+    if (
+        millis() - momentoUltimaAtividadeSelecaoMs <
+        TEMPO_INATIVIDADE_SELECAO_MS
+    ) {
+        return;
+    }
+
+    modoInterface = ModoInterface::VOLUME;
+    indiceArquivoEmSelecao = indiceArquivoAtual;
+    barraVolumeVisivel = false;
+    mostrarArquivoAtualPlayer();
+
+    Serial.println("Player: selecao cancelada por inatividade.");
+}
+
 // =====================================================
 // Retorno automático da barra inferior
 // =====================================================
@@ -417,7 +647,11 @@ void restaurarBarraAposTempoVolume() {
 
     barraVolumeVisivel = false;
 
-    atualizarDisplayEstadoAudio(true);
+    if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+        atualizarDisplayEstadoAudio(true);
+    } else if (estadoEquipamento == EstadoEquipamento::PLAYER) {
+        mostrarArquivoAtualPlayer();
+    }
 }
 
 // =====================================================
@@ -491,6 +725,10 @@ void atualizarDisplayEstadoAudio(
 
     StatusAudio statusAudio =
         obterStatusAudio();
+
+    if (estadoEquipamento != EstadoEquipamento::RADIO_WEB) {
+        return;
+    }
 
     if (
         !forcarAtualizacao &&

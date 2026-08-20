@@ -18,6 +18,9 @@ Ao compilar com `--profile esp32s3`, o Arduino CLI pode instalar os
 componentes ausentes. Use `scripts/compilar.sh` para um build rotineiro sem
 provisionamento automático.
 
+O Player usa `SD`, `SPI` e `FS` fornecidos pelo próprio Arduino core ESP32; não
+acrescenta biblioteca externa para o cartão.
+
 Na ArduinoJson 7, use `JsonDocument`, que cresce dinamicamente. As classes
 `DynamicJsonDocument` e `StaticJsonDocument` pertencem à camada de
 compatibilidade com versões anteriores; o argumento de capacidade de

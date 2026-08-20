@@ -40,6 +40,10 @@ bool tocarRadio(
     const String& url
 );
 
+// Reproduz progressivamente um MP3 de /sons usando o mesmo decoder e I2S da
+// rádio. Rádio web e arquivo local nunca são executados simultaneamente.
+bool tocarArquivoPlayer(const String& caminho);
+
 bool pararAudio();
 
 // Para o stream e suspende a tarefa dedicada até o modo Rádio Web voltar.
