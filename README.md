@@ -15,7 +15,6 @@ separados por responsabilidade:
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
-| `arquivos_audio.cpp` | Montagem do microSD e listagem das faixas locais |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
 | `display_radio.cpp` | Telas e animações do nome e do diagnóstico da estação |
 | `controles.cpp` | Leitura do encoder e do botão |
@@ -62,13 +61,6 @@ Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
 vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
-
-O leitor microSD usa SPI com `SCK=GPIO42`, `MISO=GPIO41`, `MOSI=GPIO40` e
-`CS=GPIO39`. O firmware monta o cartão sem tornar sua presença obrigatória e
-cria o diretório `/sons` quando necessário. A comunicação começa em 1 MHz para
-favorecer módulos com conversores de nível e ligações por fios. O cartão deve
-estar em FAT16 ou FAT32. Esses quatro GPIOs deixam de ficar disponíveis para
-um depurador JTAG externo.
 
 O sketch independente
 `examples/teste_ds3231sn/teste_ds3231sn.ino` valida o RTC DS3231SN pela porta
@@ -124,42 +116,6 @@ reconexão progressiva de 1, 2, 5, 10 e 30 segundos. Se o Wi-Fi cair, ele
 aguarda a rede voltar antes de abrir uma nova conexão.
 
 Veja os detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
-
-## Arquivos de áudio no microSD
-
-`arquivos_audio.cpp` fornece a base para futuras associações entre sons e
-eventos. `obterListaArquivosAudio()` devolve, em ordem alfabética, caminho e
-tamanho das faixas diretamente dentro de `/sons`. São reconhecidos MP3, M4A,
-AAC, WAV, FLAC, OGG, OGA e Opus.
-
-`tocarArquivoAudio()` envia o caminho escolhido à mesma fila usada pelas
-rádios. Somente a tarefa dedicada acessa a instância `Audio` e abre o arquivo
-com `connecttoFS()`. A fonte atual é interrompida e, ao terminar o arquivo, o
-serviço fica parado. Uma futura regra de eventos decidirá explicitamente se
-deve retomar a rádio anterior.
-
-O sketch independente
-`examples/leitor_micro_sd_com_encoder/leitor_micro_sd_com_encoder.ino` testa
-todo o caminho de hardware sem iniciar Wi-Fi nem servidor. O encoder principal
-navega pela lista; seu clique toca a faixa. Durante a reprodução, o giro ajusta
-o volume e o clique para a música e retorna à lista. Para facilitar o teste, o
-sketch procura arquivos compatíveis na raiz e nas subpastas do cartão; o módulo
-do firmware completo permanece deliberadamente restrito a `/sons`. Na partida,
-o exemplo faz até três tentativas de montar o cartão e reinicia o barramento SPI
-entre elas, para tolerar a inicialização mais lenta observada logo após o upload.
-
-Uso básico no firmware:
-
-```cpp
-std::vector<ArquivoAudioDisponivel> arquivos;
-
-if (
-    obterListaArquivosAudio(arquivos) &&
-    !arquivos.empty()
-) {
-    tocarArquivoAudio(arquivos[0].caminho);
-}
-```
 
 Na tela normal da rádio, a faixa superior percorre para a direita mostrando
 data e hora locais, codec, bitrate, reserva de áudio em segundos, RSSI e BSSID.

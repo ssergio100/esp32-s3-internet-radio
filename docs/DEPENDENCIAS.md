@@ -23,9 +23,6 @@ Na ArduinoJson 7, use `JsonDocument`, que cresce dinamicamente. As classes
 compatibilidade com versões anteriores; o argumento de capacidade de
 `DynamicJsonDocument` não reserva nem limita a memória nessa versão.
 
-O suporte ao leitor microSD usa `SD`, `SPI` e `FS`, fornecidos pelo próprio
-Arduino core ESP32 3.3.10; não acrescenta biblioteca externa ao perfil.
-
 O teste independente do DS3231 foi validado em hardware com RTClib 2.1.4. A
 integração dessa mesma versão ao firmware principal está registrada em
 `sketch.yaml`, mas ainda aguarda compilação e validação no rádio completo. O

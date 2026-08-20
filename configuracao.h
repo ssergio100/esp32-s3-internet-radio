@@ -30,21 +30,10 @@ constexpr int PIN_ENCODER_DT  = 16;
 constexpr int PIN_ENCODER_SW  = 7;
 constexpr int PIN_ENCODER_VCC = -1;
 
-// Leitor microSD no barramento SPI, no lado oposto ao futuro conjunto das
-// válvulas Nixie. O uso destes GPIOs substitui a função JTAG externa deles.
-constexpr int PIN_CARTAO_MICRO_SD_SCK  = 42;
-constexpr int PIN_CARTAO_MICRO_SD_MISO = 41;
-constexpr int PIN_CARTAO_MICRO_SD_MOSI = 40;
-constexpr int PIN_CARTAO_MICRO_SD_CS   = 39;
-
 // Reservados para o futuro driver das quatro válvulas Nixie:
 // BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
 // Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
 // O GPIO46, situado entre esses grupos na placa, permanece sem conexão.
-
-// Frequência conservadora para módulos com conversores de nível e fios longos.
-// Aumente somente depois de confirmar a leitura estável do cartão.
-constexpr uint32_t FREQUENCIA_CARTAO_MICRO_SD_HZ = 1000000;
 
 // Valor calibrado para o encoder instalado: cada detente produz quatro
 // transições válidas reconhecidas pela biblioteca.
@@ -108,30 +97,6 @@ constexpr const char* SERVIDOR_NTP_SECUNDARIO = "time.nist.gov";
 // do sistema com maior frequência enquanto houver rede.
 constexpr uint32_t INTERVALO_SINCRONIZACAO_NTP_MS = 3600000;
 constexpr uint32_t DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS = 2;
-
-// Chime do relógio
-// Habilita a reprodução do aviso sonoro do relógio.
-constexpr bool CHIME_RELOGIO_HABILITADO = true;
-
-// Intervalo de repetição em minutos (1 a 60).
-// 60 = de hora em hora (padrão de relógio).
-// Valores como 1, 2, 5, 15 ou 30 facilitam testes rápidos em bancada.
-constexpr int CHIME_INTERVALO_MINUTOS = 1;
-
-// Caminho do arquivo WAV no microSD (esperado: PCM 16-bit linear, mono ou estéreo).
-constexpr const char* CAMINHO_ARQUIVO_CHIME = "/sons/chime.wav";
-
-// Volume do chime (0.0 a 1.5; 0.9 = 90% do volume nominal).
-constexpr float VOLUME_CHIME_PADRAO = 0.5f;
-
-// Fator de atenuação (ducking) da rádio web durante a reprodução do chime.
-// 0.25 atenua a rádio para 25% do volume original durante o toque.
-constexpr float FATOR_DUCKING_RADIO_CHIME = 0.25f;
-
-// Janela horária autorizada para o chime (ex: das 7h às 22h).
-// Defina 0 e 23 para autorizar todas as 24 horas.
-constexpr int CHIME_HORA_INICIO = 0;
-constexpr int CHIME_HORA_FIM    = 22;
 
 // =====================================================
 // Ajustes internos

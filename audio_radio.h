@@ -40,18 +40,6 @@ bool tocarRadio(
     const String& url
 );
 
-// Interrompe a fonte atual e reproduz um arquivo do diretório /sons no cartão.
-// Ao terminar, o serviço permanece parado; a retomada da rádio será uma regra
-// explícita do futuro agendador de eventos.
-bool tocarArquivoAudio(
-    const String& caminho
-);
-
-// Dispara o chime horário do relógio. Se uma rádio web estiver tocando,
-// o chime é mixado em tempo real com ducking suave sem interromper a transmissão.
-// Se o áudio estiver parado, toca o chime como arquivo individual.
-bool dispararChimeRelogio();
-
 bool pararAudio();
 
 void alterarVolumeAudio(int volume);
