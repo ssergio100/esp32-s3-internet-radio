@@ -16,7 +16,7 @@ separados por responsabilidade:
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
-| `display_radio.cpp` | Telas e animações do nome e do diagnóstico da estação |
+| `display_radio.cpp` | Telas dos estados Rádio Web e Relógio |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
@@ -24,7 +24,6 @@ separados por responsabilidade:
 | `relogio.cpp` | Política entre RTC, sincronização NTP e hora do sistema |
 | `relogio_rtc.cpp` | Acesso ao DS3231 por meio da RTClib |
 | `servidor_web.cpp` | Montagem da FFat, inicialização do servidor e mapa das rotas HTTP |
-| `sono_profundo.cpp` | Configuração do despertar e entrada em deep sleep |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
 | `web/index.html` | Página principal da administração |
@@ -46,10 +45,11 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
 | `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
-| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para entrar em deep sleep | 2000 ms |
+| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para alternar Rádio Web/Relógio | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 40 ms |
 | `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 13 ms |
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
+| `INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS` | Intervalo para a data do relógio avançar um pixel | 80 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
 | `TRANSICOES_ENCODER_POR_DETENTE` | Calibração do movimento físico do encoder | 4 |
@@ -110,6 +110,11 @@ O `loop()` principal fica responsável por:
 - apresentação do estado publicado pelo serviço de áudio;
 - telemetria periódica.
 
+O equipamento possui dois estados operacionais. Em `Rádio Web`, todos esses
+serviços funcionam normalmente. Em `Relógio`, o stream e sua tarefa ficam
+suspensos, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
+apagado; somente relógio, encoder e OLED continuam sendo processados.
+
 O serviço de áudio publica estados explícitos (`conectando`,
 `bufferizando`, `tocando`, `degradado`, `reconectando` e `erro`) e usa
 reconexão progressiva de 1, 2, 5, 10 e 30 segundos. Se o Wi-Fi cair, ele
@@ -133,6 +138,10 @@ rolante da rádio e, durante a abertura do stream, os estados `Conectando...` e
 `Bufferizando...`, estáticos e em fonte pequena. Na seleção, o nome fica parado
 e usa uma fonte menor quando não cabe no tamanho normal. Ao confirmar e iniciar
 a reprodução, o nome retorna ao tamanho normal e à rolagem.
+
+No estado `Relógio`, o OLED mostra `HH:MM` em quatro cartões grandes com uma
+divisão horizontal inspirada em mostradores flip. O rodapé percorre a data
+completa em português, por exemplo `sexta, 12 de agosto de 2026`.
 
 ## Indicação do LED
 
@@ -159,10 +168,11 @@ modo de repouso é sempre o controle de volume:
 - pressionar novamente confirma a estação e retorna ao controle de volume;
 - após dez segundos sem atividade, a seleção é cancelada e a estação
   anterior permanece ativa.
-- manter o botão pressionado por dois segundos e soltá-lo interrompe o áudio,
-  apaga LED e OLED e coloca o ESP32-S3 em deep sleep;
-- pressionar o botão novamente acorda o rádio, que executa uma inicialização
-  completa.
+- manter o botão pressionado por dois segundos e soltá-lo alterna do estado
+  `Rádio Web` para `Relógio`;
+- no estado `Relógio`, rotação e clique curto não executam ações;
+- outro clique longo reativa Wi-Fi, servidor e áudio e retorna à estação que
+  estava selecionada.
 
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
@@ -170,10 +180,10 @@ duas passagens do `loop()`, todos são aplicados. O valor
 `TRANSICOES_ENCODER_POR_DETENTE` está calibrado em `4` para o componente
 instalado.
 
-Enquanto o controle elétrico de `SD_MODE` não for instalado, o deep sleep
-interrompe o `BCLK` e os dois MAX98357A entram no standby automático. Portanto,
-os amplificadores ainda não alcançam o consumo de shutdown completo nessa
-condição.
+O estado `Relógio` encerra o stream e suspende a tarefa de serviço, mas a
+biblioteca ESP32-audioI2S não expõe ao firmware a parada pública do I2S. Sem um
+controle elétrico de `SD_MODE`, não se deve interpretar esse estado como
+shutdown de baixo consumo dos amplificadores.
 
 ## Lista de rádios
 

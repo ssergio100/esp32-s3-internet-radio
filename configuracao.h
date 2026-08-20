@@ -63,8 +63,8 @@ constexpr int VOLUME_PADRAO = 10;
 constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
-// Tempo que o botão do encoder deve permanecer pressionado para desligar.
-// Aumente para reduzir acionamentos acidentais; diminua para desligar mais rápido.
+// Tempo que o botão deve permanecer pressionado para alternar entre os estados
+// Rádio Web e Relógio. Aumente para reduzir acionamentos acidentais.
 constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
 
 // O LED alterna entre azul e apagado a cada intervalo.
@@ -80,6 +80,9 @@ constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 40;
 // O segundo controla a frequência de renovação dos valores exibidos.
 constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS = 13;
 constexpr unsigned long INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS = 1000;
+
+// A data completa no rodapé do relógio avança um pixel a cada passo.
+constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS = 80;
 
 // Diagnóstico
 constexpr unsigned long INTERVALO_TELEMETRIA_SERIAL_MS = 5000;
@@ -111,10 +114,6 @@ constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
 // Tratamento dos controles
 constexpr unsigned long TEMPO_VALIDACAO_CLIQUE_ENCODER_MS = 30;
 constexpr unsigned long INTERVALO_MINIMO_CLIQUES_ENCODER_MS = 200;
-
-// Evita impedir o sono indefinidamente caso o serviço de áudio não confirme
-// a parada. No deep sleep, o próprio ESP32 interrompe os periféricos.
-constexpr unsigned long TEMPO_MAXIMO_PARADA_AUDIO_ANTES_SONO_MS = 1000;
 
 // Atualização dos indicadores
 constexpr unsigned long INTERVALO_VERIFICACAO_LED_AUDIO_MS = 250;

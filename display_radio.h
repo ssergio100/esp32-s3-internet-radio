@@ -29,12 +29,12 @@ void mostrarEstadoRadio(
 
 void mostrarVolume(int volume);
 
-// Apaga o painel do OLED antes da entrada em deep sleep.
-void desligarDisplay();
+// Troca o OLED para a tela permanente do estado Relógio.
+void mostrarTelaRelogio();
 
 /*
  * Deve ser chamada continuamente no loop().
- * Atualiza e movimenta o diagnóstico e a faixa central.
+ * Atualiza a tela correspondente ao estado atual do equipamento.
  */
 void processarDisplay();
 

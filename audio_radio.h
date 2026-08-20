@@ -42,6 +42,12 @@ bool tocarRadio(
 
 bool pararAudio();
 
+// Para o stream e suspende a tarefa dedicada até o modo Rádio Web voltar.
+bool suspenderAudio();
+
+// Reativa a tarefa dedicada e restaura o volume de operação.
+bool retomarAudio(int volume);
+
 void alterarVolumeAudio(int volume);
 
 StatusAudio obterStatusAudio();

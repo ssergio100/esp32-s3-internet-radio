@@ -313,3 +313,16 @@ void conectarWifi() {
 
     delay(500);
 }
+
+void desligarWifi() {
+    guardarCredenciaisAtuais();
+
+    WiFi.scanDelete();
+    varreduraWifiEmAndamento = false;
+    selecaoPontoPermitidoNecessaria = false;
+
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_OFF);
+
+    Serial.println("Wi-Fi desligado.");
+}

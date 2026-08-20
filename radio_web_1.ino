@@ -21,8 +21,12 @@
 #include "indicador_led.h"
 #include "relogio.h"
 #include "servidor_web.h"
-#include "sono_profundo.h"
 #include "telemetria.h"
+
+enum class EstadoEquipamento {
+    RADIO_WEB,
+    RELOGIO
+};
 
 enum class ModoInterface {
     VOLUME,
@@ -31,6 +35,8 @@ enum class ModoInterface {
 
 // Estado da interação com o encoder e o display.
 ModoInterface modoInterface = ModoInterface::VOLUME;
+EstadoEquipamento estadoEquipamento =
+    EstadoEquipamento::RADIO_WEB;
 
 int volumeAtual = VOLUME_PADRAO;
 
@@ -42,9 +48,6 @@ unsigned long momentoUltimaAtividadeSelecaoMs = 0;
 
 bool barraVolumeVisivel = false;
 
-bool preparandoSonoProfundo = false;
-unsigned long momentoSolicitacaoSonoProfundoMs = 0;
-
 // =====================================================
 // Protótipos
 // =====================================================
@@ -55,8 +58,8 @@ void solicitarReproducaoRadio(int indiceRadio);
 void entrarModoSelecaoRadio();
 void confirmarSelecaoRadio();
 
-void solicitarEntradaSonoProfundo();
-void concluirEntradaSonoProfundoQuandoAudioParar();
+void entrarEstadoRelogio();
+void entrarEstadoRadioWeb();
 
 void processarLeituraControles(
     const LeituraControles& leitura
@@ -84,8 +87,6 @@ void atualizarDisplayEstadoAudio(
 void setup() {
     Serial.begin(115200);
     delay(1000);
-
-    informarMotivoDespertar();
 
     iniciarDisplay();
     iniciarControles();
@@ -124,24 +125,20 @@ void setup() {
 // =====================================================
 
 void loop() {
-    if (preparandoSonoProfundo) {
-        concluirEntradaSonoProfundoQuandoAudioParar();
-        return;
-    }
-
-    supervisionarWifi();
     processarRelogio();
     processarDisplay();
-    processarServidorWeb();
 
     LeituraControles leituraControles =
         lerControles();
 
     processarLeituraControles(leituraControles);
 
-    if (preparandoSonoProfundo) {
+    if (estadoEquipamento == EstadoEquipamento::RELOGIO) {
         return;
     }
+
+    supervisionarWifi();
+    processarServidorWeb();
 
     cancelarSelecaoRadioPorInatividade();
     restaurarBarraAposTempoVolume();
@@ -160,7 +157,16 @@ void processarLeituraControles(
     const LeituraControles& leitura
 ) {
     if (leitura.cliqueLongoDetectado) {
-        solicitarEntradaSonoProfundo();
+        if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+            entrarEstadoRelogio();
+        } else {
+            entrarEstadoRadioWeb();
+        }
+
+        return;
+    }
+
+    if (estadoEquipamento == EstadoEquipamento::RELOGIO) {
         return;
     }
 
@@ -190,68 +196,52 @@ void processarLeituraControles(
 }
 
 // =====================================================
-// Sono profundo
+// Estados do equipamento
 // =====================================================
 
-void solicitarEntradaSonoProfundo() {
-    if (!configurarDespertarPeloBotaoEncoder()) {
-        mostrarMensagem(
-            "Falha ao desligar"
-        );
-
-        return;
-    }
-
-    preparandoSonoProfundo = true;
-    momentoSolicitacaoSonoProfundoMs = millis();
-
+void entrarEstadoRelogio() {
+    estadoEquipamento = EstadoEquipamento::RELOGIO;
     modoInterface = ModoInterface::VOLUME;
     barraVolumeVisivel = false;
 
-    mostrarMensagem(
-        "Desligando..."
-    );
+    // A troca visual acontece antes do desligamento dos serviços para que o
+    // clique tenha resposta imediata no OLED.
+    mostrarTelaRelogio();
     apagarIndicadorLed();
+    desativarServidorWeb();
 
-    if (!pararAudio()) {
+    if (!suspenderAudio()) {
         Serial.println(
-            "Comando de parada do audio nao foi aceito."
+            "Comando para suspender o audio nao foi aceito."
         );
     }
 
-    Serial.println(
-        "Clique longo: preparando sono profundo."
-    );
+    desligarWifi();
+
+    Serial.println("Estado do equipamento: Relogio.");
 }
 
-void concluirEntradaSonoProfundoQuandoAudioParar() {
-    EstadoAudio estadoAudio =
-        obterStatusAudio().estado;
+void entrarEstadoRadioWeb() {
+    mostrarMensagem("Ativando Radio");
 
-    bool audioParado =
-        estadoAudio == EstadoAudio::PARADO ||
-        estadoAudio == EstadoAudio::DESLIGADO;
+    conectarWifi();
+    reativarServidorWeb();
 
-    bool tempoEsgotado =
-        millis() - momentoSolicitacaoSonoProfundoMs >=
-        TEMPO_MAXIMO_PARADA_AUDIO_ANTES_SONO_MS;
-
-    if (!audioParado && !tempoEsgotado) {
+    if (!retomarAudio(volumeAtual)) {
+        Serial.println("Falha ao retomar o servico de audio.");
+        desativarServidorWeb();
+        desligarWifi();
+        mostrarTelaRelogio();
         return;
     }
 
-    if (!audioParado) {
-        Serial.println(
-            "Tempo limite ao parar audio; continuando o desligamento."
-        );
-    }
+    estadoEquipamento = EstadoEquipamento::RADIO_WEB;
+    modoInterface = ModoInterface::VOLUME;
+    barraVolumeVisivel = false;
 
-    desligarDisplay();
-    apagarIndicadorLed();
+    solicitarReproducaoRadio(indiceRadioAtual);
 
-    // Sem controle elétrico de SD_MODE, os MAX98357A entrarão no standby
-    // automático quando o deep sleep interromper o BCLK.
-    entrarSonoProfundo();
+    Serial.println("Estado do equipamento: Radio Web.");
 }
 
 void entrarModoSelecaoRadio() {

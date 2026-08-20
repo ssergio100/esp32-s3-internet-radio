@@ -12,6 +12,7 @@
 namespace {
 
 WebServer servidor(80);
+bool servidorAtivo = false;
 
 const char* ARQUIVO_PAGINA_PRINCIPAL = "/index.html";
 const char* ARQUIVO_PAGINA_UPLOAD = "/upload.html";
@@ -230,6 +231,7 @@ bool iniciarArmazenamentoEServidorWeb() {
     });
 
     servidor.begin();
+    servidorAtivo = true;
 
     Serial.println(
         "Servidor web iniciado."
@@ -258,6 +260,32 @@ bool iniciarArmazenamentoEServidorWeb() {
     return true;
 }
 
+void desativarServidorWeb() {
+    if (!servidorAtivo) {
+        return;
+    }
+
+    servidor.stop();
+    servidorAtivo = false;
+
+    Serial.println("Servidor web desativado.");
+}
+
+void reativarServidorWeb() {
+    if (servidorAtivo) {
+        return;
+    }
+
+    servidor.begin();
+    servidorAtivo = true;
+
+    Serial.println("Servidor web reativado.");
+}
+
 void processarServidorWeb() {
+    if (!servidorAtivo) {
+        return;
+    }
+
     servidor.handleClient();
 }

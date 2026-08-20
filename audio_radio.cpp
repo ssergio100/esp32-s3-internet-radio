@@ -4,6 +4,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <atomic>
 #include <cstring>
 #include "Audio.h"
 
@@ -35,7 +36,9 @@ constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
 enum class TipoComandoAudio : uint8_t {
     TOCAR,
     PARAR,
-    VOLUME
+    VOLUME,
+    SUSPENDER,
+    RETOMAR
 };
 
 struct ComandoAudio {
@@ -53,6 +56,7 @@ Audio audio;
 QueueHandle_t filaComandos = nullptr;
 SemaphoreHandle_t mutexStatus = nullptr;
 TaskHandle_t tarefaAudioHandle = nullptr;
+std::atomic<bool> servicoAudioAtivo{true};
 
 StatusAudio statusAudio;
 
@@ -700,6 +704,35 @@ void processarComando(
                 comando.volume
             );
             break;
+
+        case TipoComandoAudio::SUSPENDER:
+            nomeDesejado[0] = '\0';
+            urlDesejada[0] = '\0';
+            proximaTentativa = 0;
+            falhasConsecutivas = 0;
+            inicioDegradacao = 0;
+
+            audio.stopSong();
+            audio.setMute(true);
+
+            atualizarRadioStatus("");
+            definirEstado(EstadoAudio::DESLIGADO);
+            ulTaskNotifyTake(pdTRUE, 0);
+            servicoAudioAtivo.store(
+                false,
+                std::memory_order_release
+            );
+            break;
+
+        case TipoComandoAudio::RETOMAR:
+            servicoAudioAtivo.store(
+                true,
+                std::memory_order_release
+            );
+            audio.setMute(false);
+            audio.setVolume(comando.volume);
+            definirEstado(EstadoAudio::PARADO);
+            break;
     }
 }
 
@@ -711,6 +744,17 @@ void tarefaAudio(
     ComandoAudio comando;
 
     while (true) {
+        if (!servicoAudioAtivo.load(
+            std::memory_order_acquire
+        )) {
+            ulTaskNotifyTake(
+                pdTRUE,
+                portMAX_DELAY
+            );
+
+            continue;
+        }
+
         while (
             xQueueReceive(
                 filaComandos,
@@ -902,6 +946,46 @@ bool pararAudio() {
         TipoComandoAudio::PARAR;
 
     return enviarComando(comando);
+}
+
+bool suspenderAudio() {
+    ComandoAudio comando;
+
+    comando.tipo =
+        TipoComandoAudio::SUSPENDER;
+
+    return enviarComando(comando);
+}
+
+bool retomarAudio(int volume) {
+    if (tarefaAudioHandle == nullptr) {
+        return false;
+    }
+
+    ComandoAudio comando;
+
+    comando.tipo =
+        TipoComandoAudio::RETOMAR;
+    comando.volume =
+        static_cast<uint8_t>(
+            constrain(
+                volume,
+                VOLUME_MINIMO,
+                VOLUME_MAXIMO
+            )
+        );
+
+    if (!enviarComando(comando)) {
+        return false;
+    }
+
+    servicoAudioAtivo.store(
+        true,
+        std::memory_order_release
+    );
+    xTaskNotifyGive(tarefaAudioHandle);
+
+    return true;
 }
 
 void alterarVolumeAudio(int volume) {
