@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+#include "alarmes.h"
 #include "audio_radio.h"
 #include "configuracao.h"
 
@@ -65,6 +66,34 @@ namespace {
         );
     }
 
+    void registrarAlarmes() {
+        StatusAlarmes alarmes = obterStatusAlarmes();
+        StatusAudio audio = obterStatusAudio();
+
+        const char* origemSom = "inativo";
+
+        if (audio.alarmeAtivo) {
+            if (audio.somPadraoAlarme) {
+                origemSom =
+                    audio.arquivoAlarmeSolicitado
+                        ? "padrao (arquivo indisponivel)"
+                        : "padrao";
+            } else {
+                origemSom = "arquivo do microSD";
+            }
+        }
+
+        Serial.printf(
+            "Alarmes: %u/%u ativos | Som padrao: %s | Audio: %s\n",
+            static_cast<unsigned int>(alarmes.quantidadeAtivos),
+            static_cast<unsigned int>(alarmes.quantidade),
+            alarmes.somPadraoDisponivel
+                ? "disponivel"
+                : "indisponivel",
+            origemSom
+        );
+    }
+
 }
 
 void registrarTelemetriaPeriodica() {
@@ -84,4 +113,5 @@ void registrarTelemetriaPeriodica() {
     registrarTemperaturaEMemoria();
     registrarConexaoWifi();
     registrarAudio();
+    registrarAlarmes();
 }

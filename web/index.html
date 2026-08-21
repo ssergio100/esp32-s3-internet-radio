@@ -25,6 +25,24 @@
             margin: 0 auto;
         }
 
+        .navegacao {
+            display: flex;
+            gap: 9px;
+            margin-bottom: 16px;
+        }
+
+        .navegacao a {
+            color: #1976d2;
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .navegacao a + a::before {
+            margin-right: 9px;
+            color: #a4adb2;
+            content: "•";
+        }
+
         .cabecalho {
             display: flex;
             align-items: center;
@@ -549,6 +567,12 @@
 
 <body>
     <main class="container">
+        <nav class="navegacao">
+            <a href="/">Rádios</a>
+            <a href="/alarmes">Alarmes</a>
+            <a href="/upload">Arquivos</a>
+        </nav>
+
         <header class="cabecalho">
             <div>
                 <h1>Rádios cadastradas</h1>

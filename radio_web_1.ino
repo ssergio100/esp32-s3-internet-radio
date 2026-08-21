@@ -13,6 +13,7 @@
 #include <Arduino.h>
 
 #include "configuracao.h"
+#include "alarmes.h"
 #include "radios.h"
 #include "display_radio.h"
 #include "wifi_radio.h"
@@ -62,6 +63,14 @@ bool barraVolumeVisivel = false;
 bool reproducaoPlayerSolicitada = false;
 bool playerObservouAudioAtivo = false;
 
+bool alarmeEmExecucao = false;
+bool alarmeObservouAudioAtivo = false;
+EstadoEquipamento estadoAntesDoAlarme =
+    EstadoEquipamento::RADIO_WEB;
+DisparoAlarme alarmeAtual;
+unsigned long inicioAlarmeAtualMs = 0;
+unsigned long proximaTentativaAudioAlarmeMs = 0;
+
 // =====================================================
 // Protótipos
 // =====================================================
@@ -106,6 +115,12 @@ void atualizarDisplayEstadoAudio(
     bool forcarAtualizacao = false
 );
 
+void processarAgendamentoAlarmes();
+void iniciarExecucaoAlarme(const DisparoAlarme& disparo);
+void iniciarCicloAudioAlarme();
+void processarExecucaoAlarme();
+void finalizarExecucaoAlarme(bool interrompidoPeloUsuario);
+
 // =====================================================
 // Setup
 // =====================================================
@@ -130,6 +145,12 @@ void setup() {
         return;
     }
 
+    // O catálogo é criado antes do áudio começar. Assim, a página de alarmes
+    // consulta somente a RAM e nunca varre o cartão durante a rádio web.
+    mostrarMensagem("Lendo cartao");
+    prepararPlayer();
+    iniciarAlarmes();
+
     carregarRadios();
 
     if (!iniciarAudio(volumeAtual)) {
@@ -152,10 +173,28 @@ void setup() {
 
 void loop() {
     processarRelogio();
+    processarAgendamentoAlarmes();
     processarDisplay();
 
     LeituraControles leituraControles =
         lerControles();
+
+    if (alarmeEmExecucao) {
+        if (leituraControles.cliqueDetectado) {
+            finalizarExecucaoAlarme(true);
+        } else {
+            processarExecucaoAlarme();
+        }
+
+        if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+            supervisionarWifi();
+            processarServidorWeb();
+        }
+
+        atualizarIndicadorEstadoAudio();
+        registrarTelemetriaPeriodica();
+        return;
+    }
 
     processarLeituraControles(leituraControles);
 
@@ -178,6 +217,164 @@ void loop() {
     atualizarDisplayEstadoAudio();
 
     registrarTelemetriaPeriodica();
+}
+
+// =====================================================
+// Alarmes
+// =====================================================
+
+void processarAgendamentoAlarmes() {
+    DisparoAlarme disparo;
+
+    if (!verificarDisparoAlarme(disparo)) {
+        return;
+    }
+
+    iniciarExecucaoAlarme(disparo);
+}
+
+void iniciarExecucaoAlarme(const DisparoAlarme& disparo) {
+    bool iniciandoCadeia = !alarmeEmExecucao;
+
+    if (iniciandoCadeia) {
+        estadoAntesDoAlarme = estadoEquipamento;
+
+        if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+            // Evita acesso concorrente à FFat enquanto o som padrão puder
+            // estar sendo lido pela tarefa de áudio.
+            desativarServidorWeb();
+        } else if (estadoEquipamento == EstadoEquipamento::RELOGIO) {
+            if (!retomarAudio(disparo.volume, true)) {
+                Serial.println(
+                    "Alarme: falha ao retomar o servico de audio."
+                );
+            }
+        }
+    } else {
+        Serial.printf(
+            "Alarme %lu substituiu o alarme %lu.\n",
+            static_cast<unsigned long>(disparo.id),
+            static_cast<unsigned long>(alarmeAtual.id)
+        );
+    }
+
+    alarmeAtual = disparo;
+    alarmeEmExecucao = true;
+    alarmeObservouAudioAtivo = false;
+    inicioAlarmeAtualMs = millis();
+    proximaTentativaAudioAlarmeMs = 0;
+
+    modoInterface = ModoInterface::VOLUME;
+    barraVolumeVisivel = false;
+    reproducaoPlayerSolicitada = false;
+    playerObservouAudioAtivo = false;
+
+    mostrarAlarme(alarmeAtual.nome);
+    iniciarCicloAudioAlarme();
+
+    Serial.printf(
+        "Alarme iniciado: %s (ID %lu).\n",
+        alarmeAtual.nome.c_str(),
+        static_cast<unsigned long>(alarmeAtual.id)
+    );
+}
+
+void iniciarCicloAudioAlarme() {
+    alarmeObservouAudioAtivo = false;
+
+    if (
+        !tocarArquivoAlarme(
+            alarmeAtual.arquivo,
+            alarmeAtual.volume
+        )
+    ) {
+        proximaTentativaAudioAlarmeMs = millis() + 2000;
+        Serial.println("Alarme: comando de audio rejeitado.");
+    }
+}
+
+void processarExecucaoAlarme() {
+    unsigned long agoraMs = millis();
+    constexpr uint32_t MILISSEGUNDOS_POR_MINUTO = 60000;
+    uint32_t duracaoMaximaMs =
+        DURACAO_MAXIMA_ALARME_MINUTOS *
+        MILISSEGUNDOS_POR_MINUTO;
+
+    if (agoraMs - inicioAlarmeAtualMs >= duracaoMaximaMs) {
+        finalizarExecucaoAlarme(false);
+        return;
+    }
+
+    StatusAudio statusAudio = obterStatusAudio();
+
+    if (
+        statusAudio.estado == EstadoAudio::BUFFERIZANDO ||
+        statusAudio.estado == EstadoAudio::TOCANDO ||
+        statusAudio.estado == EstadoAudio::DEGRADADO
+    ) {
+        alarmeObservouAudioAtivo = true;
+        return;
+    }
+
+    if (
+        statusAudio.estado == EstadoAudio::PARADO &&
+        alarmeObservouAudioAtivo
+    ) {
+        iniciarCicloAudioAlarme();
+        return;
+    }
+
+    if (
+        statusAudio.estado == EstadoAudio::ERRO &&
+        static_cast<int32_t>(
+            agoraMs - proximaTentativaAudioAlarmeMs
+        ) >= 0
+    ) {
+        proximaTentativaAudioAlarmeMs = agoraMs + 2000;
+        iniciarCicloAudioAlarme();
+    }
+}
+
+void finalizarExecucaoAlarme(bool interrompidoPeloUsuario) {
+    if (!alarmeEmExecucao) {
+        return;
+    }
+
+    Serial.printf(
+        "Alarme finalizado: %s (%s).\n",
+        alarmeAtual.nome.c_str(),
+        interrompidoPeloUsuario
+            ? "clique no encoder"
+            : "limite de tempo"
+    );
+
+    alarmeEmExecucao = false;
+    alarmeObservouAudioAtivo = false;
+    alarmeAtual = DisparoAlarme{};
+
+    pararAudio();
+    alterarVolumeAudio(volumeAtual);
+
+    estadoEquipamento = estadoAntesDoAlarme;
+    modoInterface = ModoInterface::VOLUME;
+    barraVolumeVisivel = false;
+
+    switch (estadoAntesDoAlarme) {
+        case EstadoEquipamento::RADIO_WEB:
+            reativarServidorWeb();
+            solicitarReproducaoRadio(indiceRadioAtual);
+            break;
+
+        case EstadoEquipamento::PLAYER:
+            mostrarArquivoAtualPlayer();
+            break;
+
+        case EstadoEquipamento::RELOGIO:
+            suspenderAudio();
+            apagarIndicadorLed();
+            mostrarTelaRelogio();
+            break;
+    }
 }
 
 // =====================================================

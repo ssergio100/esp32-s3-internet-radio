@@ -11,7 +11,7 @@ struct ArquivoPlayer {
     String caminho;
 };
 
-// Monta o cartão e cria o catálogo de MP3 em /sons na primeira entrada.
+// Monta o cartão e cria uma única fotografia do catálogo MP3 em /sons.
 bool prepararPlayer();
 
 int obterQuantidadeArquivosPlayer();

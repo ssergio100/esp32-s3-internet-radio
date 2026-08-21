@@ -32,6 +32,11 @@
             margin-bottom: 22px;
         }
 
+        .links-cabecalho {
+            display: flex;
+            gap: 14px;
+        }
+
         h1 {
             margin: 0;
             font-size: 26px;
@@ -133,7 +138,10 @@
     <main class="container">
         <header class="cabecalho">
             <h1>Arquivos do ESP32</h1>
-            <a class="voltar" href="/">Voltar ao rádio</a>
+            <div class="links-cabecalho">
+                <a class="voltar" href="/">Rádios</a>
+                <a class="voltar" href="/alarmes">Alarmes</a>
+            </div>
         </header>
 
         <section class="card">
@@ -267,9 +275,12 @@
                 const arquivo = campoArquivo.files[0];
 
                 if (
-                    arquivo.name === "radios.json" &&
+                    (
+                        arquivo.name === "radios.json" ||
+                        arquivo.name === "alarmes.json"
+                    ) &&
                     !confirm(
-                        "Isso substituirá toda a lista de rádios. Continuar?"
+                        "Isso substituirá toda a lista correspondente. Continuar?"
                     )
                 ) {
                     return;

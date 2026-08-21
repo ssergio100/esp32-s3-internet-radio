@@ -20,6 +20,9 @@ provisionamento automático.
 
 O Player usa `SD`, `SPI` e `FS` fornecidos pelo próprio Arduino core ESP32; não
 acrescenta biblioteca externa para o cartão.
+O som padrão dos alarmes é um WAV PCM gerado pelo próprio firmware na FFat e
+decodificado pela mesma ESP32-audioI2S; não acrescenta biblioteca ou asset
+externo.
 
 Na ArduinoJson 7, use `JsonDocument`, que cresce dinamicamente. As classes
 `DynamicJsonDocument` e `StaticJsonDocument` pertencem à camada de

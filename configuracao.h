@@ -69,6 +69,10 @@ constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 4000000;
 // retorna à primeira. A escolha manual de outro arquivo continua prevalecendo.
 constexpr bool REPRODUCAO_SEQUENCIAL_PLAYER = true;
 
+// O arquivo do alarme recomeça até o clique curto no encoder ou este limite.
+// Um novo alarme sempre substitui o que estiver em execução.
+constexpr uint32_t DURACAO_MAXIMA_ALARME_MINUTOS = 30;
+
 // Interface
 // Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
 #define BRILHO_LED_RGB 50

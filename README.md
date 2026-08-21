@@ -1,7 +1,7 @@
 # Rádio Web para ESP32-S3
 
-Firmware de rádio web com saída I2S, display OLED, encoder, LED RGB,
-cadastro de estações em FFat e interface HTTP para administração.
+Firmware de rádio web com Player MP3, alarmes, saída I2S, display OLED,
+encoder, LED RGB, persistência em FFat e interface HTTP para administração.
 
 ## Por onde começar
 
@@ -12,6 +12,8 @@ separados por responsabilidade:
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `configuracao.h` | Ligações do hardware e parâmetros ajustáveis |
+| `alarmes.cpp` | Regras em RAM, agendamento e som padrão dos alarmes |
+| `api_alarmes.cpp` | Cadastro, edição e exclusão dos alarmes pela rede |
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Serviço exclusivo para rádio web ou arquivo local |
@@ -22,12 +24,14 @@ separados por responsabilidade:
 | `player.cpp` | Montagem do microSD e catálogo MP3 de `/sons` |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
+| `persistencia_alarmes.cpp` | Validação e gravação segura dos arquivos de alarmes |
 | `relogio.cpp` | Política entre RTC, sincronização NTP e hora do sistema |
 | `relogio_rtc.cpp` | Acesso ao DS3231 por meio da RTClib |
 | `servidor_web.cpp` | Montagem da FFat, inicialização do servidor e mapa das rotas HTTP |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
 | `web/index.html` | Página principal da administração |
+| `web/alarmes.html` | Cadastro de alarmes semanais e de data única |
 | `web/upload.html` | Página completa de manutenção dos arquivos |
 
 Para uma primeira leitura, siga `radio_web_1.ino`, depois o arquivo do módulo
@@ -60,6 +64,7 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS` | Diferença mínima para regravar o DS3231 | 2 segundos |
 | `FREQUENCIA_CARTAO_PLAYER_HZ` | Frequência SPI do microSD | 4000000 Hz |
 | `REPRODUCAO_SEQUENCIAL_PLAYER` | Inicia automaticamente o próximo MP3 ao terminar | `true` |
+| `DURACAO_MAXIMA_ALARME_MINUTOS` | Limite de repetição de um alarme | 30 minutos |
 
 Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
@@ -122,6 +127,12 @@ O equipamento possui três estados operacionais: `Rádio Web`, `Player` e
 progressivamente um MP3 de `/sons`. Em `Relógio`, a fonte e sua tarefa ficam
 suspensos, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
 apagado; somente relógio, encoder e OLED continuam sendo processados.
+
+Os alarmes são uma sobreposição temporária aos três estados. Um alarme
+interrompe a fonte atual, repete seu arquivo até o clique curto no encoder ou o
+limite de 30 minutos e então restaura o estado anterior. Um novo disparo
+substitui definitivamente o alarme em execução. Quando vários coincidem no
+mesmo minuto, vence o cadastro de maior `id`.
 
 O serviço de áudio publica estados explícitos (`conectando`,
 `bufferizando`, `tocando`, `degradado`, `reconectando` e `erro`) e usa
@@ -192,8 +203,24 @@ executa simultaneamente com a rádio web.
 Com `REPRODUCAO_SEQUENCIAL_PLAYER = true`, o fim de uma faixa inicia a seguinte
 na ordem alfabética e a última volta para a primeira. Uma escolha manual passa a
 ser a faixa atual e, portanto, também o novo ponto da sequência.
-O catálogo é mantido em memória depois da primeira leitura; alterações físicas
-no conteúdo do cartão exigem reinicialização nesta primeira versão.
+O catálogo é criado uma vez durante o boot, antes do início do serviço de áudio,
+e permanece em memória. Assim, a página de alarmes consegue listar os MP3 sem
+varrer o cartão enquanto a rádio toca. Alterações físicas no conteúdo do cartão
+exigem reinicialização nesta primeira versão.
+
+## Alarmes
+
+A página `/alarmes` cadastra alarmes semanais, com horário e dias da semana, ou
+de execução única, com data e horário. O JSON não armazena um campo de tipo: a
+presença de `dias` identifica a repetição semanal e a presença de `data`
+identifica uma execução única. Os arquivos ativos, temporário e backup são
+`/alarmes.json`, `/alarmes.tmp` e `/alarmes.bak`.
+
+O arquivo escolhido deve ser um MP3 diretamente em `/sons`. Se não houver
+arquivo configurado, cartão ou arquivo válido, o firmware usa
+`/alarme_padrao.wav`, gerado automaticamente na FFat. Alarmes únicos são
+desativados ao disparar; alarmes únicos já vencidos também são desativados pelo
+agendador. Não há histórico nem cálculo de próxima execução na interface.
 
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
@@ -237,8 +264,8 @@ GET http://IP_DO_ESP32/api/v1/status
 
 A resposta JSON contém estado do áudio, rádio, título, codec, bitrate,
 buffer estimado em milissegundos, eventos de stream lento, tentativas de
-reconexão, RSSI, heap, PSRAM e uptime. A porta serial também imprime um
-resumo a cada cinco segundos.
+reconexão, estado dos alarmes, disponibilidade do som padrão, RSSI, heap, PSRAM
+e uptime. A porta serial também imprime um resumo a cada cinco segundos.
 
 O endpoint responde a consultas feitas por outro equipamento da rede. O
 ESP32 não faz uma requisição para si mesmo: `api_status.cpp` apenas cria a
@@ -275,9 +302,9 @@ que precisa de um perfil reproduzível possui seu próprio `sketch.yaml`.
 
 ## Interface web
 
-Os arquivos-fonte das interfaces ficam em `web/index.html` e
-`web/upload.html`. Para o funcionamento completo, ambos precisam existir na
-raiz da partição FFat do dispositivo.
+Os arquivos-fonte das interfaces ficam em `web/index.html`, `web/alarmes.html`
+e `web/upload.html`. Para o funcionamento completo, os três precisam existir
+na raiz da partição FFat do dispositivo.
 
 A rota `/upload` tenta servir `/upload.html`. Se o arquivo estiver ausente,
 o firmware apresenta um formulário mínimo incorporado que permite restaurar
@@ -288,8 +315,9 @@ servidor web não é iniciado.
 
 O upload aceita nomes simples e faz substituição por arquivo temporário.
 Esse fluxo fica em `upload_arquivos.cpp`, que trata separadamente o início, a
-escrita das partes, a conclusão e o cancelamento do envio. `radios.json` recebe
-validação e backup próprios por meio de `persistencia_radios.cpp`. Ao migrar
+escrita das partes, a conclusão e o cancelamento do envio. `radios.json` e
+`alarmes.json` recebem validação e backup próprios por meio de seus módulos de
+persistência. Ao migrar
 uma instalação existente, envie `upload.html` pela página incorporada atual
 antes de gravar uma versão do firmware que passe a servi-lo da FFat.
 

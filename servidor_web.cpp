@@ -1,4 +1,5 @@
 #include "servidor_web.h"
+#include "api_alarmes.h"
 #include "api_radios.h"
 #include "api_status.h"
 #include "upload_arquivos.h"
@@ -16,6 +17,7 @@ bool servidorAtivo = false;
 
 const char* ARQUIVO_PAGINA_PRINCIPAL = "/index.html";
 const char* ARQUIVO_PAGINA_UPLOAD = "/upload.html";
+const char* ARQUIVO_PAGINA_ALARMES = "/alarmes.html";
 
 const char PAGINA_RECUPERACAO_UPLOAD[] PROGMEM = R"HTML(
 <!DOCTYPE html>
@@ -95,6 +97,18 @@ void abrirPaginaUpload() {
     );
 }
 
+void abrirPaginaAlarmes() {
+    if (enviarPaginaHtmlDaFfat(ARQUIVO_PAGINA_ALARMES)) {
+        return;
+    }
+
+    servidor.send(
+        404,
+        "text/plain",
+        "Arquivo alarmes.html não encontrado"
+    );
+}
+
 void listarArquivos() {
     JsonDocument documento;
 
@@ -154,7 +168,7 @@ void responderStatusSistema() {
 bool iniciarArmazenamentoEServidorWeb() {
     // Um ESP32 novo ainda não possui um sistema de arquivos na partição.
     // A formatação na falha torna o formulário incorporado de /upload
-    // acessível para fazer o primeiro envio de index.html e upload.html.
+    // acessível para restaurar index.html, alarmes.html e upload.html.
     if (!FFat.begin(true)) {
         Serial.println(
             "Falha ao iniciar o FFat."
@@ -174,6 +188,52 @@ bool iniciarArmazenamentoEServidorWeb() {
         HTTP_GET,
         []() {
             responderListaRadios(servidor);
+        }
+    );
+
+    servidor.on(
+        "/alarmes",
+        HTTP_GET,
+        abrirPaginaAlarmes
+    );
+
+    servidor.on(
+        "/api/alarmes",
+        HTTP_GET,
+        []() {
+            responderListaAlarmes(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/alarmes",
+        HTTP_POST,
+        []() {
+            adicionarAlarmePelaApi(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/alarmes",
+        HTTP_PUT,
+        []() {
+            atualizarAlarmePelaApi(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/alarmes",
+        HTTP_DELETE,
+        []() {
+            excluirAlarmePelaApi(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/arquivos-player",
+        HTTP_GET,
+        []() {
+            responderArquivosPlayer(servidor);
         }
     );
 

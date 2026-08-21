@@ -1,9 +1,11 @@
 #include "audio_radio.h"
+#include "alarmes.h"
 #include "configuracao.h"
 #include "player.h"
 #include "radios.h"
 
 #include <Arduino.h>
+#include <FFat.h>
 #include <WiFi.h>
 #include <atomic>
 #include <cstring>
@@ -37,6 +39,7 @@ constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
 enum class TipoComandoAudio : uint8_t {
     TOCAR_RADIO,
     TOCAR_ARQUIVO,
+    TOCAR_ALARME,
     PARAR,
     VOLUME,
     SUSPENDER,
@@ -46,7 +49,8 @@ enum class TipoComandoAudio : uint8_t {
 enum class FonteAudioAtiva : uint8_t {
     NENHUMA,
     RADIO,
-    ARQUIVO
+    ARQUIVO,
+    ALARME
 };
 
 struct ComandoAudio {
@@ -164,6 +168,38 @@ void limparErro() {
     definirErro("");
 }
 
+void atualizarStatusAlarme(
+    bool ativo,
+    bool arquivoSolicitado,
+    bool arquivoDisponivel,
+    bool somPadrao
+) {
+    if (!bloquearStatus()) {
+        return;
+    }
+
+    statusAudio.alarmeAtivo = ativo;
+    statusAudio.arquivoAlarmeSolicitado = arquivoSolicitado;
+    statusAudio.arquivoAlarmeDisponivel = arquivoDisponivel;
+    statusAudio.somPadraoAlarme = somPadrao;
+
+    liberarStatus();
+}
+
+void limparStatusAlarme() {
+    atualizarStatusAlarme(false, false, false, false);
+}
+
+void marcarAlarmeInativo() {
+    if (!bloquearStatus()) {
+        return;
+    }
+
+    statusAudio.alarmeAtivo = false;
+
+    liberarStatus();
+}
+
 void atualizarRadioStatus(
     const char* nome
 ) {
@@ -218,6 +254,10 @@ void agendarReconexao(
     const char* motivo
 ) {
     if (urlDesejada[0] == '\0') {
+        if (fonteAudioAtiva == FonteAudioAtiva::ALARME) {
+            marcarAlarmeInativo();
+        }
+
         fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
         definirEstado(
             EstadoAudio::PARADO
@@ -342,6 +382,96 @@ void abrirArquivoAgora(
 
     fonteAudioAtiva = FonteAudioAtiva::ARQUIVO;
     inicioBufferizacao = 0;
+    definirEstado(EstadoAudio::TOCANDO);
+}
+
+void abrirArquivoAlarmeAgora(
+    const char* caminho,
+    uint8_t volume
+) {
+    bool arquivoSolicitado =
+        caminho != nullptr && caminho[0] != '\0';
+    bool arquivoDisponivel = false;
+
+    nomeDesejado[0] = '\0';
+    urlDesejada[0] = '\0';
+    proximaTentativa = 0;
+    inicioDegradacao = 0;
+    fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
+
+    atualizarRadioStatus(
+        arquivoSolicitado
+            ? caminho
+            : CAMINHO_SOM_PADRAO_ALARME
+    );
+    atualizarStatusAlarme(
+        true,
+        arquivoSolicitado,
+        false,
+        !arquivoSolicitado
+    );
+    limparErro();
+    definirEstado(EstadoAudio::BUFFERIZANDO);
+
+    audio.stopSong();
+    audio.setVolume(volume);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    if (arquivoSolicitado) {
+        fs::FS* sistemaArquivos =
+            obterSistemaArquivosPlayer();
+
+        if (
+            sistemaArquivos != nullptr &&
+            sistemaArquivos->exists(caminho)
+        ) {
+            arquivoDisponivel =
+                audio.connecttoFS(*sistemaArquivos, caminho);
+        }
+
+        if (arquivoDisponivel) {
+            fonteAudioAtiva = FonteAudioAtiva::ALARME;
+            inicioBufferizacao = 0;
+            atualizarStatusAlarme(true, true, true, false);
+            definirEstado(EstadoAudio::TOCANDO);
+            return;
+        }
+
+        Serial.print("Alarme: arquivo indisponivel; usando padrao: ");
+        Serial.println(caminho);
+        audio.stopSong();
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
+    bool somPadraoAberto =
+        FFat.exists(CAMINHO_SOM_PADRAO_ALARME) &&
+        audio.connecttoFS(
+            FFat,
+            CAMINHO_SOM_PADRAO_ALARME
+        );
+
+    if (!somPadraoAberto) {
+        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
+        atualizarStatusAlarme(
+            false,
+            arquivoSolicitado,
+            arquivoDisponivel,
+            false
+        );
+        definirErro("Som padrao do alarme indisponivel");
+        definirEstado(EstadoAudio::ERRO);
+        return;
+    }
+
+    fonteAudioAtiva = FonteAudioAtiva::ALARME;
+    inicioBufferizacao = 0;
+    atualizarRadioStatus(CAMINHO_SOM_PADRAO_ALARME);
+    atualizarStatusAlarme(
+        true,
+        arquivoSolicitado,
+        arquivoDisponivel,
+        true
+    );
     definirEstado(EstadoAudio::TOCANDO);
 }
 
@@ -551,6 +681,11 @@ void tratarEventoAudio(
                 fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
                 definirEstado(EstadoAudio::PARADO);
                 Serial.println("Player: arquivo finalizado.");
+            } else if (fonteAudioAtiva == FonteAudioAtiva::ALARME) {
+                fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
+                marcarAlarmeInativo();
+                definirEstado(EstadoAudio::PARADO);
+                Serial.println("Alarme: ciclo de audio finalizado.");
             }
 
             break;
@@ -728,6 +863,7 @@ void processarComando(
 ) {
     switch (comando.tipo) {
         case TipoComandoAudio::TOCAR_RADIO:
+            limparStatusAlarme();
             perfilPlayerAtivo = false;
             vTaskPrioritySet(
                 nullptr,
@@ -759,6 +895,7 @@ void processarComando(
             break;
 
         case TipoComandoAudio::TOCAR_ARQUIVO:
+            limparStatusAlarme();
             perfilPlayerAtivo = true;
             vTaskPrioritySet(
                 nullptr,
@@ -772,7 +909,25 @@ void processarComando(
             abrirArquivoAgora(comando.caminhoArquivo);
             break;
 
+        case TipoComandoAudio::TOCAR_ALARME:
+            perfilPlayerAtivo = true;
+            vTaskPrioritySet(
+                nullptr,
+                PRIORIDADE_SERVICO_AUDIO_PLAYER
+            );
+
+            falhasConsecutivas = 0;
+            proximaTentativa = 0;
+            inicioDegradacao = 0;
+
+            abrirArquivoAlarmeAgora(
+                comando.caminhoArquivo,
+                comando.volume
+            );
+            break;
+
         case TipoComandoAudio::PARAR:
+            limparStatusAlarme();
             nomeDesejado[0] = '\0';
             urlDesejada[0] = '\0';
             proximaTentativa = 0;
@@ -794,6 +949,7 @@ void processarComando(
             break;
 
         case TipoComandoAudio::SUSPENDER:
+            limparStatusAlarme();
             nomeDesejado[0] = '\0';
             urlDesejada[0] = '\0';
             proximaTentativa = 0;
@@ -1051,6 +1207,36 @@ bool tocarArquivoPlayer(const String& caminho) {
 
     ComandoAudio comando;
     comando.tipo = TipoComandoAudio::TOCAR_ARQUIVO;
+
+    copiarTexto(
+        comando.caminhoArquivo,
+        sizeof(comando.caminhoArquivo),
+        caminho.c_str()
+    );
+
+    return enviarComando(comando);
+}
+
+bool tocarArquivoAlarme(
+    const String& caminho,
+    int volume
+) {
+    if (
+        caminho.length() >= TAMANHO_MAXIMO_CAMINHO_PLAYER ||
+        (
+            caminho.length() > 0 &&
+            !caminhoPlayerValido(caminho.c_str())
+        )
+    ) {
+        definirErro("Caminho do alarme invalido");
+        return false;
+    }
+
+    ComandoAudio comando;
+    comando.tipo = TipoComandoAudio::TOCAR_ALARME;
+    comando.volume = static_cast<uint8_t>(
+        constrain(volume, 1, VOLUME_MAXIMO)
+    );
 
     copiarTexto(
         comando.caminhoArquivo,

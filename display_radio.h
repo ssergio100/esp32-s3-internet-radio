@@ -42,6 +42,9 @@ void mostrarArquivoPlayer(
     bool emSelecao
 );
 
+// Sobrepõe temporariamente a interface enquanto um alarme está tocando.
+void mostrarAlarme(const String& nome);
+
 /*
  * Deve ser chamada continuamente no loop().
  * Atualiza a tela correspondente ao estado atual do equipamento.

@@ -5,6 +5,8 @@
 #include <FFat.h>
 #include <WebServer.h>
 
+#include "alarmes.h"
+#include "persistencia_alarmes.h"
 #include "persistencia_radios.h"
 
 namespace {
@@ -65,6 +67,9 @@ String obterNomeArquivoSeguro(
         nome == "." ||
         nome == ".." ||
         nome.startsWith(".") ||
+        nome == "alarme_padrao.wav" ||
+        nome == "alarmes.tmp" ||
+        nome == "alarmes.bak" ||
         nome == "radios.tmp" ||
         nome == "radios.bak"
     ) {
@@ -166,6 +171,36 @@ bool salvarListaRadiosRecebida() {
     return true;
 }
 
+bool salvarListaAlarmesRecebida() {
+    JsonDocument documento;
+
+    if (
+        !carregarDocumentoAlarmesDoArquivo(
+            documento,
+            CAMINHO_UPLOAD_TEMPORARIO
+        )
+    ) {
+        mensagemErro =
+            "O arquivo alarmes.json é inválido";
+
+        return false;
+    }
+
+    if (!salvarDocumentoAlarmes(documento)) {
+        mensagemErro =
+            "Não foi possível salvar alarmes.json";
+
+        return false;
+    }
+
+    carregarAlarmes();
+    Serial.println(
+        "alarmes.json validado e atualizado."
+    );
+
+    return true;
+}
+
 bool substituirArquivoComum() {
     FFat.remove(CAMINHO_UPLOAD_BACKUP);
 
@@ -223,10 +258,15 @@ void concluirRecebimento() {
         return;
     }
 
-    bool salvo =
-        caminhoDestino == CAMINHO_RADIOS_ATIVO
-            ? salvarListaRadiosRecebida()
-            : substituirArquivoComum();
+    bool salvo;
+
+    if (caminhoDestino == CAMINHO_RADIOS_ATIVO) {
+        salvo = salvarListaRadiosRecebida();
+    } else if (caminhoDestino == CAMINHO_ALARMES_ATIVO) {
+        salvo = salvarListaAlarmesRecebida();
+    } else {
+        salvo = substituirArquivoComum();
+    }
 
     FFat.remove(CAMINHO_UPLOAD_TEMPORARIO);
 

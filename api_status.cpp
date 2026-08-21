@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 
+#include "alarmes.h"
 #include "audio_radio.h"
 
 namespace {
@@ -32,6 +33,23 @@ namespace {
             statusAudio.stackMinimoBytes;
         documento["ultimoErro"] =
             statusAudio.ultimoErro;
+        documento["alarmeAtivo"] =
+            statusAudio.alarmeAtivo;
+        documento["arquivoAlarmeSolicitado"] =
+            statusAudio.arquivoAlarmeSolicitado;
+        documento["arquivoAlarmeDisponivel"] =
+            statusAudio.arquivoAlarmeDisponivel;
+        documento["somPadraoAlarme"] =
+            statusAudio.somPadraoAlarme;
+    }
+
+    void adicionarStatusAlarmes(JsonDocument& documento) {
+        StatusAlarmes status = obterStatusAlarmes();
+        documento["quantidadeAlarmes"] = status.quantidade;
+        documento["quantidadeAlarmesAtivos"] =
+            status.quantidadeAtivos;
+        documento["somPadraoAlarmeDisponivel"] =
+            status.somPadraoDisponivel;
     }
 
     void adicionarStatusWifi(
@@ -62,6 +80,7 @@ String criarStatusSistemaJson() {
     JsonDocument documento;
 
     adicionarStatusAudio(documento);
+    adicionarStatusAlarmes(documento);
     adicionarStatusWifi(documento);
     adicionarStatusMemoriaEUptime(documento);
 

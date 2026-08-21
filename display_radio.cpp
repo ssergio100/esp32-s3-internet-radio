@@ -26,6 +26,7 @@ namespace {
         RADIO,
         RELOGIO,
         PLAYER,
+        ALARME,
         OPCAO_ESTADO
     };
 
@@ -1206,6 +1207,38 @@ void mostrarArquivoPlayer(
     }
 
     desenharTelaPlayer();
+}
+
+void mostrarAlarme(const String& nome) {
+    if (!disponivel) {
+        return;
+    }
+
+    telaAtual = TelaDisplay::ALARME;
+    prepararTela();
+
+    escreverCentralizado("ALARME", 2, 2);
+
+    String nomeExibido = nome;
+
+    if (nomeExibido.length() > 19) {
+        nomeExibido = nomeExibido.substring(0, 16) + "...";
+    }
+
+    escreverCentralizado(nomeExibido, 27, 1);
+
+    display.fillRect(
+        0,
+        46,
+        DISPLAY_LARGURA,
+        DISPLAY_ALTURA - 46,
+        SSD1306_WHITE
+    );
+    display.setTextColor(SSD1306_BLACK);
+    escreverCentralizado("CLIQUE PARA PARAR", 51, 1);
+    display.setTextColor(SSD1306_WHITE);
+
+    display.display();
 }
 
 void mostrarConfiguracaoWifi() {
