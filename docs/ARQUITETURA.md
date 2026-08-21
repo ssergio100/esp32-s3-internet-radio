@@ -18,7 +18,13 @@ Há duas tarefas relacionadas ao áudio:
 - decodificador/I2S da ESP32-audioI2S, no núcleo 0;
 - conexão, preenchimento e supervisão, no núcleo 1.
 
-Os valores de núcleo, pilha e prioridade ficam em `configuracao.h`.
+Os valores de núcleo, pilha e prioridade ficam em `configuracao.h`. No Rádio
+Web, `AudioService` conserva prioridade 3 e intervalo de 1 ms para alimentar a
+rede continuamente. No Player, ela passa à mesma prioridade do `loop()` e
+aguarda 3 ms entre ciclos. Assim, a abertura e a leitura do microSD deixam de
+ter preferência sobre o `loop()` enquanto o OLED e o encoder precisam ser
+atendidos. O SPI do cartão opera por padrão a 4 MHz e a rolagem do nome redesenha
+o OLED a cada 80 ms.
 Ao entrar no estado Relógio, um comando encerra o stream, silencia a saída e
 faz `AudioService` aguardar uma notificação sem consumir ciclos continuamente.
 O retorno ao estado Rádio Web acorda a mesma tarefa antes de solicitar a
@@ -120,6 +126,13 @@ recursiva. A listagem ocorre somente na primeira entrada bem-sucedida e nunca du
 reprodução. O arquivo é decodificado progressivamente por `connecttoFS()`; não
 há arquivo completo em RAM, mixer, anel PCM ou segundo decoder. A FFat, o
 catálogo e as seleções permanecem preservados entre transições.
+
+Quando `REPRODUCAO_SEQUENCIAL_PLAYER` está ativa, o arquivo principal observa o
+fim confirmado da faixa e solicita a seguinte na ordem alfabética; depois da
+última, retorna à primeira. A observação só é armada depois que o áudio realmente
+entrou em bufferização ou reprodução, para o estado parado existente antes do
+comando não provocar um salto prematuro. Enquanto o usuário navega pela lista, a
+sequência aguarda sua escolha ou o cancelamento da seleção por inatividade.
 
 O estado Relógio não é um modo de baixo consumo. A versão instalada da
 ESP32-audioI2S encerra o stream, mas não oferece uma chamada pública para parar

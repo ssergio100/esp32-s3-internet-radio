@@ -98,7 +98,7 @@ namespace {
         2,
         2,
         24,
-        INTERVALO_PASSO_ROLAGEM_NOME_MS,
+        INTERVALO_PASSO_ROLAGEM_PLAYER_MS,
         SentidoRolagem::PARA_ESQUERDA
     };
 

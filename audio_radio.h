@@ -50,7 +50,7 @@ bool pararAudio();
 bool suspenderAudio();
 
 // Reativa a tarefa dedicada e restaura o volume de operação.
-bool retomarAudio(int volume);
+bool retomarAudio(int volume, bool paraPlayer = false);
 
 void alterarVolumeAudio(int volume);
 

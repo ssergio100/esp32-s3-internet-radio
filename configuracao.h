@@ -61,9 +61,13 @@ constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
 constexpr int VOLUME_PADRAO = 10;
 
-// A frequência conservadora prioriza compatibilidade. MP3 a 128 kbps exige
-// aproximadamente 16 KB/s, bem abaixo da vazão deste barramento.
-constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 1000000;
+// Frequências maiores encurtam os bloqueios de leitura que disputam CPU com o
+// OLED. Reduza somente se o cartão instalado ficar instável.
+constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 4000000;
+
+// Quando ativa, o fim de uma música inicia a próxima e, depois da última,
+// retorna à primeira. A escolha manual de outro arquivo continua prevalecendo.
+constexpr bool REPRODUCAO_SEQUENCIAL_PLAYER = true;
 
 // Interface
 // Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
@@ -73,8 +77,8 @@ constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 1000000;
 constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
-// Tempo que o botão deve permanecer pressionado para alternar entre os estados
-// Rádio Web e Relógio. Aumente para reduzir acionamentos acidentais.
+// Tempo que o botão deve permanecer pressionado para levar Rádio Web ou Player
+// ao Relógio. Aumente para reduzir acionamentos acidentais.
 constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
 
 // O LED alterna entre azul e apagado a cada intervalo.
@@ -84,6 +88,10 @@ constexpr unsigned long INTERVALO_PISCA_LED_CONEXAO_WIFI_MS = 100;
 // O nome avança um pixel a cada passo.
 // Diminua o intervalo para acelerar a rolagem; aumente para desacelerar.
 constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 40;
+
+// O Player atualiza o OLED com menos frequência para reservar CPU à leitura
+// local. Diminua para acelerar a rolagem; aumente para aliviar ainda mais o CPU.
+constexpr unsigned long INTERVALO_PASSO_ROLAGEM_PLAYER_MS = 80;
 
 // A faixa superior mostra codec, bitrate, buffer e dados passivos do Wi-Fi.
 // O primeiro intervalo controla a velocidade da rolagem para a direita.
@@ -119,7 +127,10 @@ constexpr uint32_t DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS = 2;
 constexpr int NUCLEO_DECODIFICADOR_AUDIO = 0;
 constexpr int NUCLEO_SERVICO_AUDIO = 1;
 constexpr uint32_t PILHA_SERVICO_AUDIO_BYTES = 12288;
-constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
+constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_RADIO = 3;
+constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_PLAYER = 1;
+constexpr uint32_t INTERVALO_SERVICO_AUDIO_RADIO_MS = 1;
+constexpr uint32_t INTERVALO_SERVICO_AUDIO_PLAYER_MS = 3;
 
 // Tratamento dos controles
 constexpr unsigned long TEMPO_VALIDACAO_CLIQUE_ENCODER_MS = 30;

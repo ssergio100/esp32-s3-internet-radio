@@ -16,7 +16,7 @@ separados por responsabilidade:
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
 | `audio_radio.cpp` | Serviço exclusivo para rádio web ou arquivo local |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
-| `display_radio.cpp` | Telas dos estados Rádio Web e Relógio |
+| `display_radio.cpp` | Telas dos estados Rádio Web, Player e Relógio |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
 | `player.cpp` | Montagem do microSD e catálogo MP3 de `/sons` |
@@ -46,8 +46,9 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
 | `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
-| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para alternar Rádio Web/Relógio | 2000 ms |
+| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para levar uma fonte ao Relógio | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 40 ms |
+| `INTERVALO_PASSO_ROLAGEM_PLAYER_MS` | Intervalo para o nome do arquivo avançar um pixel | 80 ms |
 | `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 13 ms |
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
 | `INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS` | Intervalo para a data do relógio avançar um pixel | 80 ms |
@@ -57,7 +58,8 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 | `INTERVALO_SINCRONIZACAO_NTP_MS` | Intervalo entre correções pela rede | 3600000 ms |
 | `DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS` | Diferença mínima para regravar o DS3231 | 2 segundos |
-| `FREQUENCIA_CARTAO_PLAYER_HZ` | Frequência SPI do microSD | 1000000 Hz |
+| `FREQUENCIA_CARTAO_PLAYER_HZ` | Frequência SPI do microSD | 4000000 Hz |
+| `REPRODUCAO_SEQUENCIAL_PLAYER` | Inicia automaticamente o próximo MP3 ao terminar | `true` |
 
 Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
@@ -187,6 +189,9 @@ No Player, um clique curto abre a lista de até 100 arquivos MP3 diretamente em
 `/sons`; o giro navega e outro clique começa a reprodução. Fora da lista, o
 giro controla o volume. O Player não carrega o arquivo inteiro em memória e não
 executa simultaneamente com a rádio web.
+Com `REPRODUCAO_SEQUENCIAL_PLAYER = true`, o fim de uma faixa inicia a seguinte
+na ordem alfabética e a última volta para a primeira. Uma escolha manual passa a
+ser a faixa atual e, portanto, também o novo ponto da sequência.
 O catálogo é mantido em memória depois da primeira leitura; alterações físicas
 no conteúdo do cartão exigem reinicialização nesta primeira versão.
 

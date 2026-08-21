@@ -54,6 +54,7 @@ struct ComandoAudio {
         TipoComandoAudio::PARAR;
 
     uint8_t volume = 0;
+    bool perfilPlayer = false;
 
     char nome[TAMANHO_NOME_RADIO] = "";
     char url[TAMANHO_URL_RADIO] = "";
@@ -80,6 +81,7 @@ uint32_t ultimaAmostraStatus = 0;
 uint8_t falhasConsecutivas = 0;
 FonteAudioAtiva fonteAudioAtiva =
     FonteAudioAtiva::NENHUMA;
+bool perfilPlayerAtivo = false;
 
 bool bloquearStatus(
     TickType_t espera = pdMS_TO_TICKS(20)
@@ -726,6 +728,12 @@ void processarComando(
 ) {
     switch (comando.tipo) {
         case TipoComandoAudio::TOCAR_RADIO:
+            perfilPlayerAtivo = false;
+            vTaskPrioritySet(
+                nullptr,
+                PRIORIDADE_SERVICO_AUDIO_RADIO
+            );
+
             copiarTexto(
                 nomeDesejado,
                 sizeof(nomeDesejado),
@@ -751,6 +759,12 @@ void processarComando(
             break;
 
         case TipoComandoAudio::TOCAR_ARQUIVO:
+            perfilPlayerAtivo = true;
+            vTaskPrioritySet(
+                nullptr,
+                PRIORIDADE_SERVICO_AUDIO_PLAYER
+            );
+
             falhasConsecutivas = 0;
             proximaTentativa = 0;
             inicioDegradacao = 0;
@@ -800,6 +814,13 @@ void processarComando(
             break;
 
         case TipoComandoAudio::RETOMAR:
+            perfilPlayerAtivo = comando.perfilPlayer;
+            vTaskPrioritySet(
+                nullptr,
+                perfilPlayerAtivo
+                    ? PRIORIDADE_SERVICO_AUDIO_PLAYER
+                    : PRIORIDADE_SERVICO_AUDIO_RADIO
+            );
             servicoAudioAtivo.store(
                 true,
                 std::memory_order_release
@@ -846,7 +867,11 @@ void tarefaAudio(
         atualizarAmostraStatus();
 
         vTaskDelay(
-            pdMS_TO_TICKS(1)
+            pdMS_TO_TICKS(
+                perfilPlayerAtivo
+                    ? INTERVALO_SERVICO_AUDIO_PLAYER_MS
+                    : INTERVALO_SERVICO_AUDIO_RADIO_MS
+            )
         );
     }
 }
@@ -943,7 +968,7 @@ bool iniciarAudio(int volume) {
             "AudioService",
             PILHA_SERVICO_AUDIO_BYTES,
             nullptr,
-            PRIORIDADE_SERVICO_AUDIO,
+            PRIORIDADE_SERVICO_AUDIO_RADIO,
             &tarefaAudioHandle,
             NUCLEO_SERVICO_AUDIO
         );
@@ -1054,7 +1079,7 @@ bool suspenderAudio() {
     return enviarComando(comando);
 }
 
-bool retomarAudio(int volume) {
+bool retomarAudio(int volume, bool paraPlayer) {
     if (tarefaAudioHandle == nullptr) {
         return false;
     }
@@ -1063,6 +1088,7 @@ bool retomarAudio(int volume) {
 
     comando.tipo =
         TipoComandoAudio::RETOMAR;
+    comando.perfilPlayer = paraPlayer;
     comando.volume =
         static_cast<uint8_t>(
             constrain(

@@ -59,6 +59,8 @@ unsigned long momentoUltimaAlteracaoVolumeMs = 0;
 unsigned long momentoUltimaAtividadeSelecaoMs = 0;
 
 bool barraVolumeVisivel = false;
+bool reproducaoPlayerSolicitada = false;
+bool playerObservouAudioAtivo = false;
 
 // =====================================================
 // Protótipos
@@ -92,6 +94,8 @@ void processarNavegacaoRadios(
 void entrarModoSelecaoArquivo();
 void processarNavegacaoArquivos(long deslocamentoEncoder);
 void confirmarSelecaoArquivo();
+bool iniciarReproducaoArquivoPlayer(int indice, bool automatica);
+void processarReproducaoSequencialPlayer();
 void mostrarArquivoAtualPlayer(bool emSelecao = false);
 void cancelarSelecaoArquivoPorInatividade();
 
@@ -165,6 +169,7 @@ void loop() {
         cancelarSelecaoRadioPorInatividade();
     } else {
         cancelarSelecaoArquivoPorInatividade();
+        processarReproducaoSequencialPlayer();
     }
 
     restaurarBarraAposTempoVolume();
@@ -244,6 +249,8 @@ void entrarEstadoRelogio() {
     indiceEstadoSelecionado = 0;
     modoInterface = ModoInterface::VOLUME;
     barraVolumeVisivel = false;
+    reproducaoPlayerSolicitada = false;
+    playerObservouAudioAtivo = false;
 
     // A troca visual acontece antes do desligamento dos serviços para que o
     // clique tenha resposta imediata no OLED.
@@ -339,7 +346,7 @@ void entrarEstadoPlayer() {
 
     bool catalogoDisponivel = prepararPlayer();
 
-    if (!retomarAudio(volumeAtual)) {
+    if (!retomarAudio(volumeAtual, true)) {
         Serial.println("Player: falha ao retomar o servico de audio.");
         mostrarTelaRelogio();
         return;
@@ -447,25 +454,96 @@ void processarNavegacaoArquivos(long deslocamentoEncoder) {
 }
 
 void confirmarSelecaoArquivo() {
-    const ArquivoPlayer* arquivo =
-        obterArquivoPlayer(indiceArquivoEmSelecao);
+    iniciarReproducaoArquivoPlayer(
+        indiceArquivoEmSelecao,
+        false
+    );
+}
+
+bool iniciarReproducaoArquivoPlayer(
+    int indice,
+    bool automatica
+) {
+    const ArquivoPlayer* arquivo = obterArquivoPlayer(indice);
 
     if (arquivo == nullptr) {
         mostrarMensagem("Arquivo invalido");
-        return;
+        return false;
     }
 
     if (!tocarArquivoPlayer(arquivo->caminho)) {
         mostrarMensagem("Comando rejeitado");
+        return false;
+    }
+
+    indiceArquivoAtual = indice;
+    indiceArquivoEmSelecao = indice;
+    modoInterface = ModoInterface::VOLUME;
+    reproducaoPlayerSolicitada = true;
+    playerObservouAudioAtivo = false;
+    mostrarArquivoAtualPlayer();
+
+    Serial.print(
+        automatica
+            ? "Player sequencial: "
+            : "Player reproduzindo: "
+    );
+    Serial.println(arquivo->caminho);
+
+    return true;
+}
+
+void processarReproducaoSequencialPlayer() {
+    if (!reproducaoPlayerSolicitada) {
         return;
     }
 
-    indiceArquivoAtual = indiceArquivoEmSelecao;
-    modoInterface = ModoInterface::VOLUME;
-    mostrarArquivoAtualPlayer();
+    EstadoAudio estadoAudio = obterStatusAudio().estado;
 
-    Serial.print("Player reproduzindo: ");
-    Serial.println(arquivo->caminho);
+    if (
+        estadoAudio == EstadoAudio::BUFFERIZANDO ||
+        estadoAudio == EstadoAudio::TOCANDO ||
+        estadoAudio == EstadoAudio::DEGRADADO
+    ) {
+        playerObservouAudioAtivo = true;
+        return;
+    }
+
+    if (estadoAudio == EstadoAudio::ERRO) {
+        reproducaoPlayerSolicitada = false;
+        playerObservouAudioAtivo = false;
+        return;
+    }
+
+    if (
+        !playerObservouAudioAtivo ||
+        estadoAudio != EstadoAudio::PARADO ||
+        modoInterface == ModoInterface::SELECAO_ARQUIVO
+    ) {
+        return;
+    }
+
+    reproducaoPlayerSolicitada = false;
+    playerObservouAudioAtivo = false;
+
+    if (!REPRODUCAO_SEQUENCIAL_PLAYER) {
+        Serial.println("Player: reproducao finalizada.");
+        return;
+    }
+
+    int quantidadeArquivos = obterQuantidadeArquivosPlayer();
+
+    if (quantidadeArquivos <= 0) {
+        return;
+    }
+
+    int proximoIndice =
+        (indiceArquivoAtual + 1) % quantidadeArquivos;
+
+    iniciarReproducaoArquivoPlayer(
+        proximoIndice,
+        true
+    );
 }
 
 void mostrarArquivoAtualPlayer(bool emSelecao) {
