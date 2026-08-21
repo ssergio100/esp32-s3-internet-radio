@@ -38,6 +38,7 @@ constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
 
 enum class TipoComandoAudio : uint8_t {
     TOCAR_RADIO,
+    TOCAR_ALARME_RADIO,
     TOCAR_ARQUIVO,
     TOCAR_ALARME,
     PARAR,
@@ -49,6 +50,7 @@ enum class TipoComandoAudio : uint8_t {
 enum class FonteAudioAtiva : uint8_t {
     NENHUMA,
     RADIO,
+    ALARME_RADIO,
     ARQUIVO,
     ALARME
 };
@@ -85,6 +87,8 @@ uint32_t ultimaAmostraStatus = 0;
 uint8_t falhasConsecutivas = 0;
 FonteAudioAtiva fonteAudioAtiva =
     FonteAudioAtiva::NENHUMA;
+FonteAudioAtiva fonteRadioDesejada =
+    FonteAudioAtiva::RADIO;
 bool perfilPlayerAtivo = false;
 
 bool bloquearStatus(
@@ -172,7 +176,8 @@ void atualizarStatusAlarme(
     bool ativo,
     bool arquivoSolicitado,
     bool arquivoDisponivel,
-    bool somPadrao
+    bool somPadrao,
+    bool radio = false
 ) {
     if (!bloquearStatus()) {
         return;
@@ -182,6 +187,7 @@ void atualizarStatusAlarme(
     statusAudio.arquivoAlarmeSolicitado = arquivoSolicitado;
     statusAudio.arquivoAlarmeDisponivel = arquivoDisponivel;
     statusAudio.somPadraoAlarme = somPadrao;
+    statusAudio.radioAlarme = radio;
 
     liberarStatus();
 }
@@ -317,7 +323,7 @@ void conectarAgora(
         pdMS_TO_TICKS(100)
     );
 
-    fonteAudioAtiva = FonteAudioAtiva::RADIO;
+    fonteAudioAtiva = fonteRadioDesejada;
 
     bool conectado =
         audio.connecttohost(
@@ -625,7 +631,10 @@ void tratarEventoAudio(
             ) {
                 marcarStreamPronto();
             } else if (
-                fonteAudioAtiva == FonteAudioAtiva::RADIO &&
+                (
+                    fonteAudioAtiva == FonteAudioAtiva::RADIO ||
+                    fonteAudioAtiva == FonteAudioAtiva::ALARME_RADIO
+                ) &&
                 strstr(
                     mensagem,
                     "slow stream"
@@ -673,7 +682,10 @@ void tratarEventoAudio(
             break;
 
         case Audio::evt_eof:
-            if (fonteAudioAtiva == FonteAudioAtiva::RADIO) {
+            if (
+                fonteAudioAtiva == FonteAudioAtiva::RADIO ||
+                fonteAudioAtiva == FonteAudioAtiva::ALARME_RADIO
+            ) {
                 agendarReconexao(
                     "Fim inesperado do fluxo"
                 );
@@ -864,6 +876,7 @@ void processarComando(
     switch (comando.tipo) {
         case TipoComandoAudio::TOCAR_RADIO:
             limparStatusAlarme();
+            fonteRadioDesejada = FonteAudioAtiva::RADIO;
             perfilPlayerAtivo = false;
             vTaskPrioritySet(
                 nullptr,
@@ -890,6 +903,42 @@ void processarComando(
                 nomeDesejado
             );
 
+            limparErro();
+            conectarAgora(false);
+            break;
+
+        case TipoComandoAudio::TOCAR_ALARME_RADIO:
+            fonteRadioDesejada = FonteAudioAtiva::ALARME_RADIO;
+            perfilPlayerAtivo = false;
+            vTaskPrioritySet(
+                nullptr,
+                PRIORIDADE_SERVICO_AUDIO_RADIO
+            );
+
+            copiarTexto(
+                nomeDesejado,
+                sizeof(nomeDesejado),
+                comando.nome
+            );
+            copiarTexto(
+                urlDesejada,
+                sizeof(urlDesejada),
+                comando.url
+            );
+
+            falhasConsecutivas = 0;
+            proximaTentativa = 0;
+            inicioDegradacao = 0;
+
+            audio.setVolume(comando.volume);
+            atualizarRadioStatus(nomeDesejado);
+            atualizarStatusAlarme(
+                true,
+                false,
+                false,
+                false,
+                true
+            );
             limparErro();
             conectarAgora(false);
             break;
@@ -1186,6 +1235,36 @@ bool tocarRadio(
         nome.c_str()
     );
 
+    copiarTexto(
+        comando.url,
+        sizeof(comando.url),
+        url.c_str()
+    );
+
+    return enviarComando(comando);
+}
+
+bool tocarRadioAlarme(
+    const String& nome,
+    const String& url,
+    int volume
+) {
+    if (!dadosRadioValidos(nome.c_str(), url.c_str())) {
+        definirErro("Nome ou URL da radio do alarme invalido");
+        return false;
+    }
+
+    ComandoAudio comando;
+    comando.tipo = TipoComandoAudio::TOCAR_ALARME_RADIO;
+    comando.volume = static_cast<uint8_t>(
+        constrain(volume, 1, VOLUME_MAXIMO)
+    );
+
+    copiarTexto(
+        comando.nome,
+        sizeof(comando.nome),
+        nome.c_str()
+    );
     copiarTexto(
         comando.url,
         sizeof(comando.url),

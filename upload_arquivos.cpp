@@ -8,6 +8,7 @@
 #include "alarmes.h"
 #include "persistencia_alarmes.h"
 #include "persistencia_radios.h"
+#include "radios.h"
 
 namespace {
 
@@ -163,6 +164,8 @@ bool salvarListaRadiosRecebida() {
 
         return false;
     }
+
+    carregarRadios();
 
     Serial.println(
         "radios.json validado e atualizado."

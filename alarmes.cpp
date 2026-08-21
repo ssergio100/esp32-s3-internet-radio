@@ -23,6 +23,7 @@ constexpr unsigned long INTERVALO_VERIFICACAO_ALARMES_MS = 500;
 
 struct AlarmeCarregado {
     uint32_t id = 0;
+    uint32_t radioId = 0;
     bool ativo = false;
     bool execucaoUnica = false;
     uint8_t hora = 0;
@@ -333,6 +334,7 @@ void carregarAlarmes() {
         alarme.ativo = item["ativo"] | false;
         alarme.nome = item["nome"].as<const char*>();
         alarme.volume = item["volume"] | 1;
+        alarme.radioId = item["radioId"] | 0;
 
         interpretarHorario(
             item["horario"].as<const char*>(),
@@ -435,6 +437,7 @@ bool verificarDisparoAlarme(DisparoAlarme& disparo) {
     AlarmeCarregado escolhido = alarmes[indiceEscolhido];
 
     disparo.id = escolhido.id;
+    disparo.radioId = escolhido.radioId;
     disparo.nome = escolhido.nome;
     disparo.arquivo = escolhido.arquivo;
     disparo.volume = escolhido.volume;

@@ -65,6 +65,7 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `FREQUENCIA_CARTAO_PLAYER_HZ` | Frequência SPI do microSD | 4000000 Hz |
 | `REPRODUCAO_SEQUENCIAL_PLAYER` | Inicia automaticamente o próximo MP3 ao terminar | `true` |
 | `DURACAO_MAXIMA_ALARME_MINUTOS` | Limite de repetição de um alarme | 30 minutos |
+| `TEMPO_LIMITE_CONEXAO_RADIO_ALARME_MS` | Espera por rede/stream antes do som padrão | 20 segundos |
 
 Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
@@ -128,13 +129,12 @@ progressivamente um MP3 de `/sons`. Em `Relógio`, a fonte e sua tarefa ficam
 suspensos, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
 apagado; somente relógio, encoder e OLED continuam sendo processados.
 
-Os alarmes são uma sobreposição temporária aos três estados. Um alarme
-interrompe a fonte atual, repete seu arquivo até o clique curto no encoder ou o
-limite de 30 minutos e então restaura o estado anterior. Um novo disparo
-substitui definitivamente o alarme em execução. Quando vários coincidem no
-mesmo minuto, vence o cadastro de maior `id`. Quando a origem é a Rádio Web, o
-firmware aguarda o serviço de áudio confirmar a parada do stream, desliga o
-Wi-Fi durante o alarme e o reconecta antes de restaurar a estação.
+Os alarmes são uma sobreposição temporária aos três estados. Um alarme usa uma
+estação, um MP3 ou o som padrão até o clique curto no encoder ou o limite de 30
+minutos e então restaura o estado anterior. Um novo disparo substitui
+definitivamente o alarme em execução. Quando vários coincidem no mesmo minuto,
+vence o cadastro de maior `id`. Fontes locais desligam o Wi-Fi; fontes Rádio Web
+mantêm a rede e sua supervisão, sempre com o servidor HTTP suspenso.
 
 O serviço de áudio publica estados explícitos (`conectando`,
 `bufferizando`, `tocando`, `degradado`, `reconectando` e `erro`) e usa
@@ -218,11 +218,13 @@ presença de `dias` identifica a repetição semanal e a presença de `data`
 identifica uma execução única. Os arquivos ativos, temporário e backup são
 `/alarmes.json`, `/alarmes.tmp` e `/alarmes.bak`.
 
-O arquivo escolhido deve ser um MP3 diretamente em `/sons`. Se não houver
-arquivo configurado, cartão ou arquivo válido, o firmware usa
-`/alarme_padrao.wav`, gerado automaticamente na FFat. Alarmes únicos são
-desativados ao disparar; alarmes únicos já vencidos também são desativados pelo
-agendador. Não há histórico nem cálculo de próxima execução na interface.
+A fonte pode ser uma estação da lista de Rádio Web, um MP3 diretamente em
+`/sons` ou o som padrão. O JSON guarda `radioId` ou `arquivo`, nunca os dois; a
+ausência de ambos seleciona `/alarme_padrao.wav`, gerado automaticamente na
+FFat. Uma estação removida, cartão ausente ou MP3 indisponível também recorre ao
+som padrão. Alarmes únicos são desativados ao disparar; alarmes únicos já
+vencidos também são desativados pelo agendador. Não há histórico nem cálculo de
+próxima execução na interface.
 
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre

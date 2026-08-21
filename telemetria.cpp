@@ -73,7 +73,9 @@ namespace {
         const char* origemSom = "inativo";
 
         if (audio.alarmeAtivo) {
-            if (audio.somPadraoAlarme) {
+            if (audio.radioAlarme) {
+                origemSom = "radio web";
+            } else if (audio.somPadraoAlarme) {
                 origemSom =
                     audio.arquivoAlarmeSolicitado
                         ? "padrao (arquivo indisponivel)"

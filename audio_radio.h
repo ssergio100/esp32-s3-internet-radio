@@ -31,6 +31,7 @@ struct StatusAudio {
     bool arquivoAlarmeSolicitado = false;
     bool arquivoAlarmeDisponivel = false;
     bool somPadraoAlarme = false;
+    bool radioAlarme = false;
 
     char radio[64] = "";
     char titulo[128] = "";
@@ -43,6 +44,12 @@ bool iniciarAudio(int volume);
 bool tocarRadio(
     const String& nome,
     const String& url
+);
+
+bool tocarRadioAlarme(
+    const String& nome,
+    const String& url,
+    int volume
 );
 
 // Reproduz progressivamente um MP3 de /sons usando o mesmo decoder e I2S da

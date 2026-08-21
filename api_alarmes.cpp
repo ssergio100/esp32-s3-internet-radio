@@ -6,6 +6,7 @@
 #include "alarmes.h"
 #include "persistencia_alarmes.h"
 #include "player.h"
+#include "radios.h"
 
 namespace {
 
@@ -53,6 +54,10 @@ bool copiarDadosAlarme(
     uint32_t id
 ) {
     JsonVariantConst arquivo = origem["arquivo"];
+    JsonVariantConst radioId = origem["radioId"];
+    bool possuiArquivo =
+        arquivo.is<const char*>() &&
+        arquivo.as<const char*>()[0] != '\0';
     bool possuiDias = origem["dias"].is<JsonArrayConst>();
     bool possuiData = origem["data"].is<const char*>();
 
@@ -61,6 +66,17 @@ bool copiarDadosAlarme(
         (
             !arquivo.isNull() &&
             !arquivo.is<const char*>()
+        ) ||
+        (
+            !radioId.isNull() &&
+            (
+                !radioId.is<uint32_t>() ||
+                radioId.as<uint32_t>() == 0
+            )
+        ) ||
+        (
+            possuiArquivo &&
+            !radioId.isNull()
         ) ||
         (
             !origem["ativo"].isNull() &&
@@ -90,10 +106,13 @@ bool copiarDadosAlarme(
     }
 
     if (
-        arquivo.is<const char*>() &&
-        arquivo.as<const char*>()[0] != '\0'
+        possuiArquivo
     ) {
         destino["arquivo"] = arquivo;
+    }
+
+    if (radioId.is<uint32_t>()) {
+        destino["radioId"] = radioId;
     }
 
     return true;
@@ -323,4 +342,26 @@ void responderArquivosPlayer(WebServer& servidor) {
         "application/json",
         resposta
     );
+}
+
+void responderRadiosParaAlarmes(WebServer& servidor) {
+    JsonDocument documento;
+    JsonArray radios = documento.to<JsonArray>();
+    int quantidade = obterQuantidadeRadios();
+
+    for (int indice = 0; indice < quantidade; indice++) {
+        const Radio* radio = obterRadio(indice);
+
+        if (radio == nullptr) {
+            continue;
+        }
+
+        JsonObject item = radios.add<JsonObject>();
+        item["id"] = radio->id;
+        item["nome"] = radio->nome;
+    }
+
+    String resposta;
+    serializeJson(documento, resposta);
+    servidor.send(200, "application/json", resposta);
 }

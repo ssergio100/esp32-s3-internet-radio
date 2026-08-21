@@ -238,6 +238,14 @@ bool iniciarArmazenamentoEServidorWeb() {
     );
 
     servidor.on(
+        "/api/radios-alarmes",
+        HTTP_GET,
+        []() {
+            responderRadiosParaAlarmes(servidor);
+        }
+    );
+
+    servidor.on(
         "/api/radios",
         HTTP_POST,
         []() {

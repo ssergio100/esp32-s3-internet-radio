@@ -41,6 +41,8 @@ namespace {
             statusAudio.arquivoAlarmeDisponivel;
         documento["somPadraoAlarme"] =
             statusAudio.somPadraoAlarme;
+        documento["radioAlarme"] =
+            statusAudio.radioAlarme;
     }
 
     void adicionarStatusAlarmes(JsonDocument& documento) {

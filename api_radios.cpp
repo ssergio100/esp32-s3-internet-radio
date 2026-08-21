@@ -151,6 +151,8 @@ void adicionarRadioPelaApi(WebServer& servidor) {
         return;
     }
 
+    carregarRadios();
+
     servidor.send(
         201,
         "application/json",
@@ -232,6 +234,8 @@ void excluirRadioPelaApi(WebServer& servidor) {
 
         return;
     }
+
+    carregarRadios();
 
     servidor.send(
         200,

@@ -142,20 +142,27 @@ semanal; `data` identifica uma execução única. Não há campo de tipo, próxi
 execução ou histórico persistido. Alarmes únicos vencidos são desativados.
 
 O arquivo principal coordena a execução sem criar outro estado permanente. O
-alarme interrompe Rádio Web, Player ou outro alarme, usa a mesma fila e a mesma
-instância de `Audio`, repete o arquivo depois do EOF e encerra no clique curto ou
-no limite configurado de 30 minutos. Um disparo posterior substitui o atual e
-reinicia o limite; se vários coincidirem no mesmo minuto, vence o maior `id`.
-Somente ao fim da cadeia o estado anterior é restaurado. O servidor é suspenso
-durante a cadeia para não disputar a FFat com o som padrão. Se a origem for a
-Rádio Web, a transição espera o serviço publicar `PARADO`, desliga completamente
-o Wi-Fi antes de abrir o arquivo local e não executa a supervisão de rede durante
-o alarme. Ao final, reconecta a rede antes de reabrir a estação anterior.
+alarme interrompe Rádio Web, Player ou outro alarme e usa a mesma fila e a mesma
+instância de `Audio`. MP3 e WAV recomeçam depois do EOF; uma estação permanece
+no ar. Todas as fontes encerram no clique curto ou no limite configurado de 30
+minutos. Um disparo posterior substitui o atual e reinicia o limite; se vários
+coincidirem no mesmo minuto, vence o maior `id`. Somente ao fim da cadeia o
+estado anterior é restaurado e o servidor permanece suspenso durante a cadeia.
+
+Uma fonte local espera qualquer stream publicar `PARADO`, desliga completamente
+o Wi-Fi e só então abre o arquivo. Uma fonte Rádio Web mantém ou restabelece a
+rede e executa sua supervisão, mas não reativa o servidor HTTP. As trocas entre
+alarmes reaplicam essa política conforme a nova fonte. Ao final, Rádio Web
+reconecta e reabre a estação anterior; Player e Relógio deixam a rede desligada.
+Se a rede ou o stream não ficar disponível no limite configurado, a fonte muda
+para o som padrão sem bloquear o `loop()` durante a espera.
 
 `/alarme_padrao.wav` é um WAV PCM curto gerado automaticamente na FFat. Ele é
-usado quando nenhum MP3 foi escolhido ou quando cartão/arquivo não puder ser
-aberto. O catálogo do microSD é preparado no boot, antes do áudio, para que
-`GET /api/arquivos-player` responda exclusivamente a partir da RAM.
+usado quando nenhuma fonte foi escolhida, quando cartão/arquivo não puder ser
+aberto ou quando o `radioId` não existir mais. O catálogo do microSD é preparado
+no boot, antes do áudio, para que `GET /api/arquivos-player` responda
+exclusivamente a partir da RAM. A página também obtém a fotografia ativa das
+estações, inclusive a reserva, por `GET /api/radios-alarmes`.
 
 O estado Relógio não é um modo de baixo consumo. A versão instalada da
 ESP32-audioI2S encerra o stream, mas não oferece uma chamada pública para parar
@@ -217,14 +224,15 @@ transação que preserva a versão anterior antes de promover uma nova lista.
 
 `persistencia_alarmes.cpp` aplica a mesma transação a `/alarmes.json`,
 `/alarmes.tmp` e `/alarmes.bak`, validando IDs, nomes, volume, horário, dias ou
-data e caminho opcional do MP3. `api_alarmes.cpp` implementa `GET`, `POST`,
-`PUT` e `DELETE` em `/api/alarmes` e recarrega a fotografia em RAM após cada
-alteração.
+data e uma única fonte opcional: caminho MP3 ou `radioId`. `api_alarmes.cpp`
+implementa `GET`, `POST`, `PUT` e `DELETE` em `/api/alarmes` e recarrega a
+fotografia em RAM após cada alteração.
 
 `api_radios.cpp` interpreta as requisições HTTP e delega a leitura ou a gravação
 da lista persistida. `radios.cpp` monta durante o boot a fotografia em memória
-usada pelo restante do firmware e mantém a lista de reserva compilada. Por
-projeto, uma lista nova entra em uso depois de reiniciar.
+usada pelo restante do firmware e mantém a lista de reserva compilada. Alterações
+confirmadas pela API ou pelo upload recarregam essa fotografia imediatamente,
+inclusive para resolver o `radioId` usado pelos alarmes.
 
 As interfaces web completas são arquivos físicos: `/index.html`,
 `/alarmes.html` e `/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas

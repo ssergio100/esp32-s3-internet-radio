@@ -395,12 +395,12 @@
                     </div>
 
                     <div class="campo">
-                        <label for="arquivo">Som</label>
-                        <select id="arquivo">
-                            <option value="">Som padrão do alarme</option>
+                        <label for="fonte">Fonte do alarme</label>
+                        <select id="fonte">
+                            <option value="padrao">Som padrão do alarme</option>
                         </select>
                         <div class="detalhe">
-                            Se o arquivo ou o cartão faltar, o som padrão será usado.
+                            MP3 ausente ou rádio removida usa o som padrão.
                         </div>
                     </div>
 
@@ -450,13 +450,14 @@
         const campoData = document.getElementById("campoData");
         const campoDataEntrada = document.getElementById("data");
         const campoDias = document.getElementById("campoDias");
-        const campoArquivo = document.getElementById("arquivo");
+        const campoFonte = document.getElementById("fonte");
         const campoVolume = document.getElementById("volume");
         const volumeValor = document.getElementById("volumeValor");
         const campoAtivo = document.getElementById("ativo");
 
         let alarmes = [];
         let arquivos = [];
+        let radios = [];
         let idEmEdicao = null;
 
         function escapar(texto) {
@@ -487,10 +488,20 @@
                 alarme.dias.map(function (dia) { return DIAS[dia]; }).join(", ");
         }
 
-        function nomeArquivo(alarme) {
-            if (!alarme.arquivo) return "Som padrão";
-            const partes = alarme.arquivo.split("/");
-            return partes[partes.length - 1];
+        function nomeFonte(alarme) {
+            if (alarme.radioId) {
+                const radio = radios.find(function (item) {
+                    return Number(item.id) === Number(alarme.radioId);
+                });
+                return radio ? "Rádio: " + radio.nome : "Rádio removida";
+            }
+
+            if (alarme.arquivo) {
+                const partes = alarme.arquivo.split("/");
+                return "MP3: " + partes[partes.length - 1];
+            }
+
+            return "Som padrão";
         }
 
         function renderizar() {
@@ -512,7 +523,7 @@
                         </td>
                         <td><span class="nome">${escapar(alarme.nome)}</span></td>
                         <td>${escapar(formatarProgramacao(alarme))}</td>
-                        <td class="coluna-som">${escapar(nomeArquivo(alarme))}</td>
+                        <td class="coluna-som">${escapar(nomeFonte(alarme))}</td>
                         <td class="coluna-volume">${alarme.volume}/21</td>
                         <td>
                             <div class="acoes-linha">
@@ -539,25 +550,34 @@
             try {
                 const resultados = await Promise.all([
                     requisitar("/api/alarmes"),
-                    requisitar("/api/arquivos-player")
+                    requisitar("/api/arquivos-player"),
+                    requisitar("/api/radios-alarmes")
                 ]);
 
                 alarmes = Array.isArray(resultados[0].alarmes)
                     ? resultados[0].alarmes
                     : [];
                 arquivos = Array.isArray(resultados[1]) ? resultados[1] : [];
-                preencherArquivos();
+                radios = Array.isArray(resultados[2]) ? resultados[2] : [];
+                preencherFontes();
                 renderizar();
             } catch (erro) {
                 exibirMensagem(erro.message, "erro");
             }
         }
 
-        function preencherArquivos() {
-            campoArquivo.innerHTML = '<option value="">Som padrão do alarme</option>' +
-                arquivos.map(function (arquivo) {
-                    return `<option value="${escapar(arquivo.caminho)}">${escapar(arquivo.nome)}</option>`;
-                }).join("");
+        function preencherFontes() {
+            const opcoesRadios = radios.map(function (radio) {
+                return `<option value="radio:${Number(radio.id)}">${escapar(radio.nome)}</option>`;
+            }).join("");
+            const opcoesArquivos = arquivos.map(function (arquivo) {
+                return `<option value="arquivo:${escapar(arquivo.caminho)}">${escapar(arquivo.nome)}</option>`;
+            }).join("");
+
+            campoFonte.innerHTML =
+                '<option value="padrao">Som padrão do alarme</option>' +
+                '<optgroup label="Rádio Web">' + opcoesRadios + '</optgroup>' +
+                '<optgroup label="MP3 do microSD">' + opcoesArquivos + '</optgroup>';
         }
 
         function atualizarTipo() {
@@ -570,7 +590,7 @@
 
         function abrirModal(alarme) {
             form.reset();
-            preencherArquivos();
+            preencherFontes();
             idEmEdicao = alarme ? alarme.id : null;
             tituloModal.textContent = alarme ? "Editar alarme" : "Novo alarme";
             campoVolume.value = alarme ? alarme.volume : 15;
@@ -580,20 +600,24 @@
                 campoNome.value = alarme.nome;
                 campoHorario.value = alarme.horario;
 
-                if (
-                    alarme.arquivo &&
-                    !arquivos.some(function (arquivo) {
-                        return arquivo.caminho === alarme.arquivo;
-                    })
-                ) {
-                    const opcaoAusente = document.createElement("option");
-                    opcaoAusente.value = alarme.arquivo;
-                    opcaoAusente.textContent =
-                        "Arquivo ausente: " + nomeArquivo(alarme);
-                    campoArquivo.appendChild(opcaoAusente);
+                let valorFonte = "padrao";
+
+                if (alarme.radioId) {
+                    valorFonte = "radio:" + alarme.radioId;
+                } else if (alarme.arquivo) {
+                    valorFonte = "arquivo:" + alarme.arquivo;
                 }
 
-                campoArquivo.value = alarme.arquivo || "";
+                if (!Array.from(campoFonte.options).some(function (opcao) {
+                    return opcao.value === valorFonte;
+                })) {
+                    const opcaoAusente = document.createElement("option");
+                    opcaoAusente.value = valorFonte;
+                    opcaoAusente.textContent = "Fonte ausente: " + nomeFonte(alarme);
+                    campoFonte.appendChild(opcaoAusente);
+                }
+
+                campoFonte.value = valorFonte;
 
                 const tipo = alarme.data ? "unico" : "semanal";
                 document.querySelector(`input[name="tipo"][value="${tipo}"]`).checked = true;
@@ -636,7 +660,12 @@
                 }
             }
 
-            if (campoArquivo.value) alarme.arquivo = campoArquivo.value;
+            if (campoFonte.value.startsWith("radio:")) {
+                alarme.radioId = Number(campoFonte.value.substring(6));
+            } else if (campoFonte.value.startsWith("arquivo:")) {
+                alarme.arquivo = campoFonte.value.substring(8);
+            }
+
             return alarme;
         }
 

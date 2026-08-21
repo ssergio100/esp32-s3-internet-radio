@@ -33,12 +33,27 @@ namespace {
             return false;
         }
 
-        for (JsonObject radio : radios) {
+        for (size_t indice = 0; indice < radios.size(); indice++) {
+            JsonObject radio = radios[indice].as<JsonObject>();
             const char* nome = radio["nome"];
             const char* url = radio["url"];
+            JsonVariant id = radio["id"];
 
-            if (!dadosRadioValidos(nome, url)) {
+            if (
+                !id.is<uint32_t>() ||
+                id.as<uint32_t>() == 0 ||
+                !dadosRadioValidos(nome, url)
+            ) {
                 return false;
+            }
+
+            for (size_t anterior = 0; anterior < indice; anterior++) {
+                if (
+                    radios[anterior]["id"].as<uint32_t>() ==
+                    id.as<uint32_t>()
+                ) {
+                    return false;
+                }
             }
         }
 

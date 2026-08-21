@@ -8,5 +8,6 @@ void adicionarAlarmePelaApi(WebServer& servidor);
 void atualizarAlarmePelaApi(WebServer& servidor);
 void excluirAlarmePelaApi(WebServer& servidor);
 void responderArquivosPlayer(WebServer& servidor);
+void responderRadiosParaAlarmes(WebServer& servidor);
 
 #endif

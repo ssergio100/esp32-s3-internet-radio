@@ -203,6 +203,7 @@ bool alarmeValido(JsonObjectConst alarme) {
     }
 
     JsonVariantConst arquivo = alarme["arquivo"];
+    JsonVariantConst radioId = alarme["radioId"];
 
     if (
         !arquivo.isNull() &&
@@ -211,6 +212,20 @@ bool alarmeValido(JsonObjectConst alarme) {
             !caminhoPlayerValido(arquivo.as<const char*>())
         )
     ) {
+        return false;
+    }
+
+    if (
+        !radioId.isNull() &&
+        (
+            !radioId.is<uint32_t>() ||
+            radioId.as<uint32_t>() == 0
+        )
+    ) {
+        return false;
+    }
+
+    if (!arquivo.isNull() && !radioId.isNull()) {
         return false;
     }
 

@@ -10,6 +10,7 @@ extern const char* const CAMINHO_SOM_PADRAO_ALARME;
 
 struct DisparoAlarme {
     uint32_t id = 0;
+    uint32_t radioId = 0;
     uint8_t volume = 0;
     String nome;
     String arquivo;

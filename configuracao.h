@@ -73,6 +73,9 @@ constexpr bool REPRODUCAO_SEQUENCIAL_PLAYER = true;
 // Um novo alarme sempre substitui o que estiver em execução.
 constexpr uint32_t DURACAO_MAXIMA_ALARME_MINUTOS = 30;
 
+// Uma fonte Rádio Web aguarda rede ou stream por este tempo antes do som padrão.
+constexpr uint32_t TEMPO_LIMITE_CONEXAO_RADIO_ALARME_MS = 20000;
+
 // Interface
 // Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
 #define BRILHO_LED_RGB 50
