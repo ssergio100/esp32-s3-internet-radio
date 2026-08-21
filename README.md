@@ -132,7 +132,9 @@ Os alarmes são uma sobreposição temporária aos três estados. Um alarme
 interrompe a fonte atual, repete seu arquivo até o clique curto no encoder ou o
 limite de 30 minutos e então restaura o estado anterior. Um novo disparo
 substitui definitivamente o alarme em execução. Quando vários coincidem no
-mesmo minuto, vence o cadastro de maior `id`.
+mesmo minuto, vence o cadastro de maior `id`. Quando a origem é a Rádio Web, o
+firmware aguarda o serviço de áudio confirmar a parada do stream, desliga o
+Wi-Fi durante o alarme e o reconecta antes de restaurar a estação.
 
 O serviço de áudio publica estados explícitos (`conectando`,
 `bufferizando`, `tocando`, `degradado`, `reconectando` e `erro`) e usa

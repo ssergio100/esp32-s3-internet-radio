@@ -147,7 +147,10 @@ instância de `Audio`, repete o arquivo depois do EOF e encerra no clique curto 
 no limite configurado de 30 minutos. Um disparo posterior substitui o atual e
 reinicia o limite; se vários coincidirem no mesmo minuto, vence o maior `id`.
 Somente ao fim da cadeia o estado anterior é restaurado. O servidor é suspenso
-durante a cadeia para não disputar a FFat com o som padrão.
+durante a cadeia para não disputar a FFat com o som padrão. Se a origem for a
+Rádio Web, a transição espera o serviço publicar `PARADO`, desliga completamente
+o Wi-Fi antes de abrir o arquivo local e não executa a supervisão de rede durante
+o alarme. Ao final, reconecta a rede antes de reabrir a estação anterior.
 
 `/alarme_padrao.wav` é um WAV PCM curto gerado automaticamente na FFat. Ele é
 usado quando nenhum MP3 foi escolhido ou quando cartão/arquivo não puder ser

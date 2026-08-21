@@ -37,6 +37,12 @@ enum class ModoInterface {
     SELECAO_ARQUIVO
 };
 
+enum class FaseAlarme {
+    INATIVO,
+    AGUARDANDO_PARADA_RADIO,
+    TOCANDO
+};
+
 constexpr EstadoEquipamento ORDEM_SELETOR_ESTADOS[] = {
     EstadoEquipamento::RELOGIO,
     EstadoEquipamento::PLAYER,
@@ -65,6 +71,8 @@ bool playerObservouAudioAtivo = false;
 
 bool alarmeEmExecucao = false;
 bool alarmeObservouAudioAtivo = false;
+bool wifiDesligadoPeloAlarme = false;
+FaseAlarme faseAlarme = FaseAlarme::INATIVO;
 EstadoEquipamento estadoAntesDoAlarme =
     EstadoEquipamento::RADIO_WEB;
 DisparoAlarme alarmeAtual;
@@ -186,11 +194,6 @@ void loop() {
             processarExecucaoAlarme();
         }
 
-        if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
-            supervisionarWifi();
-            processarServidorWeb();
-        }
-
         atualizarIndicadorEstadoAudio();
         registrarTelemetriaPeriodica();
         return;
@@ -238,18 +241,6 @@ void iniciarExecucaoAlarme(const DisparoAlarme& disparo) {
 
     if (iniciandoCadeia) {
         estadoAntesDoAlarme = estadoEquipamento;
-
-        if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
-            // Evita acesso concorrente à FFat enquanto o som padrão puder
-            // estar sendo lido pela tarefa de áudio.
-            desativarServidorWeb();
-        } else if (estadoEquipamento == EstadoEquipamento::RELOGIO) {
-            if (!retomarAudio(disparo.volume, true)) {
-                Serial.println(
-                    "Alarme: falha ao retomar o servico de audio."
-                );
-            }
-        }
     } else {
         Serial.printf(
             "Alarme %lu substituiu o alarme %lu.\n",
@@ -264,13 +255,44 @@ void iniciarExecucaoAlarme(const DisparoAlarme& disparo) {
     inicioAlarmeAtualMs = millis();
     proximaTentativaAudioAlarmeMs = 0;
 
+    if (iniciandoCadeia) {
+        wifiDesligadoPeloAlarme = false;
+
+        if (estadoAntesDoAlarme == EstadoEquipamento::RADIO_WEB) {
+            // A rádio deve terminar antes de desligarmos sua rede. O MP3 só
+            // começa depois que o serviço de áudio confirmar PARADO.
+            desativarServidorWeb();
+            faseAlarme = FaseAlarme::AGUARDANDO_PARADA_RADIO;
+
+            if (!pararAudio()) {
+                proximaTentativaAudioAlarmeMs = millis() + 200;
+                Serial.println(
+                    "Alarme: comando para parar a radio rejeitado."
+                );
+            }
+        } else {
+            faseAlarme = FaseAlarme::TOCANDO;
+
+            if (estadoAntesDoAlarme == EstadoEquipamento::RELOGIO) {
+                if (!retomarAudio(disparo.volume, true)) {
+                    Serial.println(
+                        "Alarme: falha ao retomar o servico de audio."
+                    );
+                }
+            }
+        }
+    }
+
     modoInterface = ModoInterface::VOLUME;
     barraVolumeVisivel = false;
     reproducaoPlayerSolicitada = false;
     playerObservouAudioAtivo = false;
 
     mostrarAlarme(alarmeAtual.nome);
-    iniciarCicloAudioAlarme();
+
+    if (faseAlarme == FaseAlarme::TOCANDO) {
+        iniciarCicloAudioAlarme();
+    }
 
     Serial.printf(
         "Alarme iniciado: %s (ID %lu).\n",
@@ -306,6 +328,31 @@ void processarExecucaoAlarme() {
     }
 
     StatusAudio statusAudio = obterStatusAudio();
+
+    if (faseAlarme == FaseAlarme::AGUARDANDO_PARADA_RADIO) {
+        if (statusAudio.estado == EstadoAudio::PARADO) {
+            desligarWifi();
+            wifiDesligadoPeloAlarme = true;
+            faseAlarme = FaseAlarme::TOCANDO;
+            iniciarCicloAudioAlarme();
+            Serial.println(
+                "Alarme: radio parada e Wi-Fi desligado; iniciando audio."
+            );
+        } else if (
+            proximaTentativaAudioAlarmeMs != 0 &&
+            static_cast<int32_t>(
+                agoraMs - proximaTentativaAudioAlarmeMs
+            ) >= 0
+        ) {
+            if (pararAudio()) {
+                proximaTentativaAudioAlarmeMs = 0;
+            } else {
+                proximaTentativaAudioAlarmeMs = agoraMs + 200;
+            }
+        }
+
+        return;
+    }
 
     if (
         statusAudio.estado == EstadoAudio::BUFFERIZANDO ||
@@ -350,6 +397,7 @@ void finalizarExecucaoAlarme(bool interrompidoPeloUsuario) {
 
     alarmeEmExecucao = false;
     alarmeObservouAudioAtivo = false;
+    faseAlarme = FaseAlarme::INATIVO;
     alarmeAtual = DisparoAlarme{};
 
     pararAudio();
@@ -361,6 +409,11 @@ void finalizarExecucaoAlarme(bool interrompidoPeloUsuario) {
 
     switch (estadoAntesDoAlarme) {
         case EstadoEquipamento::RADIO_WEB:
+            if (wifiDesligadoPeloAlarme) {
+                conectarWifi();
+                wifiDesligadoPeloAlarme = false;
+            }
+
             reativarServidorWeb();
             solicitarReproducaoRadio(indiceRadioAtual);
             break;
