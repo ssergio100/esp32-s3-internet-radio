@@ -111,19 +111,3 @@ bool ajustarHorarioUtcRelogioRtc(time_t instanteUtc) {
         diferencaSegundos >= 0.0 &&
         diferencaSegundos <= 1.0;
 }
-
-bool obterTemperaturaRelogioRtc(float& temperaturaCelsius) {
-    if (!disponivel) {
-        return false;
-    }
-
-    temperaturaCelsius = rtc.getTemperature();
-
-    // RTClib 2.1.4 trata o byte inteiro como sem sinal. Corrige aqui a faixa
-    // negativa sem modificar a biblioteca instalada para outros projetos.
-    if (temperaturaCelsius >= 128.0F) {
-        temperaturaCelsius -= 256.0F;
-    }
-
-    return true;
-}

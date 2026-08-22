@@ -30,6 +30,12 @@ constexpr int PIN_ENCODER_DT  = 16;
 constexpr int PIN_ENCODER_SW  = 7;
 constexpr int PIN_ENCODER_VCC = -1;
 
+// Cartão microSD do Player, em barramento SPI dedicado por software.
+constexpr int PIN_CARTAO_PLAYER_SCK  = 42;
+constexpr int PIN_CARTAO_PLAYER_MISO = 41;
+constexpr int PIN_CARTAO_PLAYER_MOSI = 40;
+constexpr int PIN_CARTAO_PLAYER_CS   = 39;
+
 // Reservados para o futuro driver das quatro válvulas Nixie:
 // BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
 // Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
@@ -55,6 +61,21 @@ constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
 constexpr int VOLUME_PADRAO = 10;
 
+// Frequências maiores encurtam os bloqueios de leitura que disputam CPU com o
+// OLED. Reduza somente se o cartão instalado ficar instável.
+constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 4000000;
+
+// Quando ativa, o fim de uma música inicia a próxima e, depois da última,
+// retorna à primeira. A escolha manual de outro arquivo continua prevalecendo.
+constexpr bool REPRODUCAO_SEQUENCIAL_PLAYER = true;
+
+// O arquivo do alarme recomeça até o clique curto no encoder ou este limite.
+// Um novo alarme sempre substitui o que estiver em execução.
+constexpr uint32_t DURACAO_MAXIMA_ALARME_MINUTOS = 30;
+
+// Uma fonte Rádio Web aguarda rede ou stream por este tempo antes do som padrão.
+constexpr uint32_t TEMPO_LIMITE_CONEXAO_RADIO_ALARME_MS = 20000;
+
 // Interface
 // Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
 #define BRILHO_LED_RGB 50
@@ -63,8 +84,8 @@ constexpr int VOLUME_PADRAO = 10;
 constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
-// Tempo que o botão deve permanecer pressionado para alternar entre os estados
-// Rádio Web e Relógio. Aumente para reduzir acionamentos acidentais.
+// Tempo que o botão deve permanecer pressionado para levar Rádio Web ou Player
+// ao Relógio. Aumente para reduzir acionamentos acidentais.
 constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
 
 // O LED alterna entre azul e apagado a cada intervalo.
@@ -74,6 +95,10 @@ constexpr unsigned long INTERVALO_PISCA_LED_CONEXAO_WIFI_MS = 100;
 // O nome avança um pixel a cada passo.
 // Diminua o intervalo para acelerar a rolagem; aumente para desacelerar.
 constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 40;
+
+// O Player atualiza o OLED com menos frequência para reservar CPU à leitura
+// local. Diminua para acelerar a rolagem; aumente para aliviar ainda mais o CPU.
+constexpr unsigned long INTERVALO_PASSO_ROLAGEM_PLAYER_MS = 80;
 
 // A faixa superior mostra codec, bitrate, buffer e dados passivos do Wi-Fi.
 // O primeiro intervalo controla a velocidade da rolagem para a direita.
@@ -105,11 +130,17 @@ constexpr uint32_t DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS = 2;
 // Ajustes internos
 // =====================================================
 
-// Tarefas de áudio
-constexpr int NUCLEO_DECODIFICADOR_AUDIO = 0;
-constexpr int NUCLEO_SERVICO_AUDIO = 1;
+// A tarefa interna do decoder/I2S fica no núcleo 1, acima do loop Arduino em
+// prioridade. O serviço que abastece o buffer pela rede fica no núcleo 0,
+// abaixo das tarefas internas de Wi-Fi e TCP/IP. Isso isola a entrega PCM da
+// contenção de rede observada no núcleo 0.
+constexpr int NUCLEO_DECODIFICADOR_AUDIO = 1;
+constexpr int NUCLEO_SERVICO_AUDIO = 0;
 constexpr uint32_t PILHA_SERVICO_AUDIO_BYTES = 12288;
-constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO = 3;
+constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_RADIO = 3;
+constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_PLAYER = 1;
+constexpr uint32_t INTERVALO_SERVICO_AUDIO_RADIO_MS = 1;
+constexpr uint32_t INTERVALO_SERVICO_AUDIO_PLAYER_MS = 3;
 
 // Tratamento dos controles
 constexpr unsigned long TEMPO_VALIDACAO_CLIQUE_ENCODER_MS = 30;

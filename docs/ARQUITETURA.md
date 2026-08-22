@@ -5,7 +5,7 @@
 ### Serviço de áudio
 
 `audio_radio.cpp` encapsula a instância de `Audio`. Chamadas como
-`connecttohost()`, `stopSong()`, `setVolume()` e `loop()` acontecem somente
+`connecttohost()`, `connecttoFS()`, `stopSong()`, `setVolume()` e `loop()` acontecem somente
 na tarefa `AudioService`. Display, encoder e servidor não acessam a
 biblioteca diretamente.
 
@@ -15,10 +15,16 @@ referência para `String` ou memória temporária cruza tarefas.
 
 Há duas tarefas relacionadas ao áudio:
 
-- decodificador/I2S da ESP32-audioI2S, no núcleo 0;
-- conexão, preenchimento e supervisão, no núcleo 1.
+- decodificador/I2S da ESP32-audioI2S, no núcleo 1;
+- conexão, preenchimento e supervisão, no núcleo 0.
 
-Os valores de núcleo, pilha e prioridade ficam em `configuracao.h`.
+Os valores de núcleo, pilha e prioridade ficam em `configuracao.h`. No Rádio
+Web, `AudioService` conserva prioridade 3 e intervalo de 1 ms para alimentar a
+rede continuamente. No Player, ela usa prioridade 1 e aguarda 3 ms entre ciclos
+para espaçar as leituras do microSD. O decoder interno permanece no núcleo 1 em
+prioridade 2 e, portanto, pode preemptar o `loop()` da interface quando precisar
+alimentar o I2S. O SPI do cartão opera por padrão a 4 MHz e a rolagem do nome
+redesenha o OLED a cada 80 ms.
 Ao entrar no estado Relógio, um comando encerra o stream, silencia a saída e
 faz `AudioService` aguardar uma notificação sem consumir ciclos continuamente.
 O retorno ao estado Rádio Web acorda a mesma tarefa antes de solicitar a
@@ -103,16 +109,73 @@ interferem na rotação.
 
 ### Estados do equipamento
 
-O firmware possui somente `RADIO_WEB` e `RELOGIO`. Um clique longo confirmado
-alterna entre eles. Ao entrar em Relógio, o OLED muda imediatamente; depois o
+O firmware possui `RADIO_WEB`, `PLAYER` e `RELOGIO`. Um clique longo confirmado
+leva qualquer fonte ativa ao Relógio. Ao entrar nele, o OLED muda imediatamente; depois o
 arquivo principal apaga o LED, interrompe o servidor, solicita a suspensão do
 áudio e desliga o rádio Wi-Fi. O `loop()` continua atendendo somente relógio,
-display e encoder. Clique curto e rotação são ignorados nesse estado.
+display e encoder. O clique longo não executa ação nesse estado.
 
-Outro clique longo conecta novamente o Wi-Fi, reabre o mesmo servidor, acorda
-a tarefa de áudio e solicita a estação que estava selecionada. A FFat e a lista
-em memória permanecem preservadas entre as transições; não há reinicialização
-do ESP32 nem remontagem do armazenamento.
+No Relógio, o giro percorre um catálogo central de estados. Cada opção substitui
+toda a tela; um clique curto confirma a opção exibida. Escolher Rádio Web
+conecta o Wi-Fi, reabre o servidor, acorda a tarefa e retoma a estação. Escolher
+Player mantém a rede desligada, reutiliza o microSD e o catálogo MP3 de `/sons`
+preparados durante o boot e acorda a mesma tarefa de áudio.
+
+`player.cpp` limita o catálogo a 100 MP3 diretamente em `/sons`, sem busca
+recursiva. A listagem ocorre antes do serviço de áudio iniciar e nunca durante a
+reprodução. O arquivo é decodificado progressivamente por `connecttoFS()`; não
+há arquivo completo em RAM, mixer, anel PCM ou segundo decoder. A FFat, o
+catálogo e as seleções permanecem preservados entre transições.
+
+Quando `REPRODUCAO_SEQUENCIAL_PLAYER` está ativa, o arquivo principal observa o
+fim confirmado da faixa e solicita a seguinte na ordem alfabética; depois da
+última, retorna à primeira. A observação só é armada depois que o áudio realmente
+entrou em bufferização ou reprodução, para o estado parado existente antes do
+comando não provocar um salto prematuro. Enquanto o usuário navega pela lista, a
+sequência aguarda sua escolha ou o cancelamento da seleção por inatividade.
+
+### Alarmes
+
+`alarmes.cpp` carrega uma fotografia tipada de `/alarmes.json` em RAM e verifica
+uma única vez cada minuto local. A presença de `dias` identifica uma regra
+semanal; `data` identifica uma execução única. Não há campo de tipo, próxima
+execução ou histórico persistido. Alarmes únicos vencidos são desativados.
+
+O arquivo principal coordena a execução sem criar outro estado permanente. O
+alarme interrompe Rádio Web, Player ou outro alarme e usa a mesma fila e a mesma
+instância de `Audio`. MP3 e WAV recomeçam depois do EOF; uma estação permanece
+no ar. Todas as fontes encerram no clique curto ou no limite configurado de 30
+minutos. Um disparo posterior substitui o atual e reinicia o limite; se vários
+coincidirem no mesmo minuto, vence o maior `id`. Somente ao fim da cadeia o
+estado anterior é restaurado e o servidor permanece suspenso durante a cadeia.
+
+Uma fonte local espera qualquer stream publicar `PARADO`, desliga completamente
+o Wi-Fi e só então abre o arquivo. Uma fonte Rádio Web mantém ou restabelece a
+rede e executa sua supervisão, mas não reativa o servidor HTTP. As trocas entre
+alarmes reaplicam essa política conforme a nova fonte. Ao final, Rádio Web
+reconecta e reabre a estação anterior; Player e Relógio deixam a rede desligada.
+Se a rede ou o stream não ficar disponível no limite configurado, a fonte muda
+para o som padrão sem bloquear o `loop()` durante a espera.
+
+Ao partir do Relógio, uma fonte de alarme Rádio Web retoma o serviço no perfil
+de rádio e restabelece a rede de forma assíncrona. A abertura normal e a abertura
+para alarme usam o mesmo caminho interno; o alarme acrescenta somente seu volume
+e seu estado de telemetria.
+
+Para isolar a entrega PCM da pilha de rede, a tarefa interna do
+decoder/I2S roda no núcleo 1 e o serviço que abastece o buffer roda no núcleo 0.
+No núcleo Arduino 3.3.10 instalado, o TCP/IP também está fixado no núcleo 0; o
+decoder passa a preemptar o `loop()` da interface, enquanto o serviço de rede
+permanece abaixo das tarefas internas de TCP/IP em prioridade. Essa distribuição
+eliminou em hardware a lentidão e a distorção na transição Relógio para Rádio
+Web de alarme.
+
+`/alarme_padrao.wav` é um WAV PCM curto gerado automaticamente na FFat. Ele é
+usado quando nenhuma fonte foi escolhida, quando cartão/arquivo não puder ser
+aberto ou quando o `radioId` não existir mais. O catálogo do microSD é preparado
+no boot, antes do áudio, para que `GET /api/arquivos-player` responda
+exclusivamente a partir da RAM. A página também obtém a fotografia ativa das
+estações, inclusive a reserva, por `GET /api/radios-alarmes`.
 
 O estado Relógio não é um modo de baixo consumo. A versão instalada da
 ESP32-audioI2S encerra o stream, mas não oferece uma chamada pública para parar
@@ -129,10 +192,10 @@ I2C fora da tarefa de rede e corrige o RTC quando necessário.
 
 `relogio_rtc.cpp` é o único proprietário da instância `RTC_DS3231`. Ele
 encapsula RTClib e oferece inicialização, diagnóstico de perda de alimentação,
-leitura e ajuste em UTC e temperatura. O firmware não armazena hora local no
+leitura e ajuste em UTC. O firmware não armazena hora local no
 RTC: fuso e horário de verão são aplicados pelo relógio do sistema somente na
-apresentação. Alarmes e `INT/SQW` permanecem sem uso enquanto não houver uma
-regra concreta de agendamento.
+apresentação. O agendador usa essa hora local; os pinos e registradores
+`INT/SQW` do DS3231 permanecem sem uso.
 
 O SNTP é a referência de precisão e o RTC é a referência de continuidade. A
 pilha consulta a rede no intervalo configurado, mas o DS3231 só é regravado
@@ -172,13 +235,23 @@ estação. `servidor_web.cpp` conserva apenas o registro visível dessas rotas.
 `/radios.tmp` e `/radios.bak`. Ele concentra a validação do documento JSON e a
 transação que preserva a versão anterior antes de promover uma nova lista.
 
+`persistencia_alarmes.cpp` aplica a mesma transação a `/alarmes.json`,
+`/alarmes.tmp` e `/alarmes.bak`, validando IDs, nomes, volume, horário, dias ou
+data e uma única fonte opcional: caminho MP3 ou `radioId`. `api_alarmes.cpp`
+implementa `GET`, `POST`, `PUT` e `DELETE` em `/api/alarmes` e recarrega a
+fotografia em RAM após cada alteração.
+
 `api_radios.cpp` interpreta as requisições HTTP e delega a leitura ou a gravação
 da lista persistida. `radios.cpp` monta durante o boot a fotografia em memória
-usada pelo restante do firmware e mantém a lista de reserva compilada. Por
-projeto, uma lista nova entra em uso depois de reiniciar.
+usada pelo restante do firmware e mantém a lista de reserva compilada. Alterações
+confirmadas pela API ou pelo upload recarregam essa fotografia imediatamente,
+inclusive para resolver o `radioId` usado pelos alarmes.
+O estado principal conserva também o ID da estação em reprodução. Ao voltar
+do Relógio ou abrir a seleção, ele resolve novamente o índice pela fotografia
+atual; se a estação foi removida, seleciona a primeira disponível.
 
-As interfaces web completas são arquivos físicos: `/index.html` e
-`/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas
+As interfaces web completas são arquivos físicos: `/index.html`,
+`/alarmes.html` e `/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas
 quando `/upload.html` está ausente, permitindo restaurar arquivos enquanto a
 FFat continuar montada.
 
@@ -190,8 +263,8 @@ armazenamento.
 
 `upload_arquivos.cpp` recebe os blocos enviados, valida o nome do arquivo e
 substitui arquivos comuns usando `/.upload.tmp` e `/.upload.bak`. Quando o
-destino é `/radios.json`, ele delega a validação e a promoção para
-`persistencia_radios.cpp`. `servidor_web.cpp` apenas registra as rotas e entrega
+destino é `/radios.json` ou `/alarmes.json`, ele delega a validação e a promoção
+para o módulo de persistência correspondente. `servidor_web.cpp` apenas registra as rotas e entrega
 o pedido ao módulo apropriado. Essas garantias permanecem no firmware; o
 JavaScript não é considerado uma barreira de segurança.
 

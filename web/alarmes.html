@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alarmes</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 24px;
+            background: #eef1f5;
+            color: #263238;
+            font-family: Arial, sans-serif;
+        }
+
+        button, input, select { font: inherit; }
+        button {
+            cursor: pointer;
+            transition:
+                filter 0.1s ease,
+                opacity 0.1s ease,
+                transform 0.1s ease;
+        }
+
+        button:not(:disabled):active {
+            filter: brightness(0.9);
+            transform: translateY(1px) scale(0.98);
+        }
+
+        button:focus-visible {
+            outline: 3px solid rgba(25, 118, 210, 0.28);
+            outline-offset: 2px;
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.62;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1050px;
+            margin: 0 auto;
+        }
+
+        .cabecalho {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        h1 { margin: 0; font-size: 26px; }
+
+        .subtitulo {
+            margin: 5px 0 0;
+            color: #68757d;
+            font-size: 14px;
+        }
+
+        .acoes-cabecalho,
+        .navegacao,
+        .acoes-linha {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .navegacao { margin-bottom: 16px; }
+
+        .navegacao a {
+            color: #1976d2;
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .navegacao a + a::before {
+            margin-right: 9px;
+            color: #a4adb2;
+            content: "•";
+        }
+
+        .btn-principal,
+        .btn-secundario,
+        .btn-perigo {
+            padding: 10px 14px;
+            border: 0;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        .btn-principal { background: #1976d2; color: white; }
+        .btn-secundario { background: #edf2f5; color: #40515a; }
+        .btn-perigo { background: #ffebee; color: #c62828; }
+
+        .painel {
+            overflow: hidden;
+            background: white;
+            border-radius: 9px;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, 0.08);
+        }
+
+        .tabela-responsiva { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 14px;
+            border-bottom: 1px solid #e6e9ec;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #f8f9fa;
+            color: #546168;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        td:first-child, th:first-child { text-align: center; }
+
+        .nome { font-weight: bold; }
+        .detalhe { color: #68757d; font-size: 13px; }
+
+        .lista-vazia {
+            display: none;
+            padding: 46px 20px;
+            color: #7b878d;
+            text-align: center;
+        }
+
+        .interruptor {
+            position: relative;
+            display: inline-block;
+            width: 42px;
+            height: 24px;
+        }
+
+        .interruptor input { opacity: 0; width: 0; height: 0; }
+
+        .trilho {
+            position: absolute;
+            inset: 0;
+            border-radius: 24px;
+            background: #c7cfd3;
+            transition: 0.2s;
+        }
+
+        .trilho::before {
+            position: absolute;
+            bottom: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: white;
+            content: "";
+            transition: 0.2s;
+        }
+
+        .interruptor input:checked + .trilho { background: #1976d2; }
+        .interruptor input:checked + .trilho::before { transform: translateX(18px); }
+        .interruptor input:disabled + .trilho { cursor: wait; opacity: 0.55; }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(20, 30, 35, 0.65);
+        }
+
+        .modal.aberto { display: flex; }
+
+        .modal-conteudo {
+            width: 100%;
+            max-width: 570px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25);
+        }
+
+        .modal-cabecalho,
+        .modal-rodape {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 18px 22px;
+        }
+
+        .modal-cabecalho { border-bottom: 1px solid #e6e9ec; }
+        .modal-rodape { justify-content: flex-end; border-top: 1px solid #e6e9ec; }
+        .modal-cabecalho h2 { margin: 0; font-size: 21px; }
+
+        .btn-fechar {
+            padding: 2px 7px;
+            border: 0;
+            background: transparent;
+            color: #68757d;
+            font-size: 27px;
+        }
+
+        .modal-corpo { padding: 22px; }
+
+        .campo { margin-bottom: 18px; }
+
+        .campo > label,
+        .rotulo {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .campo input[type="text"],
+        .campo input[type="time"],
+        .campo input[type="date"],
+        .campo select {
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid #cfd6da;
+            border-radius: 6px;
+            background: white;
+        }
+
+        .linha-campos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .tipos,
+        .dias {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .opcao-tipo input,
+        .opcao-dia input { position: absolute; opacity: 0; }
+
+        .opcao-tipo span,
+        .opcao-dia span {
+            display: block;
+            padding: 9px 12px;
+            border: 1px solid #cfd6da;
+            border-radius: 6px;
+            color: #546168;
+            cursor: pointer;
+        }
+
+        .opcao-tipo input:checked + span,
+        .opcao-dia input:checked + span {
+            border-color: #1976d2;
+            background: #eaf3fb;
+            color: #125ea9;
+            font-weight: bold;
+        }
+
+        .opcao-dia span {
+            min-width: 49px;
+            padding: 9px 7px;
+            text-align: center;
+        }
+
+        .volume-linha {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .volume-linha input { flex: 1; }
+        .volume-valor { min-width: 46px; font-weight: bold; text-align: right; }
+
+        .campo-ativo {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border: 1px solid #e1e6e9;
+            border-radius: 7px;
+        }
+
+        .mensagem {
+            display: none;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+            border-radius: 7px;
+        }
+
+        .mensagem.erro { display: block; background: #ffebee; color: #b71c1c; }
+        .mensagem.sucesso { display: block; background: #e8f5e9; color: #1b5e20; }
+
+        @media (max-width: 720px) {
+            body { padding: 18px 12px; }
+            .cabecalho { align-items: stretch; flex-direction: column; }
+            .acoes-cabecalho .btn-principal { width: 100%; }
+            .linha-campos { grid-template-columns: 1fr; gap: 0; }
+            th, td { padding: 11px 9px; }
+            .coluna-som, .coluna-volume { display: none; }
+            .acoes-linha { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <nav class="navegacao">
+            <a href="/">Rádios</a>
+            <a href="/alarmes">Alarmes</a>
+            <a href="/upload">Arquivos</a>
+        </nav>
+
+        <header class="cabecalho">
+            <div>
+                <h1>Alarmes</h1>
+                <p class="subtitulo" id="resumo">Nenhum alarme cadastrado</p>
+            </div>
+
+            <div class="acoes-cabecalho">
+                <button class="btn-principal" id="btnNovo" type="button">
+                    + Novo alarme
+                </button>
+            </div>
+        </header>
+
+        <div class="mensagem" id="mensagem" role="status" aria-live="polite"></div>
+
+        <section class="painel">
+            <div class="tabela-responsiva">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ativo</th>
+                            <th>Alarme</th>
+                            <th>Programação</th>
+                            <th class="coluna-som">Som</th>
+                            <th class="coluna-volume">Volume</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="corpoTabela"></tbody>
+                </table>
+            </div>
+
+            <div class="lista-vazia" id="listaVazia">
+                Nenhum alarme cadastrado.
+            </div>
+        </section>
+    </main>
+
+    <div class="modal" id="modal">
+        <div class="modal-conteudo">
+            <form id="formAlarme">
+                <div class="modal-cabecalho">
+                    <h2 id="tituloModal">Novo alarme</h2>
+                    <button class="btn-fechar" id="btnFechar" type="button">&times;</button>
+                </div>
+
+                <div class="modal-corpo">
+                    <div class="campo">
+                        <label for="nome">Nome</label>
+                        <input id="nome" type="text" maxlength="63" required autocomplete="off">
+                    </div>
+
+                    <div class="campo">
+                        <span class="rotulo">Programação</span>
+                        <div class="tipos">
+                            <label class="opcao-tipo">
+                                <input type="radio" name="tipo" value="semanal" checked>
+                                <span>Semanal</span>
+                            </label>
+                            <label class="opcao-tipo">
+                                <input type="radio" name="tipo" value="unico">
+                                <span>Data única</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="linha-campos">
+                        <div class="campo">
+                            <label for="horario">Horário</label>
+                            <input id="horario" type="time" required>
+                        </div>
+
+                        <div class="campo" id="campoData" hidden>
+                            <label for="data">Data</label>
+                            <input id="data" type="date">
+                        </div>
+                    </div>
+
+                    <div class="campo" id="campoDias">
+                        <span class="rotulo">Dias da semana</span>
+                        <div class="dias">
+                            <label class="opcao-dia"><input type="checkbox" value="dom"><span>DOM</span></label>
+                            <label class="opcao-dia"><input type="checkbox" value="seg"><span>SEG</span></label>
+                            <label class="opcao-dia"><input type="checkbox" value="ter"><span>TER</span></label>
+                            <label class="opcao-dia"><input type="checkbox" value="qua"><span>QUA</span></label>
+                            <label class="opcao-dia"><input type="checkbox" value="qui"><span>QUI</span></label>
+                            <label class="opcao-dia"><input type="checkbox" value="sex"><span>SEX</span></label>
+                            <label class="opcao-dia"><input type="checkbox" value="sab"><span>SÁB</span></label>
+                        </div>
+                    </div>
+
+                    <div class="campo">
+                        <label for="fonte">Fonte do alarme</label>
+                        <select id="fonte">
+                            <option value="padrao">Som padrão do alarme</option>
+                        </select>
+                        <div class="detalhe">
+                            MP3 ausente ou rádio removida usa o som padrão.
+                        </div>
+                    </div>
+
+                    <div class="campo">
+                        <label for="volume">Volume</label>
+                        <div class="volume-linha">
+                            <input id="volume" type="range" min="1" max="21" value="15">
+                            <span class="volume-valor" id="volumeValor">15/21</span>
+                        </div>
+                    </div>
+
+                    <div class="campo-ativo">
+                        <div>
+                            <strong>Alarme ativo</strong>
+                            <div class="detalhe">Pode ser desativado sem excluir.</div>
+                        </div>
+                        <label class="interruptor">
+                            <input id="ativo" type="checkbox" checked>
+                            <span class="trilho"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-rodape">
+                    <button class="btn-secundario" id="btnCancelar" type="button">Cancelar</button>
+                    <button class="btn-principal" id="btnSalvar" type="submit">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const DIAS = {
+            dom: "Dom", seg: "Seg", ter: "Ter", qua: "Qua",
+            qui: "Qui", sex: "Sex", sab: "Sáb"
+        };
+
+        const corpoTabela = document.getElementById("corpoTabela");
+        const listaVazia = document.getElementById("listaVazia");
+        const resumo = document.getElementById("resumo");
+        const mensagem = document.getElementById("mensagem");
+        const modal = document.getElementById("modal");
+        const form = document.getElementById("formAlarme");
+        const tituloModal = document.getElementById("tituloModal");
+        const campoNome = document.getElementById("nome");
+        const campoHorario = document.getElementById("horario");
+        const campoData = document.getElementById("campoData");
+        const campoDataEntrada = document.getElementById("data");
+        const campoDias = document.getElementById("campoDias");
+        const campoFonte = document.getElementById("fonte");
+        const campoVolume = document.getElementById("volume");
+        const volumeValor = document.getElementById("volumeValor");
+        const campoAtivo = document.getElementById("ativo");
+        const botaoSalvar = document.getElementById("btnSalvar");
+
+        let alarmes = [];
+        let arquivos = [];
+        let radios = [];
+        let idEmEdicao = null;
+
+        function escapar(texto) {
+            return String(texto)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function exibirMensagem(texto, tipo) {
+            mensagem.textContent = texto;
+            mensagem.className = "mensagem " + tipo;
+            setTimeout(function () {
+                mensagem.className = "mensagem";
+            }, 4000);
+        }
+
+        function formatarProgramacao(alarme) {
+            if (alarme.data) {
+                const partes = alarme.data.split("-");
+                return partes[2] + "/" + partes[1] + "/" + partes[0] +
+                    " às " + alarme.horario;
+            }
+
+            return alarme.horario + " · " +
+                alarme.dias.map(function (dia) { return DIAS[dia]; }).join(", ");
+        }
+
+        function nomeFonte(alarme) {
+            if (alarme.radioId) {
+                const radio = radios.find(function (item) {
+                    return Number(item.id) === Number(alarme.radioId);
+                });
+                return radio ? "Rádio: " + radio.nome : "Rádio removida";
+            }
+
+            if (alarme.arquivo) {
+                const partes = alarme.arquivo.split("/");
+                return "MP3: " + partes[partes.length - 1];
+            }
+
+            return "Som padrão";
+        }
+
+        function renderizar() {
+            const ativos = alarmes.filter(function (alarme) { return alarme.ativo; }).length;
+            resumo.textContent = alarmes.length === 0
+                ? "Nenhum alarme cadastrado"
+                : ativos + " de " + alarmes.length + " alarmes ativos";
+
+            listaVazia.style.display = alarmes.length === 0 ? "block" : "none";
+            corpoTabela.innerHTML = alarmes.map(function (alarme) {
+                return `
+                    <tr>
+                        <td>
+                            <label class="interruptor">
+                                <input type="checkbox" ${alarme.ativo ? "checked" : ""}
+                                    onchange="alternarAlarme(${alarme.id}, this)">
+                                <span class="trilho"></span>
+                            </label>
+                        </td>
+                        <td><span class="nome">${escapar(alarme.nome)}</span></td>
+                        <td>${escapar(formatarProgramacao(alarme))}</td>
+                        <td class="coluna-som">${escapar(nomeFonte(alarme))}</td>
+                        <td class="coluna-volume">${alarme.volume}/21</td>
+                        <td>
+                            <div class="acoes-linha">
+                                <button type="button" class="btn-secundario" onclick="editarAlarme(${alarme.id})">Editar</button>
+                                <button type="button" class="btn-perigo" onclick="excluirAlarme(${alarme.id}, this)">Excluir</button>
+                            </div>
+                        </td>
+                    </tr>`;
+            }).join("");
+        }
+
+        async function requisitar(url, opcoes) {
+            const resposta = await fetch(url, opcoes);
+            const dados = await resposta.json().catch(function () { return {}; });
+
+            if (!resposta.ok) {
+                throw new Error(dados.erro || "Falha na comunicação com o rádio");
+            }
+
+            return dados;
+        }
+
+        async function carregarDados() {
+            try {
+                const resultados = await Promise.all([
+                    requisitar("/api/alarmes"),
+                    requisitar("/api/arquivos-player"),
+                    requisitar("/api/radios-alarmes")
+                ]);
+
+                alarmes = Array.isArray(resultados[0].alarmes)
+                    ? resultados[0].alarmes
+                    : [];
+                arquivos = Array.isArray(resultados[1]) ? resultados[1] : [];
+                radios = Array.isArray(resultados[2]) ? resultados[2] : [];
+                preencherFontes();
+                renderizar();
+            } catch (erro) {
+                exibirMensagem(erro.message, "erro");
+            }
+        }
+
+        function preencherFontes() {
+            const opcoesRadios = radios.map(function (radio) {
+                return `<option value="radio:${Number(radio.id)}">${escapar(radio.nome)}</option>`;
+            }).join("");
+            const opcoesArquivos = arquivos.map(function (arquivo) {
+                return `<option value="arquivo:${escapar(arquivo.caminho)}">${escapar(arquivo.nome)}</option>`;
+            }).join("");
+
+            campoFonte.innerHTML =
+                '<option value="padrao">Som padrão do alarme</option>' +
+                '<optgroup label="Rádio Web">' + opcoesRadios + '</optgroup>' +
+                '<optgroup label="MP3 do microSD">' + opcoesArquivos + '</optgroup>';
+        }
+
+        function atualizarTipo() {
+            const tipo = document.querySelector('input[name="tipo"]:checked').value;
+            const unico = tipo === "unico";
+            campoData.hidden = !unico;
+            campoDias.hidden = unico;
+            campoDataEntrada.required = unico;
+        }
+
+        function abrirModal(alarme) {
+            form.reset();
+            preencherFontes();
+            idEmEdicao = alarme ? alarme.id : null;
+            tituloModal.textContent = alarme ? "Editar alarme" : "Novo alarme";
+            campoVolume.value = alarme ? alarme.volume : 15;
+            campoAtivo.checked = alarme ? alarme.ativo : true;
+
+            if (alarme) {
+                campoNome.value = alarme.nome;
+                campoHorario.value = alarme.horario;
+
+                let valorFonte = "padrao";
+
+                if (alarme.radioId) {
+                    valorFonte = "radio:" + alarme.radioId;
+                } else if (alarme.arquivo) {
+                    valorFonte = "arquivo:" + alarme.arquivo;
+                }
+
+                if (!Array.from(campoFonte.options).some(function (opcao) {
+                    return opcao.value === valorFonte;
+                })) {
+                    const opcaoAusente = document.createElement("option");
+                    opcaoAusente.value = valorFonte;
+                    opcaoAusente.textContent = "Fonte ausente: " + nomeFonte(alarme);
+                    campoFonte.appendChild(opcaoAusente);
+                }
+
+                campoFonte.value = valorFonte;
+
+                const tipo = alarme.data ? "unico" : "semanal";
+                document.querySelector(`input[name="tipo"][value="${tipo}"]`).checked = true;
+                campoDataEntrada.value = alarme.data || "";
+
+                document.querySelectorAll('.opcao-dia input').forEach(function (entrada) {
+                    entrada.checked = Array.isArray(alarme.dias) && alarme.dias.includes(entrada.value);
+                });
+            }
+
+            volumeValor.textContent = campoVolume.value + "/21";
+            atualizarTipo();
+            modal.classList.add("aberto");
+            campoNome.focus();
+        }
+
+        function fecharModal() {
+            modal.classList.remove("aberto");
+            idEmEdicao = null;
+        }
+
+        function montarAlarmeDoFormulario() {
+            const tipo = document.querySelector('input[name="tipo"]:checked').value;
+            const alarme = {
+                nome: campoNome.value.trim(),
+                ativo: campoAtivo.checked,
+                horario: campoHorario.value,
+                volume: Number(campoVolume.value)
+            };
+
+            if (tipo === "unico") {
+                alarme.data = campoDataEntrada.value;
+            } else {
+                alarme.dias = Array.from(
+                    document.querySelectorAll('.opcao-dia input:checked')
+                ).map(function (entrada) { return entrada.value; });
+
+                if (alarme.dias.length === 0) {
+                    throw new Error("Selecione pelo menos um dia da semana");
+                }
+            }
+
+            if (campoFonte.value.startsWith("radio:")) {
+                alarme.radioId = Number(campoFonte.value.substring(6));
+            } else if (campoFonte.value.startsWith("arquivo:")) {
+                alarme.arquivo = campoFonte.value.substring(8);
+            }
+
+            return alarme;
+        }
+
+        async function salvarFormulario(evento) {
+            evento.preventDefault();
+
+            let alarme;
+
+            try {
+                alarme = montarAlarmeDoFormulario();
+            } catch (erro) {
+                exibirMensagem(erro.message, "erro");
+                return;
+            }
+
+            botaoSalvar.disabled = true;
+            botaoSalvar.setAttribute("aria-busy", "true");
+            botaoSalvar.textContent = "Salvando...";
+
+            try {
+                const url = idEmEdicao === null
+                    ? "/api/alarmes"
+                    : "/api/alarmes?id=" + idEmEdicao;
+
+                await requisitar(url, {
+                    method: idEmEdicao === null ? "POST" : "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(alarme)
+                });
+
+                fecharModal();
+                await carregarDados();
+                exibirMensagem("Alarme salvo.", "sucesso");
+            } catch (erro) {
+                exibirMensagem(erro.message, "erro");
+            } finally {
+                botaoSalvar.disabled = false;
+                botaoSalvar.removeAttribute("aria-busy");
+                botaoSalvar.textContent = "Salvar";
+            }
+        }
+
+        window.editarAlarme = function (id) {
+            abrirModal(alarmes.find(function (alarme) { return alarme.id === id; }));
+        };
+
+        window.alternarAlarme = async function (id, entrada) {
+            const atual = alarmes.find(function (alarme) { return alarme.id === id; });
+            if (!atual) return;
+
+            const ativo = entrada.checked;
+            const alterado = Object.assign({}, atual, { ativo: ativo });
+            entrada.disabled = true;
+
+            try {
+                await requisitar("/api/alarmes?id=" + id, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(alterado)
+                });
+                atual.ativo = ativo;
+                renderizar();
+            } catch (erro) {
+                await carregarDados();
+                exibirMensagem(erro.message, "erro");
+            } finally {
+                if (entrada.isConnected) {
+                    entrada.disabled = false;
+                }
+            }
+        };
+
+        window.excluirAlarme = async function (id, botao) {
+            const atual = alarmes.find(function (alarme) { return alarme.id === id; });
+            if (!atual || !confirm('Excluir o alarme "' + atual.nome + '"?')) return;
+
+            botao.disabled = true;
+            botao.setAttribute("aria-busy", "true");
+            botao.textContent = "Excluindo...";
+
+            try {
+                await requisitar("/api/alarmes?id=" + id, { method: "DELETE" });
+                await carregarDados();
+                exibirMensagem("Alarme excluído.", "sucesso");
+            } catch (erro) {
+                exibirMensagem(erro.message, "erro");
+            } finally {
+                if (botao.isConnected) {
+                    botao.disabled = false;
+                    botao.removeAttribute("aria-busy");
+                    botao.textContent = "Excluir";
+                }
+            }
+        };
+
+        document.getElementById("btnNovo").addEventListener("click", function () { abrirModal(null); });
+        document.getElementById("btnFechar").addEventListener("click", fecharModal);
+        document.getElementById("btnCancelar").addEventListener("click", fecharModal);
+        document.querySelectorAll('input[name="tipo"]').forEach(function (entrada) {
+            entrada.addEventListener("change", atualizarTipo);
+        });
+        campoVolume.addEventListener("input", function () {
+            volumeValor.textContent = campoVolume.value + "/21";
+        });
+        form.addEventListener("submit", salvarFormulario);
+        modal.addEventListener("click", function (evento) {
+            if (evento.target === modal) fecharModal();
+        });
+
+        carregarDados();
+    </script>
+</body>
+</html>

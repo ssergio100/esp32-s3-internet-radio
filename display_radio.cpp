@@ -24,7 +24,10 @@ namespace {
     enum class TelaDisplay {
         MENSAGEM,
         RADIO,
-        RELOGIO
+        RELOGIO,
+        PLAYER,
+        ALARME,
+        OPCAO_ESTADO
     };
 
     TelaDisplay telaAtual = TelaDisplay::MENSAGEM;
@@ -91,6 +94,15 @@ namespace {
         SentidoRolagem::PARA_ESQUERDA               // sentido do movimento
     };
 
+    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_NOME_PLAYER = {
+        21,
+        2,
+        2,
+        24,
+        INTERVALO_PASSO_ROLAGEM_PLAYER_MS,
+        SentidoRolagem::PARA_ESQUERDA
+    };
+
     String textoDiagnostico;
     String textoBufferBarraInferior;
     bool exibindoVolumeNaBarraInferior = false;
@@ -107,6 +119,12 @@ namespace {
     unsigned long momentoUltimaConsultaRelogioMs = 0;
     struct tm ultimaDataHoraRelogio = {};
     bool horarioRelogioDisponivel = false;
+
+    String nomeArquivoPlayer;
+    int indiceArquivoPlayer = 0;
+    int quantidadeArquivosPlayer = 0;
+    bool arquivoPlayerEmSelecao = false;
+    EstadoFaixaRolante estadoFaixaNomePlayer;
 
     void escreverCentralizado(
         const String& texto,
@@ -147,6 +165,7 @@ namespace {
 
     void prepararTela() {
         display.clearDisplay();
+        display.setFont();
         display.setTextColor(SSD1306_WHITE);
         display.setTextWrap(false);
     }
@@ -769,6 +788,117 @@ namespace {
         display.setTextColor(SSD1306_WHITE);
     }
 
+    void desenharBarraPlayer() {
+        constexpr int TOPO = 46;
+        constexpr int ALTURA = DISPLAY_ALTURA - TOPO;
+
+        display.fillRect(
+            0,
+            TOPO,
+            DISPLAY_LARGURA,
+            ALTURA,
+            SSD1306_WHITE
+        );
+        display.setTextColor(SSD1306_BLACK);
+        display.setTextSize(1);
+
+        if (exibindoVolumeNaBarraInferior) {
+            constexpr int BARRA_X = 3;
+            constexpr int BARRA_Y = 51;
+            constexpr int BARRA_LARGURA = 76;
+            constexpr int BARRA_ALTURA = 9;
+
+            display.drawRect(
+                BARRA_X,
+                BARRA_Y,
+                BARRA_LARGURA,
+                BARRA_ALTURA,
+                SSD1306_BLACK
+            );
+
+            int preenchimento = map(
+                volumeBarraInferior,
+                VOLUME_MINIMO,
+                VOLUME_MAXIMO,
+                0,
+                BARRA_LARGURA - 4
+            );
+
+            if (preenchimento > 0) {
+                display.fillRect(
+                    BARRA_X + 2,
+                    BARRA_Y + 2,
+                    preenchimento,
+                    BARRA_ALTURA - 4,
+                    SSD1306_BLACK
+                );
+            }
+
+            display.setCursor(88, 51);
+            display.printf(
+                "%d/%d",
+                volumeBarraInferior,
+                VOLUME_MAXIMO
+            );
+        } else {
+            display.setCursor(3, 51);
+            display.print("MP3");
+
+            String posicao =
+                String(indiceArquivoPlayer + 1) +
+                "/" +
+                String(quantidadeArquivosPlayer);
+            int largura = posicao.length() * 6;
+
+            display.setCursor(
+                DISPLAY_LARGURA - largura - 3,
+                51
+            );
+            display.print(posicao);
+        }
+
+        display.setTextColor(SSD1306_WHITE);
+    }
+
+    void desenharTelaPlayer() {
+        prepararTela();
+        escreverCentralizado("PLAYER", 2, 1);
+
+        if (arquivoPlayerEmSelecao) {
+            display.setTextSize(2);
+
+            int16_t x1;
+            int16_t y1;
+            uint16_t largura;
+            uint16_t altura;
+
+            display.getTextBounds(
+                nomeArquivoPlayer,
+                0,
+                0,
+                &x1,
+                &y1,
+                &largura,
+                &altura
+            );
+
+            escreverCentralizado(
+                nomeArquivoPlayer,
+                largura <= DISPLAY_LARGURA - 4 ? 21 : 26,
+                largura <= DISPLAY_LARGURA - 4 ? 2 : 1
+            );
+        } else {
+            desenharFaixaRolante(
+                nomeArquivoPlayer,
+                CONFIGURACAO_NOME_PLAYER,
+                estadoFaixaNomePlayer
+            );
+        }
+
+        desenharBarraPlayer();
+        display.display();
+    }
+
     void desenharSelecaoNaFaixaCentral() {
         display.setTextSize(2);
 
@@ -1000,16 +1130,18 @@ void mostrarEstadoRadio(
 void mostrarVolume(
     int volume
 ) {
-    if (
-        !disponivel ||
-        telaAtual != TelaDisplay::RADIO
-    ) {
+    if (!disponivel) {
         return;
     }
 
     volumeBarraInferior = volume;
     exibindoVolumeNaBarraInferior = true;
-    desenharTelaRadio();
+
+    if (telaAtual == TelaDisplay::RADIO) {
+        desenharTelaRadio();
+    } else if (telaAtual == TelaDisplay::PLAYER) {
+        desenharTelaPlayer();
+    }
 }
 
 void mostrarTelaRelogio() {
@@ -1024,6 +1156,89 @@ void mostrarTelaRelogio() {
     horarioRelogioDisponivel = false;
 
     atualizarTelaRelogio(true);
+}
+
+void mostrarOpcaoEstado(const String& opcao) {
+    if (!disponivel) {
+        return;
+    }
+
+    telaAtual = TelaDisplay::OPCAO_ESTADO;
+    prepararTela();
+
+    if (opcao == "RADIO WEB") {
+        escreverCentralizado("RADIO", 7, 3);
+        escreverCentralizado("WEB", 37, 3);
+    } else {
+        escreverCentralizado(opcao, 21, 3);
+    }
+
+    display.display();
+}
+
+void mostrarArquivoPlayer(
+    const String& nome,
+    int indiceAtual,
+    int quantidadeArquivos,
+    bool emSelecao
+) {
+    if (!disponivel) {
+        return;
+    }
+
+    bool arquivoMudou =
+        nomeArquivoPlayer != nome ||
+        indiceArquivoPlayer != indiceAtual;
+
+    nomeArquivoPlayer = nome;
+    indiceArquivoPlayer = indiceAtual;
+    quantidadeArquivosPlayer = quantidadeArquivos;
+    arquivoPlayerEmSelecao = emSelecao;
+    exibindoVolumeNaBarraInferior = false;
+    telaAtual = TelaDisplay::PLAYER;
+
+    if (arquivoMudou || estadoFaixaNomePlayer.larguraTextoPx == 0) {
+        configurarFaixaRolante(
+            nomeArquivoPlayer,
+            CONFIGURACAO_NOME_PLAYER,
+            estadoFaixaNomePlayer,
+            true
+        );
+    }
+
+    desenharTelaPlayer();
+}
+
+void mostrarAlarme(const String& nome) {
+    if (!disponivel) {
+        return;
+    }
+
+    telaAtual = TelaDisplay::ALARME;
+    prepararTela();
+
+    escreverCentralizado("ALARME", 2, 2);
+
+    String nomeExibido = nome;
+
+    if (nomeExibido.length() > 19) {
+        nomeExibido = nomeExibido.substring(0, 16) + "...";
+    }
+
+    escreverCentralizado(nomeExibido, 27, 1);
+
+    display.fillRect(
+        0,
+        46,
+        DISPLAY_LARGURA,
+        DISPLAY_ALTURA - 46,
+        SSD1306_WHITE
+    );
+    display.setTextColor(SSD1306_BLACK);
+    escreverCentralizado("CLIQUE PARA PARAR", 51, 1);
+    display.setTextColor(SSD1306_WHITE);
+
+    display.display();
 }
 
 void mostrarConfiguracaoWifi() {
@@ -1056,6 +1271,21 @@ void processarDisplay() {
 
     if (telaAtual == TelaDisplay::RELOGIO) {
         atualizarTelaRelogio(false);
+        return;
+    }
+
+    if (telaAtual == TelaDisplay::PLAYER) {
+        if (
+            !arquivoPlayerEmSelecao &&
+            avancarFaixaRolante(
+                CONFIGURACAO_NOME_PLAYER,
+                estadoFaixaNomePlayer,
+                millis()
+            )
+        ) {
+            desenharTelaPlayer();
+        }
+
         return;
     }
 

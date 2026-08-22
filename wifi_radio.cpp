@@ -314,6 +314,24 @@ void conectarWifi() {
     delay(500);
 }
 
+bool iniciarReconexaoWifiSalvo() {
+    if (ssidSalvo.isEmpty()) {
+        return false;
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(false);
+    WiFi.setSleep(true);
+
+    selecaoPontoPermitidoNecessaria = true;
+    momentoUltimaVarreduraMs =
+        millis() - INTERVALO_RECONEXAO_WIFI_MS;
+    processarSelecaoPontoPermitido();
+
+    Serial.println("Reconexao Wi-Fi do alarme iniciada.");
+    return true;
+}
+
 void desligarWifi() {
     guardarCredenciaisAtuais();
 
@@ -325,4 +343,12 @@ void desligarWifi() {
     WiFi.mode(WIFI_OFF);
 
     Serial.println("Wi-Fi desligado.");
+}
+
+bool wifiLigado() {
+    return WiFi.getMode() != WIFI_OFF;
+}
+
+bool wifiConectado() {
+    return WiFi.status() == WL_CONNECTED;
 }

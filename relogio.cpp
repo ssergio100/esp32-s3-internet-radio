@@ -17,7 +17,6 @@ constexpr uint32_t TEMPO_LIMITE_CONSULTA_RELOGIO_MS = 10;
 constexpr time_t PRIMEIRO_INSTANTE_ACEITO_UTC = 1704067200; // 2024-01-01
 
 std::atomic<bool> sincronizacaoNtpPendente{false};
-FonteHorario fonteHorario = FonteHorario::INDISPONIVEL;
 
 void registrarSincronizacaoNtp(struct timeval*) {
     // O callback pertence à tarefa de rede. O acesso ao I2C fica para o loop.
@@ -52,7 +51,6 @@ void carregarHorarioSistemaPeloRtc() {
         return;
     }
 
-    fonteHorario = FonteHorario::RTC;
     Serial.println("Relógio do sistema iniciado pelo DS3231 (UTC).");
 }
 
@@ -141,7 +139,6 @@ void processarRelogio() {
         return;
     }
 
-    fonteHorario = FonteHorario::NTP;
     atualizarRtcDepoisDaSincronizacaoNtp(instanteNtpUtc);
 }
 
@@ -150,8 +147,4 @@ bool obterDataHoraLocal(struct tm& dataHora) {
         &dataHora,
         TEMPO_LIMITE_CONSULTA_RELOGIO_MS
     );
-}
-
-FonteHorario obterFonteHorario() {
-    return fonteHorario;
 }

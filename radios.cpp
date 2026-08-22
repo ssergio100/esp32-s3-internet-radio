@@ -44,6 +44,7 @@ void limparRadios() {
 
         radios[indice].nome = nullptr;
         radios[indice].url = nullptr;
+        radios[indice].id = 0;
     }
 }
 
@@ -66,6 +67,9 @@ void carregarRadiosReserva() {
 
         radios[indice].url =
             urls[indice].c_str();
+
+        radios[indice].id =
+            static_cast<uint32_t>(indice + 1);
     }
 
     quantidadeRadios =
@@ -148,6 +152,10 @@ void carregarRadios() {
         radios[quantidadeRadios].url =
             urls[quantidadeRadios].c_str();
 
+        radios[quantidadeRadios].id =
+            item["id"] |
+            static_cast<uint32_t>(quantidadeRadios + 1);
+
         quantidadeRadios++;
     }
 
@@ -176,4 +184,32 @@ const Radio* obterRadio(int indice) {
     }
 
     return &radios[indice];
+}
+
+const Radio* obterRadioPorId(uint32_t id) {
+    if (id == 0) {
+        return nullptr;
+    }
+
+    for (int indice = 0; indice < quantidadeRadios; indice++) {
+        if (radios[indice].id == id) {
+            return &radios[indice];
+        }
+    }
+
+    return nullptr;
+}
+
+int obterIndiceRadioPorId(uint32_t id) {
+    if (id == 0) {
+        return -1;
+    }
+
+    for (int indice = 0; indice < quantidadeRadios; indice++) {
+        if (radios[indice].id == id) {
+            return indice;
+        }
+    }
+
+    return -1;
 }

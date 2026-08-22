@@ -32,6 +32,19 @@ void mostrarVolume(int volume);
 // Troca o OLED para a tela permanente do estado Relógio.
 void mostrarTelaRelogio();
 
+// Mostra uma opção do seletor usando toda a área do OLED.
+void mostrarOpcaoEstado(const String& opcao);
+
+void mostrarArquivoPlayer(
+    const String& nome,
+    int indiceAtual,
+    int quantidadeArquivos,
+    bool emSelecao
+);
+
+// Sobrepõe temporariamente a interface enquanto um alarme está tocando.
+void mostrarAlarme(const String& nome);
+
 /*
  * Deve ser chamada continuamente no loop().
  * Atualiza a tela correspondente ao estado atual do equipamento.

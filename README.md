@@ -1,7 +1,7 @@
 # Rádio Web para ESP32-S3
 
-Firmware de rádio web com saída I2S, display OLED, encoder, LED RGB,
-cadastro de estações em FFat e interface HTTP para administração.
+Firmware de rádio web com Player MP3, alarmes, saída I2S, display OLED,
+encoder, LED RGB, persistência em FFat e interface HTTP para administração.
 
 ## Por onde começar
 
@@ -12,21 +12,26 @@ separados por responsabilidade:
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `configuracao.h` | Ligações do hardware e parâmetros ajustáveis |
+| `alarmes.cpp` | Regras em RAM, agendamento e som padrão dos alarmes |
+| `api_alarmes.cpp` | Cadastro, edição e exclusão dos alarmes pela rede |
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
-| `audio_radio.cpp` | Reprodução, estado e recuperação do stream |
+| `audio_radio.cpp` | Serviço exclusivo para rádio web ou arquivo local |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
-| `display_radio.cpp` | Telas dos estados Rádio Web e Relógio |
+| `display_radio.cpp` | Telas dos estados Rádio Web, Player e Relógio |
 | `controles.cpp` | Leitura do encoder e do botão |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
+| `player.cpp` | Montagem do microSD e catálogo MP3 de `/sons` |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
+| `persistencia_alarmes.cpp` | Validação e gravação segura dos arquivos de alarmes |
 | `relogio.cpp` | Política entre RTC, sincronização NTP e hora do sistema |
 | `relogio_rtc.cpp` | Acesso ao DS3231 por meio da RTClib |
 | `servidor_web.cpp` | Montagem da FFat, inicialização do servidor e mapa das rotas HTTP |
 | `telemetria.cpp` | Diagnóstico periódico publicado na porta serial |
 | `upload_arquivos.cpp` | Recebimento e substituição segura de arquivos enviados |
 | `web/index.html` | Página principal da administração |
+| `web/alarmes.html` | Cadastro de alarmes semanais e de data única |
 | `web/upload.html` | Página completa de manutenção dos arquivos |
 
 Para uma primeira leitura, siga `radio_web_1.ino`, depois o arquivo do módulo
@@ -45,8 +50,9 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `VOLUME_PADRAO` | Volume aplicado ao iniciar | 10 |
 | `TEMPO_BARRA_VOLUME_MS` | Permanência do volume na barra inferior | 2000 ms |
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
-| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para alternar Rádio Web/Relógio | 2000 ms |
+| `TEMPO_CLIQUE_LONGO_ENCODER_MS` | Pressão necessária para levar uma fonte ao Relógio | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 40 ms |
+| `INTERVALO_PASSO_ROLAGEM_PLAYER_MS` | Intervalo para o nome do arquivo avançar um pixel | 80 ms |
 | `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 13 ms |
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
 | `INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS` | Intervalo para a data do relógio avançar um pixel | 80 ms |
@@ -56,6 +62,10 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 | `INTERVALO_SINCRONIZACAO_NTP_MS` | Intervalo entre correções pela rede | 3600000 ms |
 | `DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS` | Diferença mínima para regravar o DS3231 | 2 segundos |
+| `FREQUENCIA_CARTAO_PLAYER_HZ` | Frequência SPI do microSD | 4000000 Hz |
+| `REPRODUCAO_SEQUENCIAL_PLAYER` | Inicia automaticamente o próximo MP3 ao terminar | `true` |
+| `DURACAO_MAXIMA_ALARME_MINUTOS` | Limite de repetição de um alarme | 30 minutos |
+| `TEMPO_LIMITE_CONEXAO_RADIO_ALARME_MS` | Espera por rede/stream antes do som padrão | 20 segundos |
 
 Nas rolagens do nome e do diagnóstico, um intervalo menor produz movimento
 mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
@@ -76,6 +86,8 @@ não usam conversão binária de dois para quatro. O I2C fica logo acima em
 `GPIO17/18`; o sinal `DIN` do I2S foi movido para o `GPIO4` e o botão do
 encoder para o `GPIO7`. O pino de strapping
 `GPIO46`, situado entre os grupos físicos, permanece sem conexão.
+O microSD do Player usa `SCK=GPIO42`, `MISO=GPIO41`, `MOSI=GPIO40` e
+`CS=GPIO39`.
 
 Permanece como pendência implementar o driver das Nixies nesses oito pinos.
 Até essa etapa, o firmware não configura nem aciona `GPIO8`, `GPIO3` e
@@ -100,8 +112,10 @@ somente durante a conexão ou enquanto o rádio está sem Wi-Fi.
 O fluxo de áudio não é executado pelo `loop()` principal. O módulo
 `audio_radio.cpp` mantém uma tarefa dedicada, recebe comandos por uma fila
 FreeRTOS e é o único proprietário das operações da biblioteca de áudio.
-A tarefa interna de decodificação da ESP32-audioI2S usa o núcleo 0; o serviço
-que alimenta e supervisiona o stream usa o núcleo 1.
+A tarefa interna de decodificação da ESP32-audioI2S usa o núcleo 1; o serviço
+que alimenta e supervisiona o stream usa o núcleo 0. Essa distribuição isolou
+a entrega de PCM da contenção das tarefas de rede e corrigiu em hardware a
+retomada de Rádio Web por um alarme iniciado no Relógio.
 
 O `loop()` principal fica responsável por:
 
@@ -110,10 +124,19 @@ O `loop()` principal fica responsável por:
 - apresentação do estado publicado pelo serviço de áudio;
 - telemetria periódica.
 
-O equipamento possui dois estados operacionais. Em `Rádio Web`, todos esses
-serviços funcionam normalmente. Em `Relógio`, o stream e sua tarefa ficam
+O equipamento possui três estados operacionais: `Rádio Web`, `Player` e
+`Relógio`. Em `Rádio Web`, os serviços de rede funcionam normalmente. Em
+`Player`, Wi-Fi e servidor permanecem desligados e o mesmo decoder/I2S reproduz
+progressivamente um MP3 de `/sons`. Em `Relógio`, a fonte e sua tarefa ficam
 suspensos, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
 apagado; somente relógio, encoder e OLED continuam sendo processados.
+
+Os alarmes são uma sobreposição temporária aos três estados. Um alarme usa uma
+estação, um MP3 ou o som padrão até o clique curto no encoder ou o limite de 30
+minutos e então restaura o estado anterior. Um novo disparo substitui
+definitivamente o alarme em execução. Quando vários coincidem no mesmo minuto,
+vence o cadastro de maior `id`. Fontes locais desligam o Wi-Fi; fontes Rádio Web
+mantêm a rede e sua supervisão, sempre com o servidor HTTP suspenso.
 
 O serviço de áudio publica estados explícitos (`conectando`,
 `bufferizando`, `tocando`, `degradado`, `reconectando` e `erro`) e usa
@@ -142,6 +165,8 @@ a reprodução, o nome retorna ao tamanho normal e à rolagem.
 No estado `Relógio`, o OLED mostra `HH:MM` em quatro cartões grandes com uma
 divisão horizontal inspirada em mostradores flip. O rodapé percorre a data
 completa em português, por exemplo `sexta, 12 de agosto de 2026`.
+Ao girar o encoder, essa interface é substituída integralmente por `PLAYER` ou
+`RADIO WEB` em letras grandes. Um clique curto ativa a opção mostrada.
 
 ## Indicação do LED
 
@@ -158,8 +183,8 @@ do percentual do buffer.
 
 ## Encoder
 
-O firmware usa um encoder com `CLK`, `DT` e botão nos GPIOs 15, 16 e 7. Seu
-modo de repouso é sempre o controle de volume:
+O firmware usa um encoder com `CLK`, `DT` e botão nos GPIOs 15, 16 e 7. Nos
+estados de áudio, seu modo de repouso é o controle de volume:
 
 - girar o encoder altera o volume e o mostra na barra inferior;
 - após dois segundos, a barra volta a mostrar buffer e posição da estação;
@@ -168,11 +193,40 @@ modo de repouso é sempre o controle de volume:
 - pressionar novamente confirma a estação e retorna ao controle de volume;
 - após dez segundos sem atividade, a seleção é cancelada e a estação
   anterior permanece ativa.
-- manter o botão pressionado por dois segundos e soltá-lo alterna do estado
-  `Rádio Web` para `Relógio`;
-- no estado `Relógio`, rotação e clique curto não executam ações;
-- outro clique longo reativa Wi-Fi, servidor e áudio e retorna à estação que
-  estava selecionada.
+- manter o botão pressionado por dois segundos em Rádio Web ou Player leva ao
+  `Relógio`;
+- no Relógio, o giro substitui toda a tela pelas opções `PLAYER`, `RADIO WEB`
+  e pela própria tela do relógio;
+- um clique curto ativa a opção exibida; clique longo no Relógio não executa
+  ação.
+
+No Player, um clique curto abre a lista de até 100 arquivos MP3 diretamente em
+`/sons`; o giro navega e outro clique começa a reprodução. Fora da lista, o
+giro controla o volume. O Player não carrega o arquivo inteiro em memória e não
+executa simultaneamente com a rádio web.
+Com `REPRODUCAO_SEQUENCIAL_PLAYER = true`, o fim de uma faixa inicia a seguinte
+na ordem alfabética e a última volta para a primeira. Uma escolha manual passa a
+ser a faixa atual e, portanto, também o novo ponto da sequência.
+O catálogo é criado uma vez durante o boot, antes do início do serviço de áudio,
+e permanece em memória. Assim, a página de alarmes consegue listar os MP3 sem
+varrer o cartão enquanto a rádio toca. Alterações físicas no conteúdo do cartão
+exigem reinicialização nesta primeira versão.
+
+## Alarmes
+
+A página `/alarmes` cadastra alarmes semanais, com horário e dias da semana, ou
+de execução única, com data e horário. O JSON não armazena um campo de tipo: a
+presença de `dias` identifica a repetição semanal e a presença de `data`
+identifica uma execução única. Os arquivos ativos, temporário e backup são
+`/alarmes.json`, `/alarmes.tmp` e `/alarmes.bak`.
+
+A fonte pode ser uma estação da lista de Rádio Web, um MP3 diretamente em
+`/sons` ou o som padrão. O JSON guarda `radioId` ou `arquivo`, nunca os dois; a
+ausência de ambos seleciona `/alarme_padrao.wav`, gerado automaticamente na
+FFat. Uma estação removida, cartão ausente ou MP3 indisponível também recorre ao
+som padrão. Alarmes únicos são desativados ao disparar; alarmes únicos já
+vencidos também são desativados pelo agendador. Não há histórico nem cálculo de
+próxima execução na interface.
 
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
@@ -216,8 +270,8 @@ GET http://IP_DO_ESP32/api/v1/status
 
 A resposta JSON contém estado do áudio, rádio, título, codec, bitrate,
 buffer estimado em milissegundos, eventos de stream lento, tentativas de
-reconexão, RSSI, heap, PSRAM e uptime. A porta serial também imprime um
-resumo a cada cinco segundos.
+reconexão, estado dos alarmes, disponibilidade do som padrão, RSSI, heap, PSRAM
+e uptime. A porta serial também imprime um resumo a cada cinco segundos.
 
 O endpoint responde a consultas feitas por outro equipamento da rede. O
 ESP32 não faz uma requisição para si mesmo: `api_status.cpp` apenas cria a
@@ -254,9 +308,9 @@ que precisa de um perfil reproduzível possui seu próprio `sketch.yaml`.
 
 ## Interface web
 
-Os arquivos-fonte das interfaces ficam em `web/index.html` e
-`web/upload.html`. Para o funcionamento completo, ambos precisam existir na
-raiz da partição FFat do dispositivo.
+Os arquivos-fonte das interfaces ficam em `web/index.html`, `web/alarmes.html`
+e `web/upload.html`. Para o funcionamento completo, os três precisam existir
+na raiz da partição FFat do dispositivo.
 
 A rota `/upload` tenta servir `/upload.html`. Se o arquivo estiver ausente,
 o firmware apresenta um formulário mínimo incorporado que permite restaurar
@@ -267,8 +321,9 @@ servidor web não é iniciado.
 
 O upload aceita nomes simples e faz substituição por arquivo temporário.
 Esse fluxo fica em `upload_arquivos.cpp`, que trata separadamente o início, a
-escrita das partes, a conclusão e o cancelamento do envio. `radios.json` recebe
-validação e backup próprios por meio de `persistencia_radios.cpp`. Ao migrar
+escrita das partes, a conclusão e o cancelamento do envio. `radios.json` e
+`alarmes.json` recebem validação e backup próprios por meio de seus módulos de
+persistência. Ao migrar
 uma instalação existente, envie `upload.html` pela página incorporada atual
 antes de gravar uma versão do firmware que passe a servi-lo da FFat.
 
