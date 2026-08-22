@@ -206,7 +206,10 @@ normal.
 ### Telemetria
 
 `telemetria.cpp` reúne o diagnóstico periódico de temperatura, memória,
-Wi-Fi e áudio enviado à porta serial. O `loop()` apenas chama
+Wi-Fi, áudio e presença do RTC enviado à porta serial. O diagnóstico do DS3231
+confirma uma resposta atual no endereço I2C `0x68`, sem interpretar ou alterar
+seu horário. A ausência de resposta não interrompe o funcionamento. O `loop()`
+apenas chama
 `registrarTelemetriaPeriodica()`, que controla internamente o intervalo sem
 bloquear as demais atividades. O intervalo ajustável fica em
 `configuracao.h`.

@@ -271,7 +271,8 @@ GET http://IP_DO_ESP32/api/v1/status
 A resposta JSON contém estado do áudio, rádio, título, codec, bitrate,
 buffer estimado em milissegundos, eventos de stream lento, tentativas de
 reconexão, estado dos alarmes, disponibilidade do som padrão, RSSI, heap, PSRAM
-e uptime. A porta serial também imprime um resumo a cada cinco segundos.
+e uptime. A porta serial também imprime um resumo a cada cinco segundos,
+incluindo se o RTC está presente e respondendo no barramento I2C.
 
 O endpoint responde a consultas feitas por outro equipamento da rede. O
 ESP32 não faz uma requisição para si mesmo: `api_status.cpp` apenas cria a

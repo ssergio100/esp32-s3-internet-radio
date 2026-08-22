@@ -9,6 +9,7 @@ namespace {
 constexpr time_t PRIMEIRO_INSTANTE_SUPORTADO_UTC = 946684800; // 2000-01-01
 constexpr time_t PRIMEIRO_INSTANTE_CONFIAVEL_UTC = 1704067200; // 2024-01-01
 constexpr time_t ULTIMO_INSTANTE_SUPORTADO_UTC = 4102444799;   // 2099-12-31
+constexpr uint8_t ENDERECO_I2C_DS3231 = 0x68;
 
 RTC_DS3231 rtc;
 bool disponivel = false;
@@ -49,6 +50,11 @@ bool iniciarRelogioRtc() {
 
 bool relogioRtcDisponivel() {
     return disponivel;
+}
+
+bool relogioRtcRespondendo() {
+    Wire.beginTransmission(ENDERECO_I2C_DS3231);
+    return Wire.endTransmission() == 0;
 }
 
 bool horarioRelogioRtcConfiavel() {

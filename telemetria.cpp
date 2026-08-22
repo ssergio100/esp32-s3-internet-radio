@@ -6,6 +6,7 @@
 #include "alarmes.h"
 #include "audio_radio.h"
 #include "configuracao.h"
+#include "relogio_rtc.h"
 
 namespace {
 
@@ -66,6 +67,15 @@ namespace {
         );
     }
 
+    void registrarPresencaRtc() {
+        Serial.printf(
+            "RTC: %s\n",
+            relogioRtcRespondendo()
+                ? "presente e respondendo"
+                : "ausente ou sem resposta"
+        );
+    }
+
     void registrarAlarmes() {
         StatusAlarmes alarmes = obterStatusAlarmes();
         StatusAudio audio = obterStatusAudio();
@@ -115,5 +125,6 @@ void registrarTelemetriaPeriodica() {
     registrarTemperaturaEMemoria();
     registrarConexaoWifi();
     registrarAudio();
+    registrarPresencaRtc();
     registrarAlarmes();
 }
