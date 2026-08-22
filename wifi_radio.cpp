@@ -179,10 +179,11 @@ void supervisionarWifi() {
     }
 
     if (estadoAtual == WL_CONNECTED) {
-        guardarCredenciaisAtuais();
         selecaoPontoPermitidoNecessaria = false;
 
         if (estadoAnterior != WL_CONNECTED) {
+            guardarCredenciaisAtuais();
+
             Serial.println();
             Serial.println("Wi-Fi reconectado.");
             Serial.print("BSSID: ");

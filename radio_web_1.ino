@@ -195,6 +195,10 @@ void loop() {
     if (alarmeEmExecucao) {
         if (leituraControles.cliqueDetectado) {
             finalizarExecucaoAlarme(true);
+        } else if (leituraControles.deslocamentoEncoder != 0) {
+            processarAjusteVolume(
+                leituraControles.deslocamentoEncoder
+            );
         } else {
             processarExecucaoAlarme();
         }
@@ -285,7 +289,10 @@ void iniciarExecucaoAlarme(const DisparoAlarme& disparo) {
     playerObservouAudioAtivo = false;
 
     prepararFonteAlarme();
-    mostrarAlarme(alarmeAtual.nome);
+    mostrarAlarme(
+        alarmeAtual.nome,
+        alarmeAtual.volume
+    );
 
     Serial.printf(
         "Alarme iniciado: %s (ID %lu).\n",
@@ -449,7 +456,6 @@ void processarExecucaoAlarme() {
             statusAudio.estado == EstadoAudio::TOCANDO ||
             statusAudio.estado == EstadoAudio::DEGRADADO
         ) {
-            alarmeObservouAudioAtivo = true;
             inicioPreparacaoFonteAlarmeMs = 0;
             return;
         }
@@ -970,8 +976,12 @@ void mostrarArquivoAtualPlayer(bool emSelecao) {
 void processarAjusteVolume(
     long deslocamentoEncoder
 ) {
+    int volumeAnterior = alarmeEmExecucao
+        ? static_cast<int>(alarmeAtual.volume)
+        : volumeAtual;
+
     long novoVolume =
-        volumeAtual + deslocamentoEncoder;
+        volumeAnterior + deslocamentoEncoder;
 
     novoVolume = constrain(
         novoVolume,
@@ -979,14 +989,36 @@ void processarAjusteVolume(
         static_cast<long>(VOLUME_MAXIMO)
     );
 
-    if (novoVolume == volumeAtual) {
+    if (novoVolume == volumeAnterior) {
         return;
     }
 
-    volumeAtual = static_cast<int>(novoVolume);
+    int volumeAjustado = static_cast<int>(novoVolume);
 
-    alterarVolumeAudio(volumeAtual);
-    mostrarVolume(volumeAtual);
+    if (alarmeEmExecucao) {
+        // alarmeAtual é apenas a cópia em RAM do disparo. O cadastro
+        // persistido e o volume normal do equipamento permanecem intactos.
+        alarmeAtual.volume = static_cast<uint8_t>(volumeAjustado);
+    } else {
+        volumeAtual = volumeAjustado;
+    }
+
+    alterarVolumeAudio(volumeAjustado);
+
+    if (alarmeEmExecucao) {
+        mostrarAlarme(
+            alarmeAtual.nome,
+            volumeAjustado
+        );
+
+        Serial.printf(
+            "Volume temporario do alarme: %d\n",
+            volumeAjustado
+        );
+        return;
+    }
+
+    mostrarVolume(volumeAjustado);
 
     barraVolumeVisivel = true;
 
@@ -995,7 +1027,7 @@ void processarAjusteVolume(
 
     Serial.printf(
         "Volume: %d\n",
-        volumeAtual
+        volumeAjustado
     );
 }
 
@@ -1227,12 +1259,12 @@ void atualizarDisplayEstadoAudio(
     static EstadoAudio ultimoEstadoApresentado =
         EstadoAudio::DESLIGADO;
 
-    StatusAudio statusAudio =
-        obterStatusAudio();
-
     if (estadoEquipamento != EstadoEquipamento::RADIO_WEB) {
         return;
     }
+
+    StatusAudio statusAudio =
+        obterStatusAudio();
 
     if (
         !forcarAtualizacao &&

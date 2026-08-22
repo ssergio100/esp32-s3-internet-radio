@@ -137,6 +137,9 @@ minutos e então restaura o estado anterior. Um novo disparo substitui
 definitivamente o alarme em execução. Quando vários coincidem no mesmo minuto,
 vence o cadastro de maior `id`. Fontes locais desligam o Wi-Fi; fontes Rádio Web
 mantêm a rede e sua supervisão, sempre com o servidor HTTP suspenso.
+Durante a execução, o giro do encoder ajusta o volume somente daquele alarme,
+sem alterar o valor cadastrado nem o volume normal do equipamento. A tela do
+alarme apresenta o valor temporário de `0/21` a `21/21`.
 
 O serviço de áudio publica estados explícitos (`conectando`,
 `bufferizando`, `tocando`, `degradado`, `reconectando` e `erro`) e usa
@@ -228,6 +231,11 @@ som padrão. Alarmes únicos são desativados ao disparar; alarmes únicos já
 vencidos também são desativados pelo agendador. Não há histórico nem cálculo de
 próxima execução na interface.
 
+Enquanto um alarme está em execução, o giro do encoder ajusta temporariamente
+seu volume entre 0 e 21, e o clique curto continua encerrando a reprodução. O
+ajuste vale também para as repetições do arquivo e para a passagem ao som padrão,
+mas não modifica o cadastro do alarme nem `volumeAtual`.
+
 A rotação usa diretamente o deslocamento informado pela biblioteca do encoder,
 sem aceleração ou filtro de direção. Se vários passos forem acumulados entre
 duas passagens do `loop()`, todos são aplicados. O valor
@@ -271,7 +279,8 @@ GET http://IP_DO_ESP32/api/v1/status
 A resposta JSON contém estado do áudio, rádio, título, codec, bitrate,
 buffer estimado em milissegundos, eventos de stream lento, tentativas de
 reconexão, estado dos alarmes, disponibilidade do som padrão, RSSI, heap, PSRAM
-e uptime. A porta serial também imprime um resumo a cada cinco segundos.
+e uptime. A porta serial também imprime um resumo a cada cinco segundos,
+incluindo se o RTC está presente e respondendo no barramento I2C.
 
 O endpoint responde a consultas feitas por outro equipamento da rede. O
 ESP32 não faz uma requisição para si mesmo: `api_status.cpp` apenas cria a
