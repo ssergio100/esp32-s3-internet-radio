@@ -43,7 +43,7 @@ void mostrarArquivoPlayer(
 );
 
 // Sobrepõe temporariamente a interface enquanto um alarme está tocando.
-void mostrarAlarme(const String& nome);
+void mostrarAlarme(const String& nome, int volume);
 
 /*
  * Deve ser chamada continuamente no loop().

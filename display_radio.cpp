@@ -1014,7 +1014,7 @@ void iniciarDisplay() {
 
     if (!disponivel) {
         Serial.println(
-            "Display OLED não encontrado."
+            "Falha ao inicializar o display OLED."
         );
 
         return;
@@ -1209,7 +1209,7 @@ void mostrarArquivoPlayer(
     desenharTelaPlayer();
 }
 
-void mostrarAlarme(const String& nome) {
+void mostrarAlarme(const String& nome, int volume) {
     if (!disponivel) {
         return;
     }
@@ -1229,19 +1229,28 @@ void mostrarAlarme(const String& nome) {
 
     display.fillRect(
         0,
-        46,
+        40,
         DISPLAY_LARGURA,
-        DISPLAY_ALTURA - 46,
+        DISPLAY_ALTURA - 40,
         SSD1306_WHITE
     );
     display.setTextColor(SSD1306_BLACK);
-    escreverCentralizado("CLIQUE PARA PARAR", 51, 1);
+    escreverCentralizado(
+        "VOLUME " + String(volume) + "/" + String(VOLUME_MAXIMO),
+        42,
+        1
+    );
+    escreverCentralizado("CLIQUE PARA PARAR", 53, 1);
     display.setTextColor(SSD1306_WHITE);
 
     display.display();
 }
 
 void mostrarConfiguracaoWifi() {
+    if (!disponivel) {
+        return;
+    }
+
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
 

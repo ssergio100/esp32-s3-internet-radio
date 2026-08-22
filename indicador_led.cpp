@@ -54,7 +54,6 @@ namespace {
         EstadoAudio estado
     ) {
         switch (estado) {
-            case EstadoAudio::INICIALIZANDO:
             case EstadoAudio::CONECTANDO:
             case EstadoAudio::BUFFERIZANDO:
                 return CorIndicadorLed::AZUL;

@@ -148,6 +148,10 @@ no ar. Todas as fontes encerram no clique curto ou no limite configurado de 30
 minutos. Um disparo posterior substitui o atual e reinicia o limite; se vários
 coincidirem no mesmo minuto, vence o maior `id`. Somente ao fim da cadeia o
 estado anterior é restaurado e o servidor permanece suspenso durante a cadeia.
+O giro do encoder altera diretamente o volume da cópia em RAM do disparo e
+envia o comando existente ao serviço de áudio. Esse valor temporário acompanha
+repetições e fallback, mas não é gravado no cadastro nem altera o volume normal
+restaurado ao final.
 
 Uma fonte local espera qualquer stream publicar `PARADO`, desliga completamente
 o Wi-Fi e só então abre o arquivo. Uma fonte Rádio Web mantém ou restabelece a

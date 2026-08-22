@@ -5,7 +5,6 @@
 
 enum class EstadoAudio : uint8_t {
     DESLIGADO,
-    INICIALIZANDO,
     PARADO,
     CONECTANDO,
     BUFFERIZANDO,

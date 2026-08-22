@@ -527,18 +527,16 @@ void registrarFluxoLento() {
     liberarStatus();
 }
 
-uint32_t calcularDuracaoBufferMs() {
-    uint32_t bitrate =
-        audio.getBitRate();
-
+uint32_t calcularDuracaoBufferMs(
+    uint32_t preenchido,
+    uint32_t bitrate
+) {
     if (bitrate == 0) {
         return 0;
     }
 
     return static_cast<uint32_t>(
-        static_cast<uint64_t>(
-            audio.inBufferFilled()
-        ) *
+        static_cast<uint64_t>(preenchido) *
         8000ULL /
         bitrate
     );
@@ -729,7 +727,10 @@ void atualizarAmostraStatus() {
         audio.getBitRate();
 
     uint32_t bufferMs =
-        calcularDuracaoBufferMs();
+        calcularDuracaoBufferMs(
+            preenchido,
+            bitrate
+        );
 
     const char* codec =
         audio.getCodecname();
@@ -839,7 +840,10 @@ void supervisionarAudio() {
         audio.isRunning()
     ) {
         uint32_t bufferMs =
-            calcularDuracaoBufferMs();
+            calcularDuracaoBufferMs(
+                audio.inBufferFilled(),
+                audio.getBitRate()
+            );
 
         if (
             bufferMs >=
@@ -1104,10 +1108,6 @@ bool iniciarAudio(int volume) {
         return false;
     }
 
-    definirEstado(
-        EstadoAudio::INICIALIZANDO
-    );
-
     Audio::audio_info_callback =
         tratarEventoAudio;
 
@@ -1238,7 +1238,7 @@ bool tocarRadioAlarme(
     ComandoAudio comando;
     comando.tipo = TipoComandoAudio::TOCAR_ALARME_RADIO;
     comando.volume = static_cast<uint8_t>(
-        constrain(volume, 1, VOLUME_MAXIMO)
+        constrain(volume, VOLUME_MINIMO, VOLUME_MAXIMO)
     );
 
     copiarTexto(
@@ -1295,7 +1295,7 @@ bool tocarArquivoAlarme(
     ComandoAudio comando;
     comando.tipo = TipoComandoAudio::TOCAR_ALARME;
     comando.volume = static_cast<uint8_t>(
-        constrain(volume, 1, VOLUME_MAXIMO)
+        constrain(volume, VOLUME_MINIMO, VOLUME_MAXIMO)
     );
 
     copiarTexto(
@@ -1395,9 +1395,6 @@ const char* obterTextoEstadoAudio(
     switch (estado) {
         case EstadoAudio::DESLIGADO:
             return "desligado";
-
-        case EstadoAudio::INICIALIZANDO:
-            return "inicializando";
 
         case EstadoAudio::PARADO:
             return "parado";
