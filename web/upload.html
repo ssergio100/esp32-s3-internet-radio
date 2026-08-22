@@ -81,6 +81,20 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
+            transition:
+                filter 0.1s ease,
+                opacity 0.1s ease,
+                transform 0.1s ease;
+        }
+
+        button:not(:disabled):active {
+            filter: brightness(0.9);
+            transform: translateY(1px) scale(0.99);
+        }
+
+        button:focus-visible {
+            outline: 3px solid rgba(47, 140, 255, 0.35);
+            outline-offset: 2px;
         }
 
         button:disabled {
@@ -163,9 +177,10 @@
                     id="progresso"
                     max="100"
                     value="0"
+                    aria-label="Progresso do envio"
                 ></progress>
 
-                <div id="mensagem"></div>
+                <div id="mensagem" role="status" aria-live="polite"></div>
             </form>
 
             <p class="aviso">
@@ -296,7 +311,8 @@
                 requisicao.open("POST", "/upload");
 
                 btnEnviar.disabled = true;
-                btnEnviar.textContent = "Enviando...";
+                btnEnviar.setAttribute("aria-busy", "true");
+                btnEnviar.textContent = "Enviando 0%";
 
                 progresso.style.display = "block";
                 progresso.value = 0;
@@ -315,6 +331,11 @@
                             eventoProgresso.loaded /
                             eventoProgresso.total *
                             100;
+
+                        const percentual = Math.round(progresso.value);
+                        btnEnviar.textContent = percentual >= 100
+                            ? "Processando..."
+                            : "Enviando " + percentual + "%";
                     }
                 );
 
@@ -349,6 +370,7 @@
                         }
 
                         btnEnviar.disabled = false;
+                        btnEnviar.removeAttribute("aria-busy");
                         btnEnviar.textContent =
                             "Enviar arquivo";
                     }
@@ -362,6 +384,7 @@
                             "A conexão com o ESP32 foi interrompida.";
 
                         btnEnviar.disabled = false;
+                        btnEnviar.removeAttribute("aria-busy");
                         btnEnviar.textContent =
                             "Enviar arquivo";
                     }

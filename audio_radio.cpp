@@ -875,40 +875,15 @@ void processarComando(
 ) {
     switch (comando.tipo) {
         case TipoComandoAudio::TOCAR_RADIO:
-            limparStatusAlarme();
-            fonteRadioDesejada = FonteAudioAtiva::RADIO;
-            perfilPlayerAtivo = false;
-            vTaskPrioritySet(
-                nullptr,
-                PRIORIDADE_SERVICO_AUDIO_RADIO
-            );
-
-            copiarTexto(
-                nomeDesejado,
-                sizeof(nomeDesejado),
-                comando.nome
-            );
-
-            copiarTexto(
-                urlDesejada,
-                sizeof(urlDesejada),
-                comando.url
-            );
-
-            falhasConsecutivas = 0;
-            proximaTentativa = 0;
-            inicioDegradacao = 0;
-
-            atualizarRadioStatus(
-                nomeDesejado
-            );
-
-            limparErro();
-            conectarAgora(false);
-            break;
-
         case TipoComandoAudio::TOCAR_ALARME_RADIO:
-            fonteRadioDesejada = FonteAudioAtiva::ALARME_RADIO;
+        {
+            bool radioDeAlarme =
+                comando.tipo == TipoComandoAudio::TOCAR_ALARME_RADIO;
+
+            fonteRadioDesejada =
+                radioDeAlarme
+                    ? FonteAudioAtiva::ALARME_RADIO
+                    : FonteAudioAtiva::RADIO;
             perfilPlayerAtivo = false;
             vTaskPrioritySet(
                 nullptr,
@@ -930,18 +905,28 @@ void processarComando(
             proximaTentativa = 0;
             inicioDegradacao = 0;
 
-            audio.setVolume(comando.volume);
+            if (radioDeAlarme) {
+                audio.setVolume(comando.volume);
+            } else {
+                limparStatusAlarme();
+            }
+
             atualizarRadioStatus(nomeDesejado);
-            atualizarStatusAlarme(
-                true,
-                false,
-                false,
-                false,
-                true
-            );
+
+            if (radioDeAlarme) {
+                atualizarStatusAlarme(
+                    true,
+                    false,
+                    false,
+                    false,
+                    true
+                );
+            }
+
             limparErro();
             conectarAgora(false);
             break;
+        }
 
         case TipoComandoAudio::TOCAR_ARQUIVO:
             limparStatusAlarme();
@@ -1025,10 +1010,6 @@ void processarComando(
                 perfilPlayerAtivo
                     ? PRIORIDADE_SERVICO_AUDIO_PLAYER
                     : PRIORIDADE_SERVICO_AUDIO_RADIO
-            );
-            servicoAudioAtivo.store(
-                true,
-                std::memory_order_release
             );
             audio.setMute(false);
             audio.setVolume(comando.volume);

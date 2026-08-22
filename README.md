@@ -112,8 +112,10 @@ somente durante a conexão ou enquanto o rádio está sem Wi-Fi.
 O fluxo de áudio não é executado pelo `loop()` principal. O módulo
 `audio_radio.cpp` mantém uma tarefa dedicada, recebe comandos por uma fila
 FreeRTOS e é o único proprietário das operações da biblioteca de áudio.
-A tarefa interna de decodificação da ESP32-audioI2S usa o núcleo 0; o serviço
-que alimenta e supervisiona o stream usa o núcleo 1.
+A tarefa interna de decodificação da ESP32-audioI2S usa o núcleo 1; o serviço
+que alimenta e supervisiona o stream usa o núcleo 0. Essa distribuição isolou
+a entrega de PCM da contenção das tarefas de rede e corrigiu em hardware a
+retomada de Rádio Web por um alarme iniciado no Relógio.
 
 O `loop()` principal fica responsável por:
 

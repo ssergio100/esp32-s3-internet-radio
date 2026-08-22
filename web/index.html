@@ -67,6 +67,25 @@
             border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
+            transition:
+                filter 0.1s ease,
+                opacity 0.1s ease,
+                transform 0.1s ease;
+        }
+
+        button:not(:disabled):active {
+            filter: brightness(0.9);
+            transform: translateY(1px) scale(0.98);
+        }
+
+        button:focus-visible {
+            outline: 3px solid rgba(25, 118, 210, 0.28);
+            outline-offset: 2px;
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.62;
         }
 
         .btn-nova {
@@ -524,14 +543,6 @@
 
             .radio-url {
                 max-width: 190px;
-            }
-
-            .texto-excluir {
-                display: none;
-            }
-
-            .btn-excluir::after {
-                content: "Excluir";
             }
 
             .filtros-pesquisa {
@@ -1240,7 +1251,7 @@
         }
     }
 
-    async function excluirRadio(id) {
+    async function excluirRadio(id, botao) {
         const radio = radios.find(function (item) {
             return Number(item.id) === id;
         });
@@ -1256,6 +1267,10 @@
         if (!confirmado) {
             return;
         }
+
+        botao.disabled = true;
+        botao.setAttribute("aria-busy", "true");
+        botao.textContent = "Excluindo...";
 
         try {
             const resposta = await fetch(
@@ -1279,6 +1294,12 @@
             await carregarRadios();
         } catch (erro) {
             alert(erro.message);
+        } finally {
+            if (botao.isConnected) {
+                botao.disabled = false;
+                botao.removeAttribute("aria-busy");
+                botao.textContent = "Excluir";
+            }
         }
     }
 
@@ -1304,9 +1325,22 @@
         .getElementById("btnFecharPesquisa")
         .addEventListener("click", fecharPesquisa);
 
-    formPesquisa.addEventListener("submit", function (evento) {
+    formPesquisa.addEventListener("submit", async function (evento) {
         evento.preventDefault();
-        pesquisarRadios();
+
+        const botaoBuscar = formPesquisa.querySelector(".btn-buscar");
+
+        botaoBuscar.disabled = true;
+        botaoBuscar.setAttribute("aria-busy", "true");
+        botaoBuscar.textContent = "Pesquisando...";
+
+        try {
+            await pesquisarRadios();
+        } finally {
+            botaoBuscar.disabled = false;
+            botaoBuscar.removeAttribute("aria-busy");
+            botaoBuscar.textContent = "Buscar";
+        }
     });
 
     resultadosPesquisa.addEventListener("click", function (evento) {
@@ -1366,6 +1400,7 @@
             );
 
             botaoAdicionar.disabled = true;
+            botaoAdicionar.setAttribute("aria-busy", "true");
             botaoAdicionar.textContent = "Adicionando...";
 
             try {
@@ -1377,6 +1412,7 @@
                 alert(erro.message);
             } finally {
                 botaoAdicionar.disabled = false;
+                botaoAdicionar.removeAttribute("aria-busy");
                 botaoAdicionar.textContent = "Adicionar";
             }
         }
@@ -1389,7 +1425,7 @@
             return;
         }
 
-        excluirRadio(Number(botao.dataset.id));
+        excluirRadio(Number(botao.dataset.id), botao);
     });
 
     modalRadio.addEventListener("click", function (evento) {

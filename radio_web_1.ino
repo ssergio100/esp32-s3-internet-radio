@@ -59,6 +59,7 @@ int volumeAtual = VOLUME_PADRAO;
 
 int indiceRadioAtual = 0;
 int indiceRadioEmSelecao = 0;
+uint32_t idRadioAtual = 0;
 int indiceArquivoAtual = 0;
 int indiceArquivoEmSelecao = 0;
 int indiceEstadoSelecionado = 0;
@@ -86,6 +87,7 @@ unsigned long proximaTentativaAudioAlarmeMs = 0;
 
 void mostrarRadioNoDisplay(int indiceRadio);
 void solicitarReproducaoRadio(int indiceRadio);
+bool sincronizarRadioAtualComCatalogo();
 
 void entrarModoSelecaoRadio();
 void confirmarSelecaoRadio();
@@ -252,7 +254,11 @@ void iniciarExecucaoAlarme(const DisparoAlarme& disparo) {
         if (estadoAntesDoAlarme == EstadoEquipamento::RADIO_WEB) {
             desativarServidorWeb();
         } else if (estadoAntesDoAlarme == EstadoEquipamento::RELOGIO) {
-            if (!retomarAudio(disparo.volume, true)) {
+            bool usarPerfilPlayer =
+                disparo.radioId == 0 ||
+                obterRadioPorId(disparo.radioId) == nullptr;
+
+            if (!retomarAudio(disparo.volume, usarPerfilPlayer)) {
                 Serial.println(
                     "Alarme: falha ao retomar o servico de audio."
                 );
@@ -702,6 +708,11 @@ void confirmarEstadoSelecionado() {
 }
 
 void entrarEstadoRadioWeb() {
+    if (!sincronizarRadioAtualComCatalogo()) {
+        mostrarMensagem("Sem radios");
+        return;
+    }
+
     mostrarMensagem("Ativando Radio");
 
     conectarWifi();
@@ -759,10 +770,14 @@ void entrarEstadoPlayer() {
 }
 
 void entrarModoSelecaoRadio() {
+    if (!sincronizarRadioAtualComCatalogo()) {
+        mostrarMensagem("Sem radios");
+        return;
+    }
+
     modoInterface = ModoInterface::SELECAO_RADIO;
     barraVolumeVisivel = false;
 
-    indiceRadioEmSelecao = indiceRadioAtual;
     momentoUltimaAtividadeSelecaoMs = millis();
 
     const Radio* radio =
@@ -1119,6 +1134,33 @@ void restaurarBarraAposTempoVolume() {
 // Rádio
 // =====================================================
 
+bool sincronizarRadioAtualComCatalogo() {
+    int quantidadeRadios = obterQuantidadeRadios();
+
+    if (quantidadeRadios <= 0) {
+        indiceRadioAtual = 0;
+        indiceRadioEmSelecao = 0;
+        idRadioAtual = 0;
+        return false;
+    }
+
+    int indicePeloId = obterIndiceRadioPorId(idRadioAtual);
+
+    if (indicePeloId >= 0) {
+        indiceRadioAtual = indicePeloId;
+    } else {
+        indiceRadioAtual = 0;
+        idRadioAtual = obterRadio(0)->id;
+
+        Serial.println(
+            "Radio atual removida; selecionando a primeira do catalogo."
+        );
+    }
+
+    indiceRadioEmSelecao = indiceRadioAtual;
+    return true;
+}
+
 void solicitarReproducaoRadio(int indiceRadio) {
     const Radio* radio =
         obterRadio(indiceRadio);
@@ -1151,6 +1193,7 @@ void solicitarReproducaoRadio(int indiceRadio) {
 
     indiceRadioAtual = indiceRadio;
     indiceRadioEmSelecao = indiceRadio;
+    idRadioAtual = radio->id;
 
     mostrarEstadoRadio(
         "Conectando...",

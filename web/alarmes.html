@@ -17,7 +17,28 @@
         }
 
         button, input, select { font: inherit; }
-        button { cursor: pointer; }
+        button {
+            cursor: pointer;
+            transition:
+                filter 0.1s ease,
+                opacity 0.1s ease,
+                transform 0.1s ease;
+        }
+
+        button:not(:disabled):active {
+            filter: brightness(0.9);
+            transform: translateY(1px) scale(0.98);
+        }
+
+        button:focus-visible {
+            outline: 3px solid rgba(25, 118, 210, 0.28);
+            outline-offset: 2px;
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.62;
+        }
 
         .container {
             width: 100%;
@@ -147,6 +168,7 @@
 
         .interruptor input:checked + .trilho { background: #1976d2; }
         .interruptor input:checked + .trilho::before { transform: translateX(18px); }
+        .interruptor input:disabled + .trilho { cursor: wait; opacity: 0.55; }
 
         .modal {
             position: fixed;
@@ -316,7 +338,7 @@
             </div>
         </header>
 
-        <div class="mensagem" id="mensagem"></div>
+        <div class="mensagem" id="mensagem" role="status" aria-live="polite"></div>
 
         <section class="painel">
             <div class="tabela-responsiva">
@@ -426,7 +448,7 @@
 
                 <div class="modal-rodape">
                     <button class="btn-secundario" id="btnCancelar" type="button">Cancelar</button>
-                    <button class="btn-principal" type="submit">Salvar</button>
+                    <button class="btn-principal" id="btnSalvar" type="submit">Salvar</button>
                 </div>
             </form>
         </div>
@@ -454,6 +476,7 @@
         const campoVolume = document.getElementById("volume");
         const volumeValor = document.getElementById("volumeValor");
         const campoAtivo = document.getElementById("ativo");
+        const botaoSalvar = document.getElementById("btnSalvar");
 
         let alarmes = [];
         let arquivos = [];
@@ -517,7 +540,7 @@
                         <td>
                             <label class="interruptor">
                                 <input type="checkbox" ${alarme.ativo ? "checked" : ""}
-                                    onchange="alternarAlarme(${alarme.id}, this.checked)">
+                                    onchange="alternarAlarme(${alarme.id}, this)">
                                 <span class="trilho"></span>
                             </label>
                         </td>
@@ -527,8 +550,8 @@
                         <td class="coluna-volume">${alarme.volume}/21</td>
                         <td>
                             <div class="acoes-linha">
-                                <button class="btn-secundario" onclick="editarAlarme(${alarme.id})">Editar</button>
-                                <button class="btn-perigo" onclick="excluirAlarme(${alarme.id})">Excluir</button>
+                                <button type="button" class="btn-secundario" onclick="editarAlarme(${alarme.id})">Editar</button>
+                                <button type="button" class="btn-perigo" onclick="excluirAlarme(${alarme.id}, this)">Excluir</button>
                             </div>
                         </td>
                     </tr>`;
@@ -672,8 +695,20 @@
         async function salvarFormulario(evento) {
             evento.preventDefault();
 
+            let alarme;
+
             try {
-                const alarme = montarAlarmeDoFormulario();
+                alarme = montarAlarmeDoFormulario();
+            } catch (erro) {
+                exibirMensagem(erro.message, "erro");
+                return;
+            }
+
+            botaoSalvar.disabled = true;
+            botaoSalvar.setAttribute("aria-busy", "true");
+            botaoSalvar.textContent = "Salvando...";
+
+            try {
                 const url = idEmEdicao === null
                     ? "/api/alarmes"
                     : "/api/alarmes?id=" + idEmEdicao;
@@ -689,6 +724,10 @@
                 exibirMensagem("Alarme salvo.", "sucesso");
             } catch (erro) {
                 exibirMensagem(erro.message, "erro");
+            } finally {
+                botaoSalvar.disabled = false;
+                botaoSalvar.removeAttribute("aria-busy");
+                botaoSalvar.textContent = "Salvar";
             }
         }
 
@@ -696,11 +735,13 @@
             abrirModal(alarmes.find(function (alarme) { return alarme.id === id; }));
         };
 
-        window.alternarAlarme = async function (id, ativo) {
+        window.alternarAlarme = async function (id, entrada) {
             const atual = alarmes.find(function (alarme) { return alarme.id === id; });
             if (!atual) return;
 
+            const ativo = entrada.checked;
             const alterado = Object.assign({}, atual, { ativo: ativo });
+            entrada.disabled = true;
 
             try {
                 await requisitar("/api/alarmes?id=" + id, {
@@ -713,12 +754,20 @@
             } catch (erro) {
                 await carregarDados();
                 exibirMensagem(erro.message, "erro");
+            } finally {
+                if (entrada.isConnected) {
+                    entrada.disabled = false;
+                }
             }
         };
 
-        window.excluirAlarme = async function (id) {
+        window.excluirAlarme = async function (id, botao) {
             const atual = alarmes.find(function (alarme) { return alarme.id === id; });
             if (!atual || !confirm('Excluir o alarme "' + atual.nome + '"?')) return;
+
+            botao.disabled = true;
+            botao.setAttribute("aria-busy", "true");
+            botao.textContent = "Excluindo...";
 
             try {
                 await requisitar("/api/alarmes?id=" + id, { method: "DELETE" });
@@ -726,6 +775,12 @@
                 exibirMensagem("Alarme excluído.", "sucesso");
             } catch (erro) {
                 exibirMensagem(erro.message, "erro");
+            } finally {
+                if (botao.isConnected) {
+                    botao.disabled = false;
+                    botao.removeAttribute("aria-busy");
+                    botao.textContent = "Excluir";
+                }
             }
         };
 

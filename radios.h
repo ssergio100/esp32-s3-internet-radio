@@ -25,5 +25,6 @@ int obterQuantidadeRadios();
 
 const Radio* obterRadio(int indice);
 const Radio* obterRadioPorId(uint32_t id);
+int obterIndiceRadioPorId(uint32_t id);
 
 #endif

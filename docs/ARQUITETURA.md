@@ -15,16 +15,16 @@ referência para `String` ou memória temporária cruza tarefas.
 
 Há duas tarefas relacionadas ao áudio:
 
-- decodificador/I2S da ESP32-audioI2S, no núcleo 0;
-- conexão, preenchimento e supervisão, no núcleo 1.
+- decodificador/I2S da ESP32-audioI2S, no núcleo 1;
+- conexão, preenchimento e supervisão, no núcleo 0.
 
 Os valores de núcleo, pilha e prioridade ficam em `configuracao.h`. No Rádio
 Web, `AudioService` conserva prioridade 3 e intervalo de 1 ms para alimentar a
-rede continuamente. No Player, ela passa à mesma prioridade do `loop()` e
-aguarda 3 ms entre ciclos. Assim, a abertura e a leitura do microSD deixam de
-ter preferência sobre o `loop()` enquanto o OLED e o encoder precisam ser
-atendidos. O SPI do cartão opera por padrão a 4 MHz e a rolagem do nome redesenha
-o OLED a cada 80 ms.
+rede continuamente. No Player, ela usa prioridade 1 e aguarda 3 ms entre ciclos
+para espaçar as leituras do microSD. O decoder interno permanece no núcleo 1 em
+prioridade 2 e, portanto, pode preemptar o `loop()` da interface quando precisar
+alimentar o I2S. O SPI do cartão opera por padrão a 4 MHz e a rolagem do nome
+redesenha o OLED a cada 80 ms.
 Ao entrar no estado Relógio, um comando encerra o stream, silencia a saída e
 faz `AudioService` aguardar uma notificação sem consumir ciclos continuamente.
 O retorno ao estado Rádio Web acorda a mesma tarefa antes de solicitar a
@@ -157,6 +157,19 @@ reconecta e reabre a estação anterior; Player e Relógio deixam a rede desliga
 Se a rede ou o stream não ficar disponível no limite configurado, a fonte muda
 para o som padrão sem bloquear o `loop()` durante a espera.
 
+Ao partir do Relógio, uma fonte de alarme Rádio Web retoma o serviço no perfil
+de rádio e restabelece a rede de forma assíncrona. A abertura normal e a abertura
+para alarme usam o mesmo caminho interno; o alarme acrescenta somente seu volume
+e seu estado de telemetria.
+
+Para isolar a entrega PCM da pilha de rede, a tarefa interna do
+decoder/I2S roda no núcleo 1 e o serviço que abastece o buffer roda no núcleo 0.
+No núcleo Arduino 3.3.10 instalado, o TCP/IP também está fixado no núcleo 0; o
+decoder passa a preemptar o `loop()` da interface, enquanto o serviço de rede
+permanece abaixo das tarefas internas de TCP/IP em prioridade. Essa distribuição
+eliminou em hardware a lentidão e a distorção na transição Relógio para Rádio
+Web de alarme.
+
 `/alarme_padrao.wav` é um WAV PCM curto gerado automaticamente na FFat. Ele é
 usado quando nenhuma fonte foi escolhida, quando cartão/arquivo não puder ser
 aberto ou quando o `radioId` não existir mais. O catálogo do microSD é preparado
@@ -179,7 +192,7 @@ I2C fora da tarefa de rede e corrige o RTC quando necessário.
 
 `relogio_rtc.cpp` é o único proprietário da instância `RTC_DS3231`. Ele
 encapsula RTClib e oferece inicialização, diagnóstico de perda de alimentação,
-leitura e ajuste em UTC e temperatura. O firmware não armazena hora local no
+leitura e ajuste em UTC. O firmware não armazena hora local no
 RTC: fuso e horário de verão são aplicados pelo relógio do sistema somente na
 apresentação. O agendador usa essa hora local; os pinos e registradores
 `INT/SQW` do DS3231 permanecem sem uso.
@@ -233,6 +246,9 @@ da lista persistida. `radios.cpp` monta durante o boot a fotografia em memória
 usada pelo restante do firmware e mantém a lista de reserva compilada. Alterações
 confirmadas pela API ou pelo upload recarregam essa fotografia imediatamente,
 inclusive para resolver o `radioId` usado pelos alarmes.
+O estado principal conserva também o ID da estação em reprodução. Ao voltar
+do Relógio ou abrir a seleção, ele resolve novamente o índice pela fotografia
+atual; se a estação foi removida, seleciona a primeira disponível.
 
 As interfaces web completas são arquivos físicos: `/index.html`,
 `/alarmes.html` e `/upload.html`. A rota `/upload` usa um formulário mínimo incorporado apenas

@@ -16,6 +16,4 @@ bool horarioRelogioRtcConfiavel();
 bool obterHorarioUtcRelogioRtc(time_t& instanteUtc);
 bool ajustarHorarioUtcRelogioRtc(time_t instanteUtc);
 
-bool obterTemperaturaRelogioRtc(float& temperaturaCelsius);
-
 #endif

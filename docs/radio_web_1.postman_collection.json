@@ -1,0 +1,681 @@
+{
+  "info": {
+    "_postman_id": "7e3d9e7d-6ac0-4f2f-9c0f-0a16a238f501",
+    "name": "Rádio Web ESP32-S3",
+    "description": "Coleção para testar todas as rotas de dados implementadas pelo firmware. Defina baseUrl com o IP atual do rádio, sem barra no final. A API cobre telemetria, rádios, alarmes, catálogos e upload. Ela ainda não comanda volume, fonte ativa, estação em reprodução, Player ou Relógio, nem permite baixar ou excluir arquivos. A pesquisa do Radio Browser é externa ao ESP32 e está em uma pasta separada. Requisições marcadas como destrutivas alteram a FFat.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://192.168.1.100",
+      "type": "string",
+      "description": "Endereço atual do rádio, sem barra no final."
+    },
+    {
+      "key": "radioId",
+      "value": "1",
+      "type": "string",
+      "description": "ID de uma rádio existente. Confirme em Listar rádios antes de atualizar alarmes ou excluir uma estação."
+    },
+    {
+      "key": "alarmeId",
+      "value": "1",
+      "type": "string",
+      "description": "ID de um alarme existente. Confirme em Listar alarmes antes de atualizar ou excluir."
+    },
+    {
+      "key": "arquivoAlarme",
+      "value": "/sons/alarme.mp3",
+      "type": "string",
+      "description": "Caminho de um MP3 existente no catálogo do microSD."
+    },
+    {
+      "key": "radioBrowserBaseUrl",
+      "value": "https://de1.api.radio-browser.info",
+      "type": "string",
+      "description": "Servidor externo usado pela pesquisa de rádios da interface web."
+    }
+  ],
+  "item": [
+    {
+      "name": "Diagnóstico",
+      "description": "Telemetria somente de leitura.",
+      "item": [
+        {
+          "name": "Obter status do sistema",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "status"]
+            },
+            "description": "Retorna áudio, alarme, Wi-Fi, memória e uptime. Não altera o estado do rádio."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Resposta contém os campos centrais\", function () {",
+                  "    const dados = pm.response.json();",
+                  "    pm.expect(dados).to.have.property(\"estado\");",
+                  "    pm.expect(dados).to.have.property(\"wifiConectado\");",
+                  "    pm.expect(dados).to.have.property(\"ramLivre\");",
+                  "    pm.expect(dados).to.have.property(\"uptimeMs\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Rádios",
+      "description": "Cadastro de estações persistido em radios.json. Não troca imediatamente a estação em reprodução.",
+      "item": [
+        {
+          "name": "Listar rádios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/radios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "radios"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Resposta é uma lista\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Adicionar rádio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Rádio criada pelo Postman\",\n  \"url\": \"https://exemplo.com/stream\",\n  \"estrelas\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/radios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "radios"]
+            },
+            "description": "Cria uma estação com novo ID. Limites atuais: nome até 63 caracteres, URL até 511 e estrelas entre 1 e 5."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Operação confirmada\", function () { pm.expect(pm.response.json().sucesso).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Excluir rádio (destrutivo)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/radios?id={{radioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "radios"],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{radioId}}",
+                  "description": "A API recusa excluir a última estação."
+                }
+              ]
+            },
+            "description": "ATENÇÃO: remove da FFat a rádio indicada por radioId. Alarmes que referenciem uma estação removida passam a usar o som padrão."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Operação confirmada\", function () { pm.expect(pm.response.json().sucesso).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Alarmes",
+      "description": "CRUD completo de alarmes. POST e PUT não recebem o ID no corpo; PUT e DELETE usam alarmeId na query string. PUT substitui o cadastro inteiro, portanto envie todos os campos.",
+      "item": [
+        {
+          "name": "Listar alarmes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Resposta contém a lista de alarmes\", function () { pm.expect(pm.response.json().alarmes).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Criar alarme semanal com som padrão",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Teste semanal Postman\",\n  \"ativo\": true,\n  \"horario\": \"08:00\",\n  \"volume\": 10,\n  \"dias\": [\"seg\", \"ter\", \"qua\", \"qui\", \"sex\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"]
+            },
+            "description": "Cria um alarme semanal. Dias aceitos: dom, seg, ter, qua, qui, sex e sab. Sem arquivo ou radioId, usa o WAV padrão."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Operação confirmada\", function () { pm.expect(pm.response.json().sucesso).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Criar alarme de execução única",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Teste único Postman\",\n  \"ativo\": true,\n  \"horario\": \"09:30\",\n  \"volume\": 10,\n  \"data\": \"2030-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"]
+            },
+            "description": "Use data ou dias, nunca os dois. O formato da data é AAAA-MM-DD e o ano mínimo aceito é 2024."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Criar alarme com Rádio Web",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Teste rádio Postman\",\n  \"ativo\": true,\n  \"horario\": \"10:00\",\n  \"volume\": 9,\n  \"dias\": [\"sab\", \"dom\"],\n  \"radioId\": {{radioId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"]
+            },
+            "description": "radioId deve ser positivo. Confirme o ID em Catálogos auxiliares > Listar rádios para alarmes. Não combine radioId e arquivo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Criar alarme com MP3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Teste MP3 Postman\",\n  \"ativo\": true,\n  \"horario\": \"10:05\",\n  \"volume\": 9,\n  \"dias\": [\"sab\", \"dom\"],\n  \"arquivo\": \"{{arquivoAlarme}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"]
+            },
+            "description": "O caminho deve começar com /sons/, terminar em .mp3 e não conter '..'. Confirme o caminho em Catálogos auxiliares > Listar MP3 do Player."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Atualizar alarme (substituição completa)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Alarme atualizado pelo Postman\",\n  \"ativo\": true,\n  \"horario\": \"08:15\",\n  \"volume\": 11,\n  \"dias\": [\"seg\", \"qua\", \"sex\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes?id={{alarmeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{alarmeId}}"
+                }
+              ]
+            },
+            "description": "ATENÇÃO: PUT substitui todos os dados do alarme. Não é atualização parcial."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Operação confirmada\", function () { pm.expect(pm.response.json().sucesso).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Desativar alarme (substituição completa)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Alarme desativado pelo Postman\",\n  \"ativo\": false,\n  \"horario\": \"08:15\",\n  \"volume\": 11,\n  \"dias\": [\"seg\", \"qua\", \"sex\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes?id={{alarmeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{alarmeId}}"
+                }
+              ]
+            },
+            "description": "A API não possui PATCH. Para alternar ativo, a interface envia novamente o cadastro completo com ativo=false. Ajuste o exemplo aos dados atuais antes de executar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Excluir alarme (destrutivo)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/alarmes?id={{alarmeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "alarmes"],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{alarmeId}}"
+                }
+              ]
+            },
+            "description": "ATENÇÃO: remove da FFat o alarme indicado por alarmeId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Operação confirmada\", function () { pm.expect(pm.response.json().sucesso).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Catálogos auxiliares",
+      "description": "Listas somente de leitura usadas pelo formulário de alarmes.",
+      "item": [
+        {
+          "name": "Listar MP3 do Player",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/arquivos-player",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "arquivos-player"]
+            },
+            "description": "Retorna a fotografia em RAM dos MP3 encontrados em /sons no microSD durante o boot."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Resposta é uma lista\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Listar rádios para alarmes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/radios-alarmes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "radios-alarmes"]
+            },
+            "description": "Retorna somente id e nome das estações disponíveis como fonte de alarme."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Resposta é uma lista\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Arquivos da FFat",
+      "description": "Listagem e upload expostos pela página Arquivos. Não existem rotas para download ou exclusão individual.",
+      "item": [
+        {
+          "name": "Listar arquivos da FFat",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/arquivos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "arquivos"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Resposta é uma lista\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Enviar arquivo (destrutivo quando substitui)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "arquivo",
+                  "type": "file",
+                  "src": [],
+                  "description": "Selecione o arquivo no Postman antes de enviar."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["upload"]
+            },
+            "description": "ATENÇÃO: substitui um arquivo de mesmo nome. radios.json e alarmes.json passam pela validação completa e atualizam a fotografia em RAM. Nomes aceitam letras, números, ponto, hífen e sublinhado; nomes internos e iniciados por ponto são rejeitados."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Operação confirmada\", function () { pm.expect(pm.response.json().sucesso).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Pesquisa externa de rádios",
+      "description": "Esta requisição não passa pelo ESP32. A página index.html consulta o serviço público Radio Browser diretamente do navegador e tenta outros servidores se o primeiro falhar.",
+      "item": [
+        {
+          "name": "Pesquisar no Radio Browser",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{radioBrowserBaseUrl}}/json/stations/search?hidebroken=true&order=votes&reverse=true&limit=30&countrycode=BR&name=Antena",
+              "host": ["{{radioBrowserBaseUrl}}"],
+              "path": ["json", "stations", "search"],
+              "query": [
+                {
+                  "key": "hidebroken",
+                  "value": "true"
+                },
+                {
+                  "key": "order",
+                  "value": "votes"
+                },
+                {
+                  "key": "reverse",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "30"
+                },
+                {
+                  "key": "countrycode",
+                  "value": "BR"
+                },
+                {
+                  "key": "name",
+                  "value": "Antena"
+                }
+              ]
+            },
+            "description": "Replica a pesquisa externa da interface. countrycode, name e uma query tag podem ser combinados. A prévia de áudio não é uma rota do ESP32: o navegador abre diretamente url_resolved ou url retornada por esta consulta."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Resposta é uma lista\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}

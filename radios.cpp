@@ -199,3 +199,17 @@ const Radio* obterRadioPorId(uint32_t id) {
 
     return nullptr;
 }
+
+int obterIndiceRadioPorId(uint32_t id) {
+    if (id == 0) {
+        return -1;
+    }
+
+    for (int indice = 0; indice < quantidadeRadios; indice++) {
+        if (radios[indice].id == id) {
+            return indice;
+        }
+    }
+
+    return -1;
+}

@@ -130,9 +130,12 @@ constexpr uint32_t DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS = 2;
 // Ajustes internos
 // =====================================================
 
-// Tarefas de áudio
-constexpr int NUCLEO_DECODIFICADOR_AUDIO = 0;
-constexpr int NUCLEO_SERVICO_AUDIO = 1;
+// A tarefa interna do decoder/I2S fica no núcleo 1, acima do loop Arduino em
+// prioridade. O serviço que abastece o buffer pela rede fica no núcleo 0,
+// abaixo das tarefas internas de Wi-Fi e TCP/IP. Isso isola a entrega PCM da
+// contenção de rede observada no núcleo 0.
+constexpr int NUCLEO_DECODIFICADOR_AUDIO = 1;
+constexpr int NUCLEO_SERVICO_AUDIO = 0;
 constexpr uint32_t PILHA_SERVICO_AUDIO_BYTES = 12288;
 constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_RADIO = 3;
 constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_PLAYER = 1;
