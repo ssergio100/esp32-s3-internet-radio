@@ -6,7 +6,7 @@
 
 `audio_radio.cpp` encapsula a instância de `Audio`. Chamadas como
 `connecttohost()`, `connecttoFS()`, `stopSong()`, `setVolume()` e `loop()` acontecem somente
-na tarefa `AudioService`. Display, encoder e servidor não acessam a
+na tarefa `AudioService`. Display, controles e servidor não acessam a
 biblioteca diretamente.
 
 Comandos externos são estruturas POD copiadas para uma fila FreeRTOS. O
@@ -38,10 +38,11 @@ Uma operação HTTP lenta pode atrasar a interface, mas não interrompe a
 execução do serviço de áudio.
 
 As regras centrais de interação permanecem no arquivo principal: entrar na
-seleção de estações, navegar, confirmar, cancelar por inatividade e ajustar
-o volume. As transições entre Rádio Web e Relógio também permanecem explícitas
-nesse arquivo. Cada transição usa uma função nomeada para que o fluxo seja legível
-sem conhecer previamente os detalhes do display ou do serviço de áudio.
+seleção de estações, navegar, confirmar, cancelar por inatividade e ajustar o
+volume recebido do encoder dedicado. As transições entre Rádio Web e Relógio
+também permanecem explícitas nesse arquivo. Cada transição usa uma função
+nomeada para que o fluxo seja legível sem conhecer previamente os detalhes do
+display ou do serviço de áudio.
 
 O `loop()` supervisiona a associação Wi-Fi. Se o ponto conectado estiver em
 `BSSIDS_WIFI_BLOQUEADOS`, a associação é rejeitada. Durante a conexão inicial ou
@@ -79,7 +80,9 @@ display.
 
 Durante o ajuste de volume, a mesma faixa substitui temporariamente a reserva
 por uma barra de nível e a posição da estação pelo valor atual sobre o máximo.
-O nome da estação e o diagnóstico superior continuam visíveis.
+Isso também pode ocorrer durante uma seleção; após o intervalo, a barra retorna
+ao conteúdo da tela atual. O nome da estação e o diagnóstico superior continuam
+visíveis.
 
 Velocidade da rolagem e intervalo de renovação ficam em `configuracao.h`.
 
@@ -97,26 +100,33 @@ As cores e a temporização ficam encapsuladas no indicador.
 
 ### Controles
 
-`controles.cpp` configura o encoder e devolve uma `LeituraControles` contendo o
-clique curto, o clique longo e o deslocamento assinado acumulado. Os cliques são
-confirmados após a soltura. A rotação usa diretamente o
-valor de `encoderChanged()`, sem manter um segundo contador, aplicar aceleração
-ou filtrar mudanças de direção.
+`controles.cpp` configura duas instâncias independentes da biblioteca. O encoder
+principal publica clique curto e deslocamento de navegação; o segundo publica
+clique curto e deslocamento de volume. Cada botão tem sua própria interrupção e
+seu próprio estado de confirmação após a soltura. Pressões que atingem
+`TEMPO_MAXIMO_CLIQUE_CURTO_ENCODER_MS` são descartadas e não se transformam em
+clique ao soltar.
 
-A calibração física fica em `TRANSICOES_ENCODER_POR_DETENTE`, em
-`configuracao.h`. Os tempos com nomes de clique tratam somente o botão e não
-interferem na rotação.
+Cada rotação usa diretamente o valor de `encoderChanged()` da instância
+correspondente, sem manter contador paralelo, aplicar aceleração ou filtrar
+mudanças de direção. Pinos e transições por detente ficam agrupados em
+`ENCODER_NAVEGACAO` e `ENCODER_VOLUME`, em `configuracao.h`. O valor `4` do
+principal foi confirmado no hardware; o mesmo valor inicial do segundo ainda
+precisa ser validado no novo componente.
 
 ### Estados do equipamento
 
-O firmware possui `RADIO_WEB`, `PLAYER` e `RELOGIO`. Um clique longo confirmado
-leva qualquer fonte ativa ao Relógio. Ao entrar nele, o OLED muda imediatamente; depois o
-arquivo principal apaga o LED, interrompe o servidor, solicita a suspensão do
-áudio e desliga o rádio Wi-Fi. O `loop()` continua atendendo somente relógio,
-display e encoder. O clique longo não executa ação nesse estado.
+O firmware possui `RADIO_WEB`, `PLAYER` e `RELOGIO`. Um clique curto no botão do
+encoder de volume leva qualquer fonte ativa ao Relógio. Ao entrar nele, o OLED
+muda imediatamente; depois o arquivo principal apaga o LED, interrompe o
+servidor, solicita a suspensão do áudio e desliga o rádio Wi-Fi. O `loop()`
+continua atendendo somente relógio, display e os dois encoders. Esse botão não
+executa ação quando o equipamento já está no Relógio nem durante um alarme.
 
-No Relógio, o giro percorre um catálogo central de estados. Cada opção substitui
-toda a tela; um clique curto confirma a opção exibida. Escolher Rádio Web
+No Relógio, o encoder principal percorre um catálogo central de estados. Cada
+opção substitui toda a tela; um clique curto confirma a opção exibida. O encoder
+de volume apenas altera o nível reservado à próxima fonte, sem enviar comando
+ao serviço suspenso. Escolher Rádio Web
 conecta o Wi-Fi, reabre o servidor, acorda a tarefa e retoma a estação. Escolher
 Player mantém a rede desligada, reutiliza o microSD e o catálogo MP3 de `/sons`
 preparados durante o boot e acorda a mesma tarefa de áudio.
@@ -125,7 +135,10 @@ preparados durante o boot e acorda a mesma tarefa de áudio.
 recursiva. A listagem ocorre antes do serviço de áudio iniciar e nunca durante a
 reprodução. O arquivo é decodificado progressivamente por `connecttoFS()`; não
 há arquivo completo em RAM, mixer, anel PCM ou segundo decoder. A FFat, o
-catálogo e as seleções permanecem preservados entre transições.
+catálogo e as seleções permanecem preservados entre transições. O SPI usa
+`SCK=GPIO38`, `MISO=GPIO41`, `MOSI=GPIO40` e `CS=GPIO39`; a transferência do
+clock para GPIO38 libera o GPIO42 para o botão de desligamento do encoder de
+volume.
 
 Quando `REPRODUCAO_SEQUENCIAL_PLAYER` está ativa, o arquivo principal observa o
 fim confirmado da faixa e solicita a seguinte na ordem alfabética; depois da
@@ -144,14 +157,17 @@ execução ou histórico persistido. Alarmes únicos vencidos são desativados.
 O arquivo principal coordena a execução sem criar outro estado permanente. O
 alarme interrompe Rádio Web, Player ou outro alarme e usa a mesma fila e a mesma
 instância de `Audio`. MP3 e WAV recomeçam depois do EOF; uma estação permanece
-no ar. Todas as fontes encerram no clique curto ou no limite configurado de 30
-minutos. Um disparo posterior substitui o atual e reinicia o limite; se vários
+no ar. Todas as fontes encerram no clique curto do encoder principal ou no
+limite configurado de 30 minutos. Um disparo posterior substitui o atual e
+reinicia o limite; se vários
 coincidirem no mesmo minuto, vence o maior `id`. Somente ao fim da cadeia o
 estado anterior é restaurado e o servidor permanece suspenso durante a cadeia.
-O giro do encoder altera diretamente o volume da cópia em RAM do disparo e
-envia o comando existente ao serviço de áudio. Esse valor temporário acompanha
-repetições e fallback, mas não é gravado no cadastro nem altera o volume normal
-restaurado ao final.
+O encoder de volume parte do nível efetivamente aplicado ao disparo. Cada
+ajuste altera a cópia em RAM e também `volumeAtual`, acompanha repetições e
+fallback e permanece como volume geral depois da restauração, sem regravar o
+cadastro. Se não houver movimento durante o alarme, `volumeAtual` não muda e o
+nível geral anterior é restaurado. O encoder principal não altera volume nesse
+estado; seu clique curto continua encerrando o alarme.
 
 Uma fonte local espera qualquer stream publicar `PARADO`, desliga completamente
 o Wi-Fi e só então abre o arquivo. Uma fonte Rádio Web mantém ou restabelece a
