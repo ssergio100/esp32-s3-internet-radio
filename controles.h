@@ -2,9 +2,10 @@
 #define CONTROLES_H
 
 struct LeituraControles {
-    bool cliqueDetectado = false;
-    bool cliqueLongoDetectado = false;
-    long deslocamentoEncoder = 0;
+    bool cliqueNavegacaoDetectado = false;
+    bool cliqueVolumeDetectado = false;
+    long deslocamentoEncoderNavegacao = 0;
+    long deslocamentoEncoderVolume = 0;
 };
 
 void iniciarControles();

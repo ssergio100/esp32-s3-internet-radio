@@ -32,7 +32,7 @@ enum class EstadoEquipamento {
 };
 
 enum class ModoInterface {
-    VOLUME,
+    REPOUSO,
     SELECAO_RADIO,
     SELECAO_ARQUIVO
 };
@@ -50,8 +50,8 @@ constexpr EstadoEquipamento ORDEM_SELETOR_ESTADOS[] = {
     EstadoEquipamento::RADIO_WEB
 };
 
-// Estado da interação com o encoder e o display.
-ModoInterface modoInterface = ModoInterface::VOLUME;
+// Estado da navegação comandada pelo encoder principal.
+ModoInterface modoInterface = ModoInterface::REPOUSO;
 EstadoEquipamento estadoEquipamento =
     EstadoEquipamento::RADIO_WEB;
 
@@ -104,7 +104,7 @@ void processarLeituraControles(
 );
 
 void processarAjusteVolume(
-    long deslocamentoEncoder
+    long deslocamentoVolume
 );
 
 void processarNavegacaoRadios(
@@ -193,12 +193,14 @@ void loop() {
         lerControles();
 
     if (alarmeEmExecucao) {
-        if (leituraControles.cliqueDetectado) {
-            finalizarExecucaoAlarme(true);
-        } else if (leituraControles.deslocamentoEncoder != 0) {
+        if (leituraControles.deslocamentoEncoderVolume != 0) {
             processarAjusteVolume(
-                leituraControles.deslocamentoEncoder
+                leituraControles.deslocamentoEncoderVolume
             );
+        }
+
+        if (leituraControles.cliqueNavegacaoDetectado) {
+            finalizarExecucaoAlarme(true);
         } else {
             processarExecucaoAlarme();
         }
@@ -283,7 +285,7 @@ void iniciarExecucaoAlarme(const DisparoAlarme& disparo) {
     inicioPreparacaoFonteAlarmeMs = 0;
     proximaTentativaAudioAlarmeMs = 0;
 
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
     reproducaoPlayerSolicitada = false;
     playerObservouAudioAtivo = false;
@@ -529,7 +531,7 @@ void finalizarExecucaoAlarme(bool interrompidoPeloUsuario) {
         "Alarme finalizado: %s (%s).\n",
         alarmeAtual.nome.c_str(),
         interrompidoPeloUsuario
-            ? "clique no encoder"
+            ? "clique no encoder principal"
             : "limite de tempo"
     );
 
@@ -542,7 +544,7 @@ void finalizarExecucaoAlarme(bool interrompidoPeloUsuario) {
     alterarVolumeAudio(volumeAtual);
 
     estadoEquipamento = estadoAntesDoAlarme;
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
 
     switch (estadoAntesDoAlarme) {
@@ -582,7 +584,13 @@ void finalizarExecucaoAlarme(bool interrompidoPeloUsuario) {
 void processarLeituraControles(
     const LeituraControles& leitura
 ) {
-    if (leitura.cliqueLongoDetectado) {
+    if (leitura.deslocamentoEncoderVolume != 0) {
+        processarAjusteVolume(
+            leitura.deslocamentoEncoderVolume
+        );
+    }
+
+    if (leitura.cliqueVolumeDetectado) {
         if (estadoEquipamento != EstadoEquipamento::RELOGIO) {
             entrarEstadoRelogio();
         }
@@ -591,17 +599,19 @@ void processarLeituraControles(
     }
 
     if (estadoEquipamento == EstadoEquipamento::RELOGIO) {
-        if (leitura.cliqueDetectado) {
+        if (leitura.cliqueNavegacaoDetectado) {
             confirmarEstadoSelecionado();
-        } else if (leitura.deslocamentoEncoder != 0) {
-            processarNavegacaoEstados(leitura.deslocamentoEncoder);
+        } else if (leitura.deslocamentoEncoderNavegacao != 0) {
+            processarNavegacaoEstados(
+                leitura.deslocamentoEncoderNavegacao
+            );
         }
 
         return;
     }
 
-    if (leitura.cliqueDetectado) {
-        if (modoInterface == ModoInterface::VOLUME) {
+    if (leitura.cliqueNavegacaoDetectado) {
+        if (modoInterface == ModoInterface::REPOUSO) {
             if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
                 entrarModoSelecaoRadio();
             } else {
@@ -616,22 +626,34 @@ void processarLeituraControles(
         return;
     }
 
-    if (leitura.deslocamentoEncoder == 0) {
+    if (leitura.deslocamentoEncoderNavegacao == 0) {
         return;
     }
 
-    if (modoInterface == ModoInterface::VOLUME) {
-        processarAjusteVolume(
-            leitura.deslocamentoEncoder
-        );
-    } else if (modoInterface == ModoInterface::SELECAO_RADIO) {
+    if (modoInterface == ModoInterface::SELECAO_RADIO) {
         processarNavegacaoRadios(
-            leitura.deslocamentoEncoder
+            leitura.deslocamentoEncoderNavegacao
         );
-    } else {
+    } else if (modoInterface == ModoInterface::SELECAO_ARQUIVO) {
         processarNavegacaoArquivos(
-            leitura.deslocamentoEncoder
+            leitura.deslocamentoEncoderNavegacao
         );
+    } else if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
+        entrarModoSelecaoRadio();
+
+        if (modoInterface == ModoInterface::SELECAO_RADIO) {
+            processarNavegacaoRadios(
+                leitura.deslocamentoEncoderNavegacao
+            );
+        }
+    } else {
+        entrarModoSelecaoArquivo();
+
+        if (modoInterface == ModoInterface::SELECAO_ARQUIVO) {
+            processarNavegacaoArquivos(
+                leitura.deslocamentoEncoderNavegacao
+            );
+        }
     }
 }
 
@@ -642,7 +664,7 @@ void processarLeituraControles(
 void entrarEstadoRelogio() {
     estadoEquipamento = EstadoEquipamento::RELOGIO;
     indiceEstadoSelecionado = 0;
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
     reproducaoPlayerSolicitada = false;
     playerObservouAudioAtivo = false;
@@ -733,7 +755,7 @@ void entrarEstadoRadioWeb() {
     }
 
     estadoEquipamento = EstadoEquipamento::RADIO_WEB;
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
 
     solicitarReproducaoRadio(indiceRadioAtual);
@@ -753,7 +775,7 @@ void entrarEstadoPlayer() {
     }
 
     estadoEquipamento = EstadoEquipamento::PLAYER;
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
 
     int quantidadeArquivos = obterQuantidadeArquivosPlayer();
@@ -801,7 +823,8 @@ void entrarModoSelecaoRadio() {
 }
 
 void confirmarSelecaoRadio() {
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
+    barraVolumeVisivel = false;
 
     if (indiceRadioEmSelecao == indiceRadioAtual) {
         atualizarDisplayEstadoAudio(true);
@@ -809,7 +832,7 @@ void confirmarSelecaoRadio() {
         solicitarReproducaoRadio(indiceRadioEmSelecao);
     }
 
-    Serial.println("Rádio confirmada; modo: volume");
+    Serial.println("Rádio confirmada; modo: repouso");
 }
 
 void entrarModoSelecaoArquivo() {
@@ -846,6 +869,7 @@ void processarNavegacaoArquivos(long deslocamentoEncoder) {
 
     indiceArquivoEmSelecao = static_cast<int>(novoIndice);
     momentoUltimaAtividadeSelecaoMs = millis();
+    barraVolumeVisivel = false;
     mostrarArquivoAtualPlayer(true);
 
     const ArquivoPlayer* arquivo =
@@ -882,7 +906,8 @@ bool iniciarReproducaoArquivoPlayer(
 
     indiceArquivoAtual = indice;
     indiceArquivoEmSelecao = indice;
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
+    barraVolumeVisivel = false;
     reproducaoPlayerSolicitada = true;
     playerObservouAudioAtivo = false;
     mostrarArquivoAtualPlayer();
@@ -970,18 +995,18 @@ void mostrarArquivoAtualPlayer(bool emSelecao) {
 }
 
 // =====================================================
-// Modo volume
+// Volume dedicado
 // =====================================================
 
 void processarAjusteVolume(
-    long deslocamentoEncoder
+    long deslocamentoVolume
 ) {
     int volumeAnterior = alarmeEmExecucao
         ? static_cast<int>(alarmeAtual.volume)
         : volumeAtual;
 
     long novoVolume =
-        volumeAnterior + deslocamentoEncoder;
+        volumeAnterior + deslocamentoVolume;
 
     novoVolume = constrain(
         novoVolume,
@@ -996,14 +1021,20 @@ void processarAjusteVolume(
     int volumeAjustado = static_cast<int>(novoVolume);
 
     if (alarmeEmExecucao) {
-        // alarmeAtual é apenas a cópia em RAM do disparo. O cadastro
-        // persistido e o volume normal do equipamento permanecem intactos.
+        // O cadastro persistido permanece intacto. A partir do primeiro
+        // ajuste, o volume ouvido no alarme também se torna o volume geral
+        // que será conservado depois da restauração.
         alarmeAtual.volume = static_cast<uint8_t>(volumeAjustado);
-    } else {
-        volumeAtual = volumeAjustado;
     }
 
-    alterarVolumeAudio(volumeAjustado);
+    volumeAtual = volumeAjustado;
+
+    if (
+        alarmeEmExecucao ||
+        estadoEquipamento != EstadoEquipamento::RELOGIO
+    ) {
+        alterarVolumeAudio(volumeAjustado);
+    }
 
     if (alarmeEmExecucao) {
         mostrarAlarme(
@@ -1012,7 +1043,15 @@ void processarAjusteVolume(
         );
 
         Serial.printf(
-            "Volume temporario do alarme: %d\n",
+            "Volume do alarme e geral: %d\n",
+            volumeAjustado
+        );
+        return;
+    }
+
+    if (estadoEquipamento == EstadoEquipamento::RELOGIO) {
+        Serial.printf(
+            "Volume para a proxima fonte: %d\n",
             volumeAjustado
         );
         return;
@@ -1059,6 +1098,7 @@ void processarNavegacaoRadios(
         static_cast<int>(novoIndice);
 
     momentoUltimaAtividadeSelecaoMs = millis();
+    barraVolumeVisivel = false;
 
     Serial.print(
         "Selecionada: "
@@ -1083,7 +1123,7 @@ void processarNavegacaoRadios(
 }
 
 // =====================================================
-// Retorno automático do controle para volume
+// Retorno automático da navegação para o repouso
 // =====================================================
 
 void cancelarSelecaoRadioPorInatividade() {
@@ -1101,12 +1141,12 @@ void cancelarSelecaoRadioPorInatividade() {
         return;
     }
 
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
     indiceRadioEmSelecao = indiceRadioAtual;
     barraVolumeVisivel = false;
 
     Serial.println(
-        "Seleção cancelada por inatividade; modo: volume"
+        "Seleção cancelada por inatividade; modo: repouso"
     );
 
     atualizarDisplayEstadoAudio(true);
@@ -1124,7 +1164,7 @@ void cancelarSelecaoArquivoPorInatividade() {
         return;
     }
 
-    modoInterface = ModoInterface::VOLUME;
+    modoInterface = ModoInterface::REPOUSO;
     indiceArquivoEmSelecao = indiceArquivoAtual;
     barraVolumeVisivel = false;
     mostrarArquivoAtualPlayer();
@@ -1137,11 +1177,6 @@ void cancelarSelecaoArquivoPorInatividade() {
 // =====================================================
 
 void restaurarBarraAposTempoVolume() {
-    if (modoInterface != ModoInterface::VOLUME) {
-        barraVolumeVisivel = false;
-        return;
-    }
-
     if (!barraVolumeVisivel) {
         return;
     }
@@ -1156,9 +1191,24 @@ void restaurarBarraAposTempoVolume() {
     barraVolumeVisivel = false;
 
     if (estadoEquipamento == EstadoEquipamento::RADIO_WEB) {
-        atualizarDisplayEstadoAudio(true);
+        if (modoInterface == ModoInterface::SELECAO_RADIO) {
+            const Radio* radio =
+                obterRadio(indiceRadioEmSelecao);
+
+            if (radio != nullptr) {
+                mostrarSelecaoRadio(
+                    radio->nome,
+                    indiceRadioEmSelecao,
+                    obterQuantidadeRadios()
+                );
+            }
+        } else {
+            atualizarDisplayEstadoAudio(true);
+        }
     } else if (estadoEquipamento == EstadoEquipamento::PLAYER) {
-        mostrarArquivoAtualPlayer();
+        mostrarArquivoAtualPlayer(
+            modoInterface == ModoInterface::SELECAO_ARQUIVO
+        );
     }
 }
 
@@ -1283,8 +1333,7 @@ void atualizarDisplayEstadoAudio(
     );
 
     if (
-        modoInterface !=
-            ModoInterface::VOLUME ||
+        modoInterface == ModoInterface::SELECAO_RADIO ||
         barraVolumeVisivel
     ) {
         return;

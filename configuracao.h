@@ -24,14 +24,37 @@ constexpr int DISPLAY_LARGURA  = 128;
 constexpr int DISPLAY_ALTURA   = 64;
 constexpr int DISPLAY_ENDERECO = 0x3C;
 
-// Encoder rotativo principal
-constexpr int PIN_ENCODER_CLK = 15;
-constexpr int PIN_ENCODER_DT  = 16;
-constexpr int PIN_ENCODER_SW  = 7;
-constexpr int PIN_ENCODER_VCC = -1;
+struct ConfiguracaoEncoder {
+    int pinoDt;
+    int pinoClk;
+    int pinoBotao;
+    int pinoVcc;
+    uint8_t transicoesPorDetente;
+};
 
-// Cartão microSD do Player, em barramento SPI dedicado por software.
-constexpr int PIN_CARTAO_PLAYER_SCK  = 42;
+// O encoder principal navega e confirma opções. O valor de quatro transições
+// por detente foi confirmado no componente instalado.
+constexpr ConfiguracaoEncoder ENCODER_NAVEGACAO = {
+    16,  // DT
+    15,  // CLK
+    7,   // SW
+    -1,  // VCC ligado diretamente, sem GPIO de controle
+    4
+};
+
+// O segundo encoder controla o volume e seu botão leva uma fonte ativa ao
+// Relógio. A calibração começa em quatro e ainda deve ser confirmada no novo
+// componente em hardware.
+constexpr ConfiguracaoEncoder ENCODER_VOLUME = {
+    2,   // DT
+    1,   // CLK
+    42,  // SW
+    -1,  // VCC ligado diretamente, sem GPIO de controle
+    4
+};
+
+// Cartão microSD do Player, em barramento SPI com pinos explícitos.
+constexpr int PIN_CARTAO_PLAYER_SCK  = 38;
 constexpr int PIN_CARTAO_PLAYER_MISO = 41;
 constexpr int PIN_CARTAO_PLAYER_MOSI = 40;
 constexpr int PIN_CARTAO_PLAYER_CS   = 39;
@@ -40,10 +63,6 @@ constexpr int PIN_CARTAO_PLAYER_CS   = 39;
 // BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
 // Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
 // O GPIO46, situado entre esses grupos na placa, permanece sem conexão.
-
-// Valor calibrado para o encoder instalado: cada detente produz quatro
-// transições válidas reconhecidas pela biblioteca.
-constexpr int TRANSICOES_ENCODER_POR_DETENTE = 4;
 
 // =====================================================
 // Comportamento ajustável pelo usuário
@@ -69,7 +88,8 @@ constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 4000000;
 // retorna à primeira. A escolha manual de outro arquivo continua prevalecendo.
 constexpr bool REPRODUCAO_SEQUENCIAL_PLAYER = true;
 
-// O arquivo do alarme recomeça até o clique curto no encoder ou este limite.
+// O arquivo do alarme recomeça até o clique curto no encoder principal ou este
+// limite.
 // Um novo alarme sempre substitui o que estiver em execução.
 constexpr uint32_t DURACAO_MAXIMA_ALARME_MINUTOS = 30;
 
@@ -84,9 +104,9 @@ constexpr uint32_t TEMPO_LIMITE_CONEXAO_RADIO_ALARME_MS = 20000;
 constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
-// Tempo que o botão deve permanecer pressionado para levar Rádio Web ou Player
-// ao Relógio. Aumente para reduzir acionamentos acidentais.
-constexpr unsigned long TEMPO_CLIQUE_LONGO_ENCODER_MS = 2000;
+// Duração máxima aceita como clique curto nos dois encoders. Uma pressão mais
+// longa é descartada. Reduza para exigir um toque mais rápido.
+constexpr unsigned long TEMPO_MAXIMO_CLIQUE_CURTO_ENCODER_MS = 2000;
 
 // O LED alterna entre azul e apagado a cada intervalo.
 // Diminua o valor para piscar mais rápido; aumente para piscar mais devagar.
