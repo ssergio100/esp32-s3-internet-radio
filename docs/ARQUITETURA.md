@@ -84,7 +84,17 @@ Isso também pode ocorrer durante uma seleção; após o intervalo, a barra reto
 ao conteúdo da tela atual. O nome da estação e o diagnóstico superior continuam
 visíveis.
 
-Velocidade da rolagem e intervalo de renovação ficam em `configuracao.h`.
+`DisplayService` executa na mesma prioridade e no mesmo núcleo do `loop()`, mas
+com cadência própria. Assim, uma passagem demorada pelo servidor web não prende
+a animação à próxima volta do `loop()`. Um mutex protege o estado e o buffer
+gráfico porque mensagens, seleção e volume ainda podem solicitar desenhos pela
+tarefa principal. Se o serviço não puder ser criado, a chamada mantida no
+`loop()` assume automaticamente a atualização.
+
+Cada quadro avança no máximo um pixel. Quando o decoder ou outra tarefa atrasa
+uma atualização, o tempo perdido é descartado; ele não se transforma em um
+salto de vários pixels no quadro seguinte. Velocidade da rolagem, cadência da
+tarefa e intervalo de renovação ficam em `configuracao.h`.
 
 No estado Relógio, o mesmo módulo desenha quatro cartões grandes para `HH:MM`,
 com um corte horizontal que simula dígitos flip. A data completa ocupa uma
@@ -199,8 +209,10 @@ estações, inclusive a reserva, por `GET /api/radios-alarmes`.
 
 O estado Relógio não é um modo de baixo consumo. A versão instalada da
 ESP32-audioI2S encerra o stream, mas não oferece uma chamada pública para parar
-o I2S; sem controlar fisicamente `SD_MODE`, o firmware não garante shutdown dos
-amplificadores.
+o I2S. Na montagem básica do PCM5102A, `XSMT` fica fixo em nível alto; sem seu
+controle por GPIO, o firmware não garante mute/standby físico explícito do DAC.
+Essa evolução e o eventual enable do amplificador analógico estão registrados
+em `docs/MIGRACAO_AUDIO_PCM5102A.md`.
 
 ### Relógio
 

@@ -10,10 +10,11 @@
 // LED RGB integrado à placa
 #define PIN_LED_RGB 48
 
-// Amplificador de áudio I2S MAX98357A
-constexpr int PIN_MAX98357A_BCLK = 5;
-constexpr int PIN_MAX98357A_LRC  = 6;
-constexpr int PIN_MAX98357A_DIN  = 4;
+// DAC estéreo I2S PCM5102A. O módulo usa o BCK como referência para a PLL
+// interna; SCK deve permanecer em GND e não consome um GPIO do ESP32-S3.
+constexpr int PIN_PCM5102A_BCK  = 5;
+constexpr int PIN_PCM5102A_LRCK = 6;  // Rotulado LCK no módulo.
+constexpr int PIN_PCM5102A_DIN  = 4;
 
 // Barramento I2C compartilhado pelo display OLED e pelo RTC DS3231.
 // Estes pinos mantêm o barramento fora do grupo reservado às válvulas Nixie.
@@ -123,11 +124,21 @@ constexpr unsigned long INTERVALO_PASSO_ROLAGEM_PLAYER_MS = 80;
 // A faixa superior mostra codec, bitrate, buffer e dados passivos do Wi-Fi.
 // O primeiro intervalo controla a velocidade da rolagem para a direita.
 // O segundo controla a frequência de renovação dos valores exibidos.
-constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS = 13;
+constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS = 40;
 constexpr unsigned long INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS = 1000;
 
 // A data completa no rodapé do relógio avança um pixel a cada passo.
 constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS = 80;
+
+// A tarefa do display acorda quatro vezes dentro do menor intervalo de
+// rolagem. Isso desacopla a animação do servidor web sem aumentar a prioridade
+// sobre o loop da interface ou sobre o decodificador de áudio.
+constexpr uint32_t INTERVALO_SERVICO_DISPLAY_MS =
+    INTERVALO_PASSO_ROLAGEM_NOME_MS / 4;
+static_assert(
+    INTERVALO_SERVICO_DISPLAY_MS > 0,
+    "O intervalo do servico do display deve ser positivo."
+);
 
 // Diagnóstico
 constexpr unsigned long INTERVALO_TELEMETRIA_SERIAL_MS = 5000;

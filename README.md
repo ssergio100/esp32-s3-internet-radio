@@ -1,6 +1,7 @@
 # Rádio Web para ESP32-S3
 
-Firmware de rádio web com Player MP3, alarmes, saída I2S, display OLED,
+Firmware de rádio web com Player MP3, alarmes, DAC estéreo I2S PCM5102A,
+saída analógica de linha, display OLED,
 dois encoders, LED RGB, persistência em FFat e interface HTTP para
 administração.
 
@@ -54,9 +55,10 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `TEMPO_MAXIMO_CLIQUE_CURTO_ENCODER_MS` | Duração máxima aceita como clique curto | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 40 ms |
 | `INTERVALO_PASSO_ROLAGEM_PLAYER_MS` | Intervalo para o nome do arquivo avançar um pixel | 80 ms |
-| `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 13 ms |
+| `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 40 ms |
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
 | `INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS` | Intervalo para a data do relógio avançar um pixel | 80 ms |
+| `INTERVALO_SERVICO_DISPLAY_MS` | Cadência da tarefa do OLED, derivada da rolagem do nome | 10 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
 | `ENCODER_NAVEGACAO` | Pinos e calibração do encoder principal | DT=16, CLK=15, SW=7, 4 transições |
@@ -74,11 +76,22 @@ mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
 vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
 
+A animação do OLED roda em uma tarefa própria, na mesma prioridade do `loop()`.
+Cada quadro avança no máximo um pixel; atrasos são descartados em vez de serem
+compensados por saltos. O `loop()` conserva uma chamada de contingência que só
+atua se a tarefa do display não puder ser criada.
+
 O sketch independente
 `examples/teste_ds3231sn/teste_ds3231sn.ino` valida o RTC DS3231SN pela porta
 serial antes de sua integração ao firmware. Ele compartilha com o OLED o I2C
 em `SDA=GPIO17` e `SCL=GPIO18`, identifica os dispositivos do barramento e lê
 data, hora, temperatura e o indicador de perda de alimentação.
+
+A ligação e a preparação do novo módulo de áudio estão registradas em
+[`docs/MIGRACAO_AUDIO_PCM5102A.md`](docs/MIGRACAO_AUDIO_PCM5102A.md). O
+PCM5102A usa I2S, não I2C, e entrega dois canais em nível de linha. Portanto,
+alto-falantes passivos continuam exigindo um amplificador estéreo analógico
+depois do DAC.
 
 A organização física reserva oito pinos na parte inferior do mesmo lado da
 placa para o futuro driver das Nixies: `GPIO8`, `GPIO3`, `GPIO9` e `GPIO10`
@@ -262,9 +275,10 @@ volume começa com o mesmo valor em configuração separada e ainda precisa de
 confirmação no novo componente em hardware.
 
 O estado `Relógio` encerra o stream e suspende a tarefa de serviço, mas a
-biblioteca ESP32-audioI2S não expõe ao firmware a parada pública do I2S. Sem um
-controle elétrico de `SD_MODE`, não se deve interpretar esse estado como
-shutdown de baixo consumo dos amplificadores.
+biblioteca ESP32-audioI2S não expõe ao firmware a parada pública do I2S. Na
+montagem básica, `XSMT` fica fixo em nível alto; portanto, o firmware ainda não
+dispõe de mute/standby físico explícito do PCM5102A. O controle de `XSMT` por
+GPIO está registrado como melhoria futura.
 
 ## Lista de rádios
 

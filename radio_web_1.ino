@@ -187,6 +187,8 @@ void setup() {
 void loop() {
     processarRelogio();
     processarAgendamentoAlarmes();
+
+    // Contingência: retorna imediatamente quando DisplayService está ativo.
     processarDisplay();
 
     LeituraControles leituraControles =

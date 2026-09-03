@@ -46,8 +46,8 @@ void mostrarArquivoPlayer(
 void mostrarAlarme(const String& nome, int volume);
 
 /*
- * Deve ser chamada continuamente no loop().
- * Atualiza a tela correspondente ao estado atual do equipamento.
+ * Mantém compatibilidade como caminho de contingência no loop(). Quando o
+ * serviço dedicado foi criado, somente a tarefa do display faz a atualização.
  */
 void processarDisplay();
 

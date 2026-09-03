@@ -20,6 +20,43 @@ namespace {
     );
 
     bool disponivel = false;
+    SemaphoreHandle_t mutexDisplay = nullptr;
+    TaskHandle_t tarefaDisplayHandle = nullptr;
+
+    class BloqueioDisplay {
+    public:
+        BloqueioDisplay() {
+            if (mutexDisplay == nullptr) {
+                adquirido = true;
+                return;
+            }
+
+            adquirido =
+                xSemaphoreTake(
+                    mutexDisplay,
+                    portMAX_DELAY
+                ) == pdTRUE;
+        }
+
+        ~BloqueioDisplay() {
+            if (
+                adquirido &&
+                mutexDisplay != nullptr
+            ) {
+                xSemaphoreGive(mutexDisplay);
+            }
+        }
+
+        bool foiAdquirido() const {
+            return adquirido;
+        }
+
+        BloqueioDisplay(const BloqueioDisplay&) = delete;
+        BloqueioDisplay& operator=(const BloqueioDisplay&) = delete;
+
+    private:
+        bool adquirido = false;
+    };
 
     enum class TelaDisplay {
         MENSAGEM,
@@ -364,9 +401,9 @@ namespace {
         display.print(texto);
     }
 
-    // Chame periodicamente no loop. A posição considera todos os intervalos
-    // transcorridos, mesmo quando a transferência do OLED demora mais que um
-    // passo. Assim, a velocidade não fica limitada a um pixel por quadro.
+    // Avança somente um pixel por quadro apresentado. Se uma atualização
+    // atrasar, o instante anterior é descartado em vez de acumular passos e
+    // produzir um salto visível quando a tarefa voltar a executar.
     bool avancarFaixaRolante(
         const ConfiguracaoFaixaRolante& configuracao,
         EstadoFaixaRolante& estado,
@@ -383,16 +420,11 @@ namespace {
             );
         unsigned long tempoDecorridoMs =
             agoraMs - estado.momentoUltimoPassoMs;
-        unsigned long quantidadePassos =
-            tempoDecorridoMs / intervaloPassoMs;
-
-        if (quantidadePassos == 0) {
+        if (tempoDecorridoMs < intervaloPassoMs) {
             return false;
         }
 
-        // Preserva a fração de intervalo que ainda não completou um passo.
-        estado.momentoUltimoPassoMs +=
-            quantidadePassos * intervaloPassoMs;
+        estado.momentoUltimoPassoMs = agoraMs;
 
         int larguraCicloRolagemPx =
             estado.larguraTextoPx +
@@ -401,15 +433,8 @@ namespace {
         int passoHorizontalPx =
             static_cast<int>(configuracao.sentido);
 
-        int passosDentroDoCiclo =
-            quantidadePassos % larguraCicloRolagemPx;
-
-        if (passosDentroDoCiclo == 0) {
-            return false;
-        }
-
         estado.posicaoHorizontalPx +=
-            passoHorizontalPx * passosDentroDoCiclo;
+            passoHorizontalPx;
 
         if (
             (
@@ -999,9 +1024,34 @@ namespace {
         desenharTelaRadio();
     }
 
+    void tarefaDisplay(void* parametro) {
+        (void)parametro;
+
+        TickType_t proximaExecucao = xTaskGetTickCount();
+
+        while (true) {
+            processarDisplay();
+
+            xTaskDelayUntil(
+                &proximaExecucao,
+                pdMS_TO_TICKS(
+                    INTERVALO_SERVICO_DISPLAY_MS
+                )
+            );
+        }
+    }
+
 }
 
 void iniciarDisplay() {
+    mutexDisplay = xSemaphoreCreateMutex();
+
+    if (mutexDisplay == nullptr) {
+        Serial.println(
+            "Falha ao criar a protecao do display; usando o loop principal."
+        );
+    }
+
     Wire.begin(
         PIN_BARRAMENTO_I2C_SDA,
         PIN_BARRAMENTO_I2C_SCL
@@ -1022,11 +1072,48 @@ void iniciarDisplay() {
 
     prepararTela();
     mostrarMensagem("Inicializando");
+
+    if (mutexDisplay == nullptr) {
+        return;
+    }
+
+    BaseType_t criada =
+        xTaskCreatePinnedToCore(
+            tarefaDisplay,
+            "DisplayService",
+            getArduinoLoopTaskStackSize(),
+            nullptr,
+            tskIDLE_PRIORITY + 1,
+            &tarefaDisplayHandle,
+            ARDUINO_RUNNING_CORE
+        );
+
+    if (criada != pdPASS) {
+        tarefaDisplayHandle = nullptr;
+
+        Serial.println(
+            "Falha ao criar o servico do display; usando o loop principal."
+        );
+    } else {
+        Serial.printf(
+            "Servico do display iniciado no nucleo %d, intervalo %lu ms.\n",
+            ARDUINO_RUNNING_CORE,
+            static_cast<unsigned long>(
+                INTERVALO_SERVICO_DISPLAY_MS
+            )
+        );
+    }
 }
 
 void mostrarMensagem(
     const String& mensagem
 ) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1049,6 +1136,12 @@ void mostrarNomeRadio(
     int indiceAtual,
     int quantidadeRadios
 ) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1106,6 +1199,12 @@ void mostrarSelecaoRadio(
     int indiceSelecionado,
     int quantidadeRadios
 ) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     mostrarTextoEstaticoNaFaixaCentral(
         nome,
         indiceSelecionado,
@@ -1119,6 +1218,12 @@ void mostrarEstadoRadio(
     int indiceAtual,
     int quantidadeRadios
 ) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     mostrarTextoEstaticoNaFaixaCentral(
         estado,
         indiceAtual,
@@ -1130,6 +1235,12 @@ void mostrarEstadoRadio(
 void mostrarVolume(
     int volume
 ) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1145,6 +1256,12 @@ void mostrarVolume(
 }
 
 void mostrarTelaRelogio() {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1159,6 +1276,12 @@ void mostrarTelaRelogio() {
 }
 
 void mostrarOpcaoEstado(const String& opcao) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1182,6 +1305,12 @@ void mostrarArquivoPlayer(
     int quantidadeArquivos,
     bool emSelecao
 ) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1210,6 +1339,12 @@ void mostrarArquivoPlayer(
 }
 
 void mostrarAlarme(const String& nome, int volume) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1247,6 +1382,12 @@ void mostrarAlarme(const String& nome, int volume) {
 }
 
 void mostrarConfiguracaoWifi() {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }
@@ -1274,6 +1415,19 @@ void mostrarConfiguracaoWifi() {
 }
 
 void processarDisplay() {
+    if (
+        tarefaDisplayHandle != nullptr &&
+        xTaskGetCurrentTaskHandle() != tarefaDisplayHandle
+    ) {
+        return;
+    }
+
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido()) {
+        return;
+    }
+
     if (!disponivel) {
         return;
     }

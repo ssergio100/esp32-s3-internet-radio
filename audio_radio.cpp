@@ -1113,9 +1113,9 @@ bool iniciarAudio(int volume) {
 
     bool i2sIniciado =
         audio.setPinout(
-            PIN_MAX98357A_BCLK,
-            PIN_MAX98357A_LRC,
-            PIN_MAX98357A_DIN
+            PIN_PCM5102A_BCK,
+            PIN_PCM5102A_LRCK,
+            PIN_PCM5102A_DIN
         );
 
     if (!i2sIniciado) {
