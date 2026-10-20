@@ -360,9 +360,7 @@ void carregarAlarmes() {
             }
         }
 
-        if (item["arquivo"].is<const char*>()) {
-            alarme.arquivo = item["arquivo"].as<const char*>();
-        }
+        // arquivo não suportado (removido suporte a Player SD)
 
         quantidadeAlarmes++;
     }
@@ -439,7 +437,7 @@ bool verificarDisparoAlarme(DisparoAlarme& disparo) {
     disparo.id = escolhido.id;
     disparo.radioId = escolhido.radioId;
     disparo.nome = escolhido.nome;
-    disparo.arquivo = escolhido.arquivo;
+    disparo.arquivo = "";
     disparo.volume = escolhido.volume;
 
     return true;

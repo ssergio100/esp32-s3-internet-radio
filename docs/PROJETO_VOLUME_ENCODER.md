@@ -1,41 +1,32 @@
-# Projeto: segundo encoder dedicado ao volume
+# Projeto: encoders e resposta da interface
 
-Documento de avaliação e registro da separação física entre navegação e volume.
-O encoder principal está dedicado à navegação e um segundo encoder cuida
-exclusivamente do volume. Qualquer mudança desse comportamento deve manter este
-documento e o código coerentes.
+Este documento registra o contrato dos dois encoders e o caminho de baixa
+latência entre a entrada física, o áudio e o OLED.
 
 ## Estado
 
-Implementado no código. Compilação, gravação e validação em hardware permanecem
-pendentes.
+Implementado e compilado para ESP32-S3. A validação final no equipamento
+físico permanece obrigatória, pois o ambiente de compilação não possui uma
+porta serial conectada.
 
-## Decisões registradas
+## Contrato da interface
 
-1. O encoder principal é usado somente para navegação e confirmação.
-2. O encoder 2 é o único controle físico de volume. Seu giro ajusta o
-   volume independentemente do modo de navegação apresentado pelo encoder
-   principal.
-3. Um toque curto no botão do encoder 2, ligado ao GPIO42, leva Rádio Web ou
-   Player ao estado `Relógio`. No Relógio e durante alarmes, ele não executa
-   ação.
-4. Não haverá potenciômetro, leitura ADC, filtro analógico, média móvel ou banda
-   morta de tensão.
-5. O campo `volume` dos alarmes permanece em JSON, validação, persistência e
-   página web. Ele determina o volume no início do alarme.
+1. O encoder 1 controla o volume pelo giro.
+2. Fora de alarmes, um clique curto no encoder 1 alterna diretamente entre
+   `RADIO_WEB` e `RELOGIO`. A volta ao rádio inicia a reconexão Wi-Fi de forma
+   assíncrona. Os encoders continuam sendo lidos durante a espera, mas o
+   encoder 2 permanece inativo enquanto a Rádio Web ainda não foi ativada.
+3. O encoder 2 percorre somente a lista de rádios. Girar a partir do repouso
+   abre a seleção e aplica o deslocamento no mesmo ciclo.
+4. Um clique curto no encoder 2 abre a seleção quando ela está fechada e
+   confirma a estação quando ela está aberta.
+5. No Relógio, o encoder 2 não executa ação. Durante um alarme, seu clique
+   continua encerrando o alarme.
+6. Pressões longas são reconhecidas e descartadas; não viram clique ao soltar.
 
-## Ligações aprovadas
+## Ligações em uso
 
-### Encoder principal: navegação
-
-| Sinal | GPIO |
-| --- | ---: |
-| DT | 16 |
-| CLK | 15 |
-| SW | 7 |
-| VCC controlado | não usado (`-1`) |
-
-### Encoder 2: volume
+### Encoder 1: volume e fonte
 
 | Sinal | GPIO |
 | --- | ---: |
@@ -44,145 +35,68 @@ pendentes.
 | SW | 42 |
 | VCC controlado | não usado (`-1`) |
 
-GPIO1, GPIO2 e GPIO42 são consecutivos no mesmo conector da revisão inicial da
-ESP32-S3-DevKitC-1. O botão no GPIO42 é o comando de desligamento da fonte
-ativa.
+### Encoder 2: rádios
 
-### Cartão microSD
+| Sinal | GPIO |
+| --- | ---: |
+| DT | 41 |
+| CLK | 40 |
+| SW | 39 |
+| VCC controlado | não usado (`-1`) |
 
-Para liberar o GPIO42, o clock do microSD foi transferido para o GPIO38:
+Os dois componentes usam quatro transições por detente. Essa calibração
+deve ser confirmada no hardware instalado; se um componente for diferente, a
+alteração fica restrita ao respectivo `ConfiguracaoEncoder`.
 
-| Sinal | GPIO atual | GPIO aprovado |
-| --- | ---: | ---: |
-| SCK | 42 | 38 |
-| MISO | 41 | 41 |
-| MOSI | 40 | 40 |
-| CS | 39 | 39 |
+## Captura dos passos
 
-O Player já fornece os quatro pinos explicitamente a `SPI.begin()`, portanto a
-troca não exige mudar sua arquitetura. O GPIO38 não integra o grupo GPIO33–37
-ocupado pela PSRAM OPI. Na revisão inicial da DevKitC-1, identificada pelo LED
-RGB no GPIO48, ele permanece disponível. Essa identificação deve ser confirmada
-no hardware antes de refazer a ligação.
+Cada encoder possui uma instância de `AiEsp32RotaryEncoder` 1.7 e uma ISR
+própria. A ISR registra as transições mesmo quando outra tarefa está ocupada;
+`encoderChanged()` entrega o deslocamento assinado acumulado desde a leitura
+anterior. A aceleração está desativada para que um detente corresponda a um
+passo da aplicação.
 
-## Representação da configuração
+Não é aplicado limite artificial de `-10000..10000`: permanecem os limites
+nativos amplos da biblioteca, evitando saturação depois de uso prolongado.
 
-As ligações ficam centralizadas em `configuracao.h`, agrupadas por componente
-para evitar listas de constantes soltas. A implementação é equivalente a:
+## Caminho de baixa latência
 
-```cpp
-struct ConfiguracaoEncoder {
-    int pinoDt;
-    int pinoClk;
-    int pinoBotao;
-    int pinoVcc;
-    uint8_t transicoesPorDetente;
-};
+- O `loop()` lê os controles antes dos serviços cooperativos.
+- Ajustes consecutivos de volume não ocupam a fila geral de comandos. Um valor
+  atômico conserva sempre o ajuste mais recente e a tarefa de áudio o aplica no
+  próximo ciclo.
+- No caminho normal, com `DisplayService` ativa, as APIs do display não
+  transferem o framebuffer I2C no contexto do `loop()`. Elas atualizam o
+  modelo, marcam a tela como pendente e acordam a tarefa. Se a criação da
+  tarefa falhar, o caminho de contingência faz a apresentação no chamador.
+- Notificações repetidas do OLED são consolidadas. Se o usuário girar rápido,
+  a próxima imagem apresenta o estado mais novo em vez de transmitir todos os
+  quadros intermediários.
+- Com a tarefa ativa, a transferência I2C ocorre fora do mutex do modelo.
+  Assim, uma nova leitura de encoder não espera o envio integral do framebuffer
+  do SSD1306.
 
-constexpr ConfiguracaoEncoder ENCODER_NAVEGACAO = {
-    16, 15, 7, -1, 4
-};
+## Volume no Relógio
 
-constexpr ConfiguracaoEncoder ENCODER_VOLUME = {
-    2, 1, 42, -1, 4
-};
-```
+O giro do encoder 1 no Relógio altera o volume reservado para a próxima
+ativação da rádio. Na próxima apresentação, o rodapé do OLED mostra a barra
+e o valor; depois de `TEMPO_BARRA_VOLUME_MS`, a data volta automaticamente.
 
-O número de transições por detente do encoder 2 permanece separado. Ele começa
-em `4`, única calibração disponível no projeto, mas ainda precisa ser confirmado
-no novo componente em hardware. Um resultado diferente deve alterar somente
-`ENCODER_VOLUME`.
+## Validação física obrigatória
 
-`controles.cpp` constrói explicitamente as duas instâncias da biblioteca. Uma
-função auxiliar reúne apenas a sequência comum de inicialização; não existe uma
-fábrica que devolva objetos de encoder, pois cada instância
-precisa manter identidade estável para sua própria ISR.
+1. Girar cada encoder lentamente nos dois sentidos e confirmar exatamente um
+   passo por detente.
+2. Girar cada encoder rapidamente por pelo menos dez voltas, nos dois sentidos,
+   e comparar a posição final com a quantidade de detentes aplicada.
+3. Ajustar volume enquanto nome e diagnóstico estão rolando; o som deve reagir
+   sem aguardar o OLED, e a tela deve convergir diretamente ao valor mais novo.
+4. Navegar por toda a lista, dar a volta nas duas extremidades e confirmar uma
+   rádio diferente.
+5. Alternar repetidamente Rádio/Relógio pelo encoder 1, inclusive com Wi-Fi
+   demorando para reassociar; o encoder deve continuar respondendo.
+6. Validar os dois cliques curtos, o descarte de pressão longa e os controles
+   durante um alarme.
+7. Repetir os testes após reset e ciclo completo de energia.
 
-## Eventos publicados pelos controles
-
-`LeituraControles` distingue as duas origens:
-
-```cpp
-struct LeituraControles {
-    bool cliqueNavegacaoDetectado = false;
-    bool cliqueVolumeDetectado = false;
-    long deslocamentoEncoderNavegacao = 0;
-    long deslocamentoEncoderVolume = 0;
-};
-```
-
-Cada encoder tem uma ISR de rotação que chama `readEncoder_ISR()` na instância
-correta. A leitura usa diretamente o deslocamento assinado de
-`encoderChanged()`, preservando todos os passos acumulados. A aceleração fica
-desabilitada. Contador paralelo, debounce de rotação e filtro de direção só
-devem ser acrescentados se um comportamento observado no hardware os justificar.
-
-Cada botão possui sua própria interrupção e sua própria máquina de confirmação.
-O firmware publica somente cliques curtos: uma pressão que alcance
-`TEMPO_MAXIMO_CLIQUE_CURTO_ENCODER_MS` é descartada ao soltar. Assim, o antigo
-clique longo do encoder principal deixa de levar o equipamento ao Relógio e uma
-pressão longa no encoder de volume também não aciona o desligamento.
-
-## Comportamento da interface
-
-- `ModoInterface::VOLUME` foi substituído por `ModoInterface::REPOUSO`.
-- No repouso, o giro do encoder principal abre a seleção da fonte atual e
-  aplica o deslocamento recebido. O clique curto também continua abrindo a
-  seleção.
-- Durante uma seleção, o encoder principal navega, o clique curto confirma e a
-  inatividade continua cancelando a seleção.
-- No Relógio, o encoder principal continua percorrendo e confirmando os
-  estados do equipamento.
-- O giro do encoder 2 nunca navega por estações, arquivos ou estados. Ele ajusta
-  somente o volume.
-- Um toque curto no encoder 2 leva Rádio Web ou Player ao Relógio. Esse evento é
-  ignorado no próprio Relógio e durante alarmes.
-
-## Boot, alarmes e display
-
-- Como o encoder é relativo, `volumeAtual` começa em
-  `VOLUME_PADRAO`, salvo se uma futura decisão introduzir persistência do último
-  volume. Não existe posição física absoluta para ler no boot.
-- O alarme começa no volume cadastrado. Se o encoder 2 for girado durante sua
-  execução, o ajuste parte do volume efetivamente ouvido e passa a ser também o
-  novo `volumeAtual` geral. Sem movimento, o volume geral anterior permanece
-  disponível para restauração ao final.
-- `mostrarVolume()` exibe temporariamente a barra inferior após
-  cada alteração feita pelo encoder 2.
-- A tela de alarme mostra o volume efetivo corrente.
-
-## Balanço da implementação
-
-| Área | Efeito implementado |
-| --- | --- |
-| `configuracao.h` | agrupamento das duas configurações e SCK do SD no GPIO38 |
-| `controles.cpp/.h` | segunda instância, segunda ISR e dois deslocamentos publicados |
-| `radio_web_1.ino` | volume dedicado e simplificação dos modos do encoder principal |
-| Novo módulo de volume | desnecessário |
-| APIs de áudio, display, persistência e web | interfaces preservadas |
-
-O diff atual dos quatro arquivos de firmware envolvidos apresenta crescimento
-líquido de 136 linhas. Esse total inclui nomes mais explícitos, comentários e a
-substituição do antigo modo de volume pelo repouso da navegação; não representa
-apenas a segunda instância da biblioteca.
-
-## Plano de validação
-
-1. Confirmar visualmente a revisão da placa e que o LED RGB instalado usa o
-   GPIO48, deixando o GPIO38 livre.
-2. Mover somente o SCK para GPIO38 e validar montagem, catálogo, leitura e
-   reprodução prolongada do microSD a 4 MHz.
-3. Validar independentemente o sentido e as transições por detente do encoder
-   2 antes de fixar sua calibração.
-4. Confirmar que movimentos rápidos preservam todos os passos e não interferem
-   no encoder principal.
-5. Confirmar que o toque curto no botão do encoder 2 leva Rádio Web e Player ao
-   Relógio, mas não interfere durante alarmes nem no próprio Relógio.
-6. Confirmar que uma pressão longa nos dois botões não produz clique curto.
-7. Validar volume em Rádio Web, Player, Relógio e durante alarmes.
-8. Repetir as regressões críticas de alarmes: arquivo local com Wi-Fi desligado
-   e Relógio para alarme Rádio Web no perfil Rádio.
-
-`README.md`, `AGENTS.md` e `docs/ARQUITETURA.md` descrevem a implementação. O
-projeto só poderá ser considerado validado depois dos testes físicos listados
-acima.
+Compilação confirma integração e tipos; somente estes testes no equipamento
+confirmam contato elétrico, quantidade real de transições e resposta percebida.

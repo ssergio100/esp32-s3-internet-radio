@@ -12,14 +12,14 @@
 
 // DAC estéreo I2S PCM5102A. O módulo usa o BCK como referência para a PLL
 // interna; SCK deve permanecer em GND e não consome um GPIO do ESP32-S3.
-constexpr int PIN_PCM5102A_BCK  = 5;
-constexpr int PIN_PCM5102A_LRCK = 6;  // Rotulado LCK no módulo.
-constexpr int PIN_PCM5102A_DIN  = 4;
+constexpr int PIN_PCM5102A_BCK  = 12;
+constexpr int PIN_PCM5102A_LRCK = 10;  // Rotulado LCK no módulo.
+constexpr int PIN_PCM5102A_DIN  = 11;
 
 // Barramento I2C compartilhado pelo display OLED e pelo RTC DS3231.
 // Estes pinos mantêm o barramento fora do grupo reservado às válvulas Nixie.
-constexpr int PIN_BARRAMENTO_I2C_SDA = 17;
-constexpr int PIN_BARRAMENTO_I2C_SCL = 18;
+constexpr int PIN_BARRAMENTO_I2C_SDA = 16;
+constexpr int PIN_BARRAMENTO_I2C_SCL = 17;
 
 constexpr int DISPLAY_LARGURA  = 128;
 constexpr int DISPLAY_ALTURA   = 64;
@@ -33,32 +33,31 @@ struct ConfiguracaoEncoder {
     uint8_t transicoesPorDetente;
 };
 
-// O encoder principal navega e confirma opções. O valor de quatro transições
-// por detente foi confirmado no componente instalado.
-constexpr ConfiguracaoEncoder ENCODER_NAVEGACAO = {
-    16,  // DT
-    15,  // CLK
-    7,   // SW
+// O primeiro encoder ajusta o volume e seu botão alterna entre Rádio Web e
+// Relógio. Quatro transições por detente foram confirmadas no componente.
+constexpr ConfiguracaoEncoder ENCODER_VOLUME  = {
+    2,  // DT
+    1,  // CLK
+    42,   // SW
     -1,  // VCC ligado diretamente, sem GPIO de controle
     4
 };
 
-// O segundo encoder controla o volume e seu botão leva uma fonte ativa ao
-// Relógio. A calibração começa em quatro e ainda deve ser confirmada no novo
-// componente em hardware.
-constexpr ConfiguracaoEncoder ENCODER_VOLUME = {
-    2,   // DT
-    1,   // CLK
-    42,  // SW
+// O segundo encoder percorre a lista de rádios e seu botão confirma a estação.
+// A calibração de quatro transições deve ser confirmada no hardware instalado.
+constexpr ConfiguracaoEncoder ENCODER_NAVEGACAO = {
+    41,   // DT
+    40,   // CLK
+    39,  // SW
     -1,  // VCC ligado diretamente, sem GPIO de controle
     4
 };
 
 // Cartão microSD do Player, em barramento SPI com pinos explícitos.
-constexpr int PIN_CARTAO_PLAYER_SCK  = 38;
-constexpr int PIN_CARTAO_PLAYER_MISO = 41;
-constexpr int PIN_CARTAO_PLAYER_MOSI = 40;
-constexpr int PIN_CARTAO_PLAYER_CS   = 39;
+// constexpr int PIN_CARTAO_PLAYER_SCK  = 38;
+// constexpr int PIN_CARTAO_PLAYER_MISO = 41;
+// constexpr int PIN_CARTAO_PLAYER_MOSI = 40;
+// constexpr int PIN_CARTAO_PLAYER_CS   = 39;
 
 // Reservados para o futuro driver das quatro válvulas Nixie:
 // BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
@@ -169,7 +168,7 @@ constexpr int NUCLEO_DECODIFICADOR_AUDIO = 1;
 constexpr int NUCLEO_SERVICO_AUDIO = 0;
 constexpr uint32_t PILHA_SERVICO_AUDIO_BYTES = 12288;
 constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_RADIO = 3;
-constexpr UBaseType_t PRIORIDADE_SERVICO_AUDIO_PLAYER = 1;
+
 constexpr uint32_t INTERVALO_SERVICO_AUDIO_RADIO_MS = 1;
 constexpr uint32_t INTERVALO_SERVICO_AUDIO_PLAYER_MS = 3;
 

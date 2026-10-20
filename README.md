@@ -1,9 +1,8 @@
 # Rádio Web para ESP32-S3
 
-Firmware de rádio web com Player MP3, alarmes, DAC estéreo I2S PCM5102A,
-saída analógica de linha, display OLED,
-dois encoders, LED RGB, persistência em FFat e interface HTTP para
-administração.
+Firmware de rádio web e relógio com alarmes, DAC estéreo I2S PCM5102A,
+saída analógica de linha, display OLED, dois encoders, LED RGB, persistência
+em FFat e interface HTTP para administração.
 
 ## Por onde começar
 
@@ -18,12 +17,11 @@ separados por responsabilidade:
 | `api_alarmes.cpp` | Cadastro, edição e exclusão dos alarmes pela rede |
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
-| `audio_radio.cpp` | Serviço exclusivo para rádio web ou arquivo local |
+| `audio_radio.cpp` | Serviço dedicado de rádio web e som padrão dos alarmes |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
-| `display_radio.cpp` | Telas dos estados Rádio Web, Player e Relógio |
+| `display_radio.cpp` | Modelo e tarefa das telas Rádio Web e Relógio |
 | `controles.cpp` | Leitura dos dois encoders e de seus botões |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
-| `player.cpp` | Montagem do microSD e catálogo MP3 de `/sons` |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
 | `persistencia_radios.cpp` | Validação e gravação segura dos arquivos de rádios |
 | `persistencia_alarmes.cpp` | Validação e gravação segura dos arquivos de alarmes |
@@ -54,20 +52,17 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `TEMPO_INATIVIDADE_SELECAO_MS` | Tempo para cancelar a seleção inativa | 10000 ms |
 | `TEMPO_MAXIMO_CLIQUE_CURTO_ENCODER_MS` | Duração máxima aceita como clique curto | 2000 ms |
 | `INTERVALO_PASSO_ROLAGEM_NOME_MS` | Intervalo para o nome avançar um pixel | 40 ms |
-| `INTERVALO_PASSO_ROLAGEM_PLAYER_MS` | Intervalo para o nome do arquivo avançar um pixel | 80 ms |
 | `INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS` | Intervalo para o diagnóstico avançar um pixel | 40 ms |
 | `INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS` | Renovação dos valores exibidos no diagnóstico | 1000 ms |
 | `INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS` | Intervalo para a data do relógio avançar um pixel | 80 ms |
 | `INTERVALO_SERVICO_DISPLAY_MS` | Cadência da tarefa do OLED, derivada da rolagem do nome | 10 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
-| `ENCODER_NAVEGACAO` | Pinos e calibração do encoder principal | DT=16, CLK=15, SW=7, 4 transições |
-| `ENCODER_VOLUME` | Pinos e calibração inicial do encoder de volume | DT=2, CLK=1, SW=42, 4 transições |
+| `ENCODER_VOLUME` | Encoder 1: volume e alternância Rádio/Relógio | DT=2, CLK=1, SW=42, 4 transições |
+| `ENCODER_NAVEGACAO` | Encoder 2: navegação e confirmação de rádios | DT=41, CLK=40, SW=39, 4 transições |
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 | `INTERVALO_SINCRONIZACAO_NTP_MS` | Intervalo entre correções pela rede | 3600000 ms |
 | `DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS` | Diferença mínima para regravar o DS3231 | 2 segundos |
-| `FREQUENCIA_CARTAO_PLAYER_HZ` | Frequência SPI do microSD | 4000000 Hz |
-| `REPRODUCAO_SEQUENCIAL_PLAYER` | Inicia automaticamente o próximo MP3 ao terminar | `true` |
 | `DURACAO_MAXIMA_ALARME_MINUTOS` | Limite de repetição de um alarme | 30 minutos |
 | `TEMPO_LIMITE_CONEXAO_RADIO_ALARME_MS` | Espera por rede/stream antes do som padrão | 20 segundos |
 
@@ -76,15 +71,18 @@ mais rápido e um intervalo maior produz movimento mais lento. A mesma relação
 vale para o intervalo da piscada do LED. O brilho aceita valores de 0 a 255.
 Os servidores NTP primário e secundário também ficam em `configuracao.h`.
 
-A animação do OLED roda em uma tarefa própria, na mesma prioridade do `loop()`.
-Cada quadro avança no máximo um pixel; atrasos são descartados em vez de serem
-compensados por saltos. O `loop()` conserva uma chamada de contingência que só
-atua se a tarefa do display não puder ser criada.
+A animação do OLED roda em uma tarefa própria. As APIs chamadas pelo `loop()`
+alteram somente o modelo e acordam essa tarefa; a transferência I2C do
+framebuffer ocorre fora do mutex do modelo. Atualizações repetidas são
+consolidadas no estado mais recente. Cada quadro de rolagem avança no máximo um
+pixel, sem compensar atrasos com saltos. Se a tarefa não puder ser criada, a
+chamada de contingência no `loop()` assume a atualização.
 
 O sketch independente
 `examples/teste_ds3231sn/teste_ds3231sn.ino` valida o RTC DS3231SN pela porta
-serial antes de sua integração ao firmware. Ele compartilha com o OLED o I2C
-em `SDA=GPIO17` e `SCL=GPIO18`, identifica os dispositivos do barramento e lê
+serial antes de sua integração ao firmware. O exemplo conserva sua pinagem
+independente `SDA=GPIO17` e `SCL=GPIO18`; o firmware principal usa
+`SDA=GPIO16` e `SCL=GPIO17`. Ele identifica os dispositivos do barramento e lê
 data, hora, temperatura e o indicador de perda de alimentação.
 
 A ligação e a preparação do novo módulo de áudio estão registradas em
@@ -93,25 +91,11 @@ PCM5102A usa I2S, não I2C, e entrega dois canais em nível de linha. Portanto,
 alto-falantes passivos continuam exigindo um amplificador estéreo analógico
 depois do DAC.
 
-A organização física reserva oito pinos na parte inferior do mesmo lado da
-placa para o futuro driver das Nixies: `GPIO8`, `GPIO3`, `GPIO9` e `GPIO10`
-formarão o barramento BCD, enquanto `GPIO11` a `GPIO14` selecionarão os quatro
-ânodos independentemente, com um GPIO dedicado para cada válvula. Os ânodos
-não usam conversão binária de dois para quatro. O I2C fica logo acima em
-`GPIO17/18`; o sinal `DIN` do I2S foi movido para o `GPIO4` e o botão do
-encoder para o `GPIO7`. O pino de strapping
-`GPIO46`, situado entre os grupos físicos, permanece sem conexão. O encoder
-principal usa `DT=GPIO16`, `CLK=GPIO15` e `SW=GPIO7`; o encoder dedicado ao
-volume usa os três pinos consecutivos `DT=GPIO2`, `CLK=GPIO1` e `SW=GPIO42`.
-Um toque curto nesse segundo botão leva uma fonte ativa ao estado `Relógio`. O
-microSD do Player usa `SCK=GPIO38`, `MISO=GPIO41`, `MOSI=GPIO40` e `CS=GPIO39`.
-
-Permanece como pendência implementar o driver das Nixies nesses oito pinos.
-Até essa etapa, o firmware não configura nem aciona `GPIO8`, `GPIO3` e
-`GPIO9` a `GPIO14` como parte do relógio. A implementação deverá primeiro ser
-validada em um exemplo independente, incluindo a saída BCD de quatro bits, a
-seleção direta dos quatro ânodos, o brilho e a multiplexação por timer do
-ESP32-S3.
+As ligações atuais são `SDA=GPIO16` e `SCL=GPIO17` para I2C;
+`BCK=GPIO12`, `LRCK=GPIO10` e `DIN=GPIO11` para I2S; `GPIO2/1/42` para o
+encoder 1; e `GPIO41/40/39` para o encoder 2. O Player e o barramento microSD
+foram removidos deste branch. A futura pinagem das Nixies deve ser reavaliada
+contra essas ligações antes de qualquer implementação em hardware.
 
 No firmware principal, o DS3231 conserva o horário em UTC e inicia o relógio
 do sistema antes da conexão Wi-Fi. O SNTP continua sendo a referência de
@@ -127,32 +111,34 @@ somente durante a conexão ou enquanto o rádio está sem Wi-Fi.
 ## Arquitetura
 
 O fluxo de áudio não é executado pelo `loop()` principal. O módulo
-`audio_radio.cpp` mantém uma tarefa dedicada, recebe comandos por uma fila
-FreeRTOS e é o único proprietário das operações da biblioteca de áudio.
+`audio_radio.cpp` mantém uma tarefa dedicada e é o único proprietário das
+operações da biblioteca de áudio. Comandos de fonte usam uma fila FreeRTOS;
+volume usa um valor atômico separado, consolidando movimentos rápidos no ajuste
+mais recente sem criar atraso na fila.
 A tarefa interna de decodificação da ESP32-audioI2S usa o núcleo 1; o serviço
 que alimenta e supervisiona o stream usa o núcleo 0. Essa distribuição isolou
 a entrega de PCM da contenção das tarefas de rede e corrigiu em hardware a
 retomada de Rádio Web por um alarme iniciado no Relógio.
 
-O `loop()` principal fica responsável por:
+O `loop()` principal lê os encoders antes dos demais serviços cooperativos e
+fica responsável por:
 
-- display e os dois encoders;
+- os dois encoders e o modelo apresentado pelo display;
 - atendimento do servidor HTTP;
 - apresentação do estado publicado pelo serviço de áudio;
 - telemetria periódica.
 
-O equipamento possui três estados operacionais: `Rádio Web`, `Player` e
-`Relógio`. Em `Rádio Web`, os serviços de rede funcionam normalmente. Em
-`Player`, Wi-Fi e servidor permanecem desligados e o mesmo decoder/I2S reproduz
-progressivamente um MP3 de `/sons`. Em `Relógio`, a fonte e sua tarefa ficam
-suspensos, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
-apagado; somente relógio, encoders e OLED continuam sendo processados.
+O equipamento possui dois estados operacionais: `Rádio Web` e `Relógio`. Em
+`Rádio Web`, os serviços de rede funcionam normalmente. Em `Relógio`, o stream
+fica suspenso, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
+apagado; relógio, encoders e OLED continuam sendo processados. A volta ao rádio
+usa reconexão assíncrona para não bloquear os controles.
 
-Os alarmes são uma sobreposição temporária aos três estados. Um alarme usa uma
-estação, um MP3 ou o som padrão até o clique curto no encoder principal ou o
+Os alarmes são uma sobreposição temporária aos dois estados. Um alarme usa uma
+estação ou o som padrão até o clique curto no encoder 2 ou o
 limite de 30 minutos e então restaura o estado anterior. Um novo disparo substitui
 definitivamente o alarme em execução. Quando vários coincidem no mesmo minuto,
-vence o cadastro de maior `id`. Fontes locais desligam o Wi-Fi; fontes Rádio Web
+vence o cadastro de maior `id`. O som padrão desliga o Wi-Fi; alarmes Rádio Web
 mantêm a rede e sua supervisão, sempre com o servidor HTTP suspenso.
 Durante a execução, o encoder de volume parte do nível efetivamente aplicado
 ao alarme. O ajuste não altera o cadastro, mas passa a ser também o novo volume
@@ -187,10 +173,9 @@ a reprodução, o nome retorna ao tamanho normal e à rolagem.
 No estado `Relógio`, o OLED mostra `HH:MM` em quatro cartões grandes com uma
 divisão horizontal inspirada em mostradores flip. O rodapé percorre a data
 completa em português, por exemplo `sexta, 12 de agosto de 2026`.
-Ao girar o encoder de navegação, essa interface é substituída integralmente por
-`PLAYER` ou `RADIO WEB` em letras grandes. Um clique curto ativa a opção
-mostrada. O encoder de volume pode ajustar o nível reservado à próxima fonte
-sem retirar o relógio da tela.
+O encoder 1 ajusta o nível reservado à próxima ativação e substitui
+temporariamente a data por uma barra de volume. Seu clique curto volta
+diretamente à Rádio Web. O encoder 2 não executa ação no Relógio.
 
 ## Indicação do LED
 
@@ -207,43 +192,27 @@ do percentual do buffer.
 
 ## Encoders
 
-O firmware separa navegação e volume em dois componentes:
+O encoder 1 usa `DT=GPIO2`, `CLK=GPIO1` e `SW=GPIO42`:
 
-- o encoder principal usa `DT=GPIO16`, `CLK=GPIO15` e `SW=GPIO7`;
-- o encoder de volume usa `DT=GPIO2`, `CLK=GPIO1` e `SW=GPIO42`;
-- um toque curto no botão do encoder de volume “desliga” a fonte ativa, levando
-  o equipamento ao estado `Relógio`.
+- o giro controla somente o volume, inclusive durante a seleção de rádios;
+- o clique curto alterna diretamente entre Rádio Web e Relógio;
+- no Relógio, o giro altera o nível reservado à próxima ativação;
+- durante alarmes, o giro altera o volume efetivo e o clique é ignorado.
 
-O encoder principal controla somente a interface:
+O encoder 2 usa `DT=GPIO41`, `CLK=GPIO40` e `SW=GPIO39`:
 
-- no repouso, girar abre a seleção da fonte atual e já aplica o deslocamento;
-- o clique curto também abre a seleção;
-- durante a seleção, o giro escolhe a estação ou o arquivo e o clique confirma;
+- no repouso da Rádio Web, girar abre a lista e aplica o deslocamento no mesmo
+  ciclo; um clique curto também abre a lista;
+- durante a seleção, o giro escolhe a estação e o clique confirma;
 - depois de dez segundos sem atividade, a seleção é cancelada;
-- no Relógio, o giro substitui toda a tela pelas opções `PLAYER`, `RADIO WEB`
-  e pela própria tela do relógio;
-- um clique curto ativa a opção exibida; manter o botão pressionado não executa
-  ação.
+- no Relógio, giro e clique não executam ação;
+- durante um alarme, o clique curto encerra a reprodução.
 
-O encoder 2 controla somente o volume, inclusive enquanto o encoder principal
-está navegando. A barra inferior mostra o novo nível por dois segundos e depois
-retorna ao conteúdo correspondente à tela atual. No Relógio, o ajuste é guardado
-para a próxima fonte, sem enviar comando ao serviço de áudio suspenso. Seu toque
-curto leva Rádio Web ou Player ao Relógio; no Relógio e durante alarmes, esse
-botão não executa ação. Pressões de dois segundos ou mais são descartadas nos
-dois encoders.
-
-No Player, um clique curto abre a lista de até 100 arquivos MP3 diretamente em
-`/sons`; o encoder principal navega e outro clique começa a reprodução. O Player
-não carrega o arquivo inteiro em memória e não executa simultaneamente com a
-rádio web.
-Com `REPRODUCAO_SEQUENCIAL_PLAYER = true`, o fim de uma faixa inicia a seguinte
-na ordem alfabética e a última volta para a primeira. Uma escolha manual passa a
-ser a faixa atual e, portanto, também o novo ponto da sequência.
-O catálogo é criado uma vez durante o boot, antes do início do serviço de áudio,
-e permanece em memória. Assim, a página de alarmes consegue listar os MP3 sem
-varrer o cartão enquanto a rádio toca. Alterações físicas no conteúdo do cartão
-exigem reinicialização nesta primeira versão.
+Cada encoder tem sua própria ISR. `encoderChanged()` entrega o deslocamento
+assinado acumulado, a aceleração fica desativada e não há o antigo limite
+artificial de 10 mil passos. Pressões de dois segundos ou mais são descartadas.
+O contrato detalhado e o roteiro de validação física estão em
+[`docs/PROJETO_VOLUME_ENCODER.md`](docs/PROJETO_VOLUME_ENCODER.md).
 
 ## Alarmes
 
@@ -253,26 +222,24 @@ presença de `dias` identifica a repetição semanal e a presença de `data`
 identifica uma execução única. Os arquivos ativos, temporário e backup são
 `/alarmes.json`, `/alarmes.tmp` e `/alarmes.bak`.
 
-A fonte pode ser uma estação da lista de Rádio Web, um MP3 diretamente em
-`/sons` ou o som padrão. O JSON guarda `radioId` ou `arquivo`, nunca os dois; a
-ausência de ambos seleciona `/alarme_padrao.wav`, gerado automaticamente na
-FFat. Uma estação removida, cartão ausente ou MP3 indisponível também recorre ao
-som padrão. Alarmes únicos são desativados ao disparar; alarmes únicos já
-vencidos também são desativados pelo agendador. Não há histórico nem cálculo de
-próxima execução na interface.
+A fonte pode ser uma estação da lista de Rádio Web ou o som padrão. O JSON
+guarda `radioId` quando uma estação foi escolhida; sua ausência seleciona
+`/alarme_padrao.wav`, gerado automaticamente na FFat. Uma estação removida ou
+indisponível também recorre ao som padrão. Alarmes únicos são desativados ao
+disparar; alarmes únicos já vencidos também são desativados pelo agendador. Não
+há histórico nem cálculo de próxima execução na interface.
 
-Enquanto um alarme está em execução, o encoder 2 ajusta o volume efetivo entre
-0 e 21 e o clique curto do encoder principal continua encerrando a reprodução.
-O ajuste vale também para repetições e fallback, não modifica o cadastro do
-alarme e passa a ser o novo `volumeAtual`. Se não houver ajuste, o volume geral
-anterior é restaurado ao final.
+Enquanto um alarme está em execução, o encoder 1 ajusta o volume efetivo entre
+0 e 21 e o clique curto do encoder 2 encerra a reprodução. O ajuste vale também
+para repetições e fallback, não modifica o cadastro do alarme e passa a ser o
+novo `volumeAtual`. Se não houver ajuste, o volume geral anterior é restaurado
+ao final.
 
-A rotação dos dois encoders usa diretamente o deslocamento informado pela
-biblioteca, sem aceleração ou filtro de direção. Se vários passos forem
-acumulados entre duas passagens do `loop()`, todos são aplicados. O encoder
-principal permanece calibrado em quatro transições por detente. O encoder de
-volume começa com o mesmo valor em configuração separada e ainda precisa de
-confirmação no novo componente em hardware.
+A rotação dos dois encoders usa diretamente o deslocamento assinado acumulado
+informado pela biblioteca, sem aceleração ou filtro de direção. Se vários passos
+forem acumulados entre duas passagens do `loop()`, todos são aplicados. Cada
+encoder possui configuração independente; as quatro transições por detente
+devem ser confirmadas nos dois componentes instalados.
 
 O estado `Relógio` encerra o stream e suspende a tarefa de serviço, mas a
 biblioteca ESP32-audioI2S não expõe ao firmware a parada pública do I2S. Na

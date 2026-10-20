@@ -6,7 +6,6 @@
 
 #include "alarmes.h"
 #include "configuracao.h"
-#include "player.h"
 
 const char* const CAMINHO_ALARMES_ATIVO =
     "/alarmes.json";
@@ -205,13 +204,7 @@ bool alarmeValido(JsonObjectConst alarme) {
     JsonVariantConst arquivo = alarme["arquivo"];
     JsonVariantConst radioId = alarme["radioId"];
 
-    if (
-        !arquivo.isNull() &&
-        (
-            !arquivo.is<const char*>() ||
-            !caminhoPlayerValido(arquivo.as<const char*>())
-        )
-    ) {
+    if (!arquivo.isNull()) {
         return false;
     }
 

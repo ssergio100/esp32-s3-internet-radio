@@ -60,14 +60,18 @@ namespace {
 
     enum class TelaDisplay {
         MENSAGEM,
+        CONFIGURACAO_WIFI,
         RADIO,
         RELOGIO,
-        PLAYER,
-        ALARME,
-        OPCAO_ESTADO
+
+        ALARME
     };
 
     TelaDisplay telaAtual = TelaDisplay::MENSAGEM;
+    bool atualizacaoPendente = false;
+    String mensagemAtual = "Inicializando";
+    String nomeAlarmeAtual;
+    int volumeAlarmeAtual = VOLUME_PADRAO;
 
     enum class ModoFaixaCentral {
         ROLAGEM,
@@ -131,14 +135,7 @@ namespace {
         SentidoRolagem::PARA_ESQUERDA               // sentido do movimento
     };
 
-    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_NOME_PLAYER = {
-        21,
-        2,
-        2,
-        24,
-        INTERVALO_PASSO_ROLAGEM_PLAYER_MS,
-        SentidoRolagem::PARA_ESQUERDA
-    };
+
 
     String textoDiagnostico;
     String textoBufferBarraInferior;
@@ -157,11 +154,7 @@ namespace {
     struct tm ultimaDataHoraRelogio = {};
     bool horarioRelogioDisponivel = false;
 
-    String nomeArquivoPlayer;
-    int indiceArquivoPlayer = 0;
-    int quantidadeArquivosPlayer = 0;
-    bool arquivoPlayerEmSelecao = false;
-    EstadoFaixaRolante estadoFaixaNomePlayer;
+
 
     void escreverCentralizado(
         const String& texto,
@@ -582,23 +575,62 @@ namespace {
         desenharDigitoFlip(horario[3], 69);
         desenharDigitoFlip(horario[4], 95);
 
-        display.drawFastHLine(
-            2,
-            49,
-            DISPLAY_LARGURA - 4,
-            SSD1306_WHITE
-        );
+        if (exibindoVolumeNaBarraInferior) {
+            constexpr int BARRA_X = 2;
+            constexpr int BARRA_Y = 50;
+            constexpr int BARRA_LARGURA = 78;
+            constexpr int BARRA_ALTURA = 10;
 
-        desenharFaixaRolante(
-            textoDataRelogio,
-            CONFIGURACAO_DATA_RELOGIO,
-            estadoFaixaDataRelogio
-        );
+            display.drawRect(
+                BARRA_X,
+                BARRA_Y,
+                BARRA_LARGURA,
+                BARRA_ALTURA,
+                SSD1306_WHITE
+            );
 
-        display.display();
+            int larguraPreenchida = map(
+                volumeBarraInferior,
+                VOLUME_MINIMO,
+                VOLUME_MAXIMO,
+                0,
+                BARRA_LARGURA - 4
+            );
+
+            if (larguraPreenchida > 0) {
+                display.fillRect(
+                    BARRA_X + 2,
+                    BARRA_Y + 2,
+                    larguraPreenchida,
+                    BARRA_ALTURA - 4,
+                    SSD1306_WHITE
+                );
+            }
+
+            display.setTextSize(1);
+            display.setCursor(86, 51);
+            display.printf(
+                "%d/%d",
+                volumeBarraInferior,
+                VOLUME_MAXIMO
+            );
+        } else {
+            display.drawFastHLine(
+                2,
+                49,
+                DISPLAY_LARGURA - 4,
+                SSD1306_WHITE
+            );
+
+            desenharFaixaRolante(
+                textoDataRelogio,
+                CONFIGURACAO_DATA_RELOGIO,
+                estadoFaixaDataRelogio
+            );
+        }
     }
 
-    void atualizarTelaRelogio(
+    bool atualizarTelaRelogio(
         bool forcarAtualizacao
     ) {
         unsigned long agoraMs = millis();
@@ -666,7 +698,10 @@ namespace {
 
         if (forcarAtualizacao || horarioMudou || dataRolou) {
             desenharTelaRelogio();
+            return true;
         }
+
+        return false;
     }
 
     bool atualizarTextoDiagnostico(
@@ -813,117 +848,6 @@ namespace {
         display.setTextColor(SSD1306_WHITE);
     }
 
-    void desenharBarraPlayer() {
-        constexpr int TOPO = 46;
-        constexpr int ALTURA = DISPLAY_ALTURA - TOPO;
-
-        display.fillRect(
-            0,
-            TOPO,
-            DISPLAY_LARGURA,
-            ALTURA,
-            SSD1306_WHITE
-        );
-        display.setTextColor(SSD1306_BLACK);
-        display.setTextSize(1);
-
-        if (exibindoVolumeNaBarraInferior) {
-            constexpr int BARRA_X = 3;
-            constexpr int BARRA_Y = 51;
-            constexpr int BARRA_LARGURA = 76;
-            constexpr int BARRA_ALTURA = 9;
-
-            display.drawRect(
-                BARRA_X,
-                BARRA_Y,
-                BARRA_LARGURA,
-                BARRA_ALTURA,
-                SSD1306_BLACK
-            );
-
-            int preenchimento = map(
-                volumeBarraInferior,
-                VOLUME_MINIMO,
-                VOLUME_MAXIMO,
-                0,
-                BARRA_LARGURA - 4
-            );
-
-            if (preenchimento > 0) {
-                display.fillRect(
-                    BARRA_X + 2,
-                    BARRA_Y + 2,
-                    preenchimento,
-                    BARRA_ALTURA - 4,
-                    SSD1306_BLACK
-                );
-            }
-
-            display.setCursor(88, 51);
-            display.printf(
-                "%d/%d",
-                volumeBarraInferior,
-                VOLUME_MAXIMO
-            );
-        } else {
-            display.setCursor(3, 51);
-            display.print("MP3");
-
-            String posicao =
-                String(indiceArquivoPlayer + 1) +
-                "/" +
-                String(quantidadeArquivosPlayer);
-            int largura = posicao.length() * 6;
-
-            display.setCursor(
-                DISPLAY_LARGURA - largura - 3,
-                51
-            );
-            display.print(posicao);
-        }
-
-        display.setTextColor(SSD1306_WHITE);
-    }
-
-    void desenharTelaPlayer() {
-        prepararTela();
-        escreverCentralizado("PLAYER", 2, 1);
-
-        if (arquivoPlayerEmSelecao) {
-            display.setTextSize(2);
-
-            int16_t x1;
-            int16_t y1;
-            uint16_t largura;
-            uint16_t altura;
-
-            display.getTextBounds(
-                nomeArquivoPlayer,
-                0,
-                0,
-                &x1,
-                &y1,
-                &largura,
-                &altura
-            );
-
-            escreverCentralizado(
-                nomeArquivoPlayer,
-                largura <= DISPLAY_LARGURA - 4 ? 21 : 26,
-                largura <= DISPLAY_LARGURA - 4 ? 2 : 1
-            );
-        } else {
-            desenharFaixaRolante(
-                nomeArquivoPlayer,
-                CONFIGURACAO_NOME_PLAYER,
-                estadoFaixaNomePlayer
-            );
-        }
-
-        desenharBarraPlayer();
-        display.display();
-    }
-
     void desenharSelecaoNaFaixaCentral() {
         display.setTextSize(2);
 
@@ -984,7 +908,96 @@ namespace {
 
         desenharBarraInferior();
 
+    }
+
+    void desenharTelaMensagem() {
+        prepararTela();
+        escreverCentralizado(mensagemAtual, 28, 1);
+    }
+
+    void desenharTelaAlarme() {
+        prepararTela();
+        escreverCentralizado("ALARME", 2, 2);
+
+        String nomeExibido = nomeAlarmeAtual;
+
+        if (nomeExibido.length() > 19) {
+            nomeExibido = nomeExibido.substring(0, 16) + "...";
+        }
+
+        escreverCentralizado(nomeExibido, 27, 1);
+        display.fillRect(
+            0,
+            40,
+            DISPLAY_LARGURA,
+            DISPLAY_ALTURA - 40,
+            SSD1306_WHITE
+        );
+        display.setTextColor(SSD1306_BLACK);
+        escreverCentralizado(
+            "VOLUME " + String(volumeAlarmeAtual) + "/" +
+                String(VOLUME_MAXIMO),
+            42,
+            1
+        );
+        escreverCentralizado("CLIQUE PARA PARAR", 53, 1);
+        display.setTextColor(SSD1306_WHITE);
+    }
+
+    void desenharTelaConfiguracaoWifi() {
+        prepararTela();
+        display.setTextSize(1);
+        display.setCursor(9, 0);
+        display.println("CONECTE-SE A REDE");
+        display.setTextSize(2);
+        display.setCursor(10, 12);
+        display.println("RADIO-WEB");
+        display.setTextSize(1);
+        display.setCursor(12, 34);
+        display.println("ABRA NO NAVEGADOR");
+        display.setCursor(31, 50);
+        display.println("192.168.4.1");
+    }
+
+    void desenharTelaAtual() {
+        switch (telaAtual) {
+            case TelaDisplay::MENSAGEM:
+                desenharTelaMensagem();
+                break;
+
+            case TelaDisplay::CONFIGURACAO_WIFI:
+                desenharTelaConfiguracaoWifi();
+                break;
+
+            case TelaDisplay::RADIO:
+                desenharTelaRadio();
+                break;
+
+            case TelaDisplay::RELOGIO:
+                desenharTelaRelogio();
+                break;
+
+            case TelaDisplay::ALARME:
+                desenharTelaAlarme();
+                break;
+        }
+    }
+
+    // Depois que a tarefa existe, as APIs apenas atualizam o modelo e a
+    // acordam. Nenhuma chamada do loop fica esperando a transferência I2C.
+    void solicitarApresentacao() {
+        atualizacaoPendente = true;
+
+        if (tarefaDisplayHandle != nullptr) {
+            xTaskNotifyGive(tarefaDisplayHandle);
+            return;
+        }
+
+        // Caminho usado somente durante o setup ou se a tarefa não puder ser
+        // criada. Nesse caso não há outro escritor do framebuffer.
+        desenharTelaAtual();
         display.display();
+        atualizacaoPendente = false;
     }
 
     void mostrarTextoEstaticoNaFaixaCentral(
@@ -1007,7 +1020,6 @@ namespace {
         telaAtual = TelaDisplay::RADIO;
         exibindoVolumeNaBarraInferior = false;
         modoFaixaCentral = modo;
-        atualizarTextoDiagnostico(true);
 
         if (
             entrandoNaTelaRadio ||
@@ -1021,19 +1033,17 @@ namespace {
             );
         }
 
-        desenharTelaRadio();
+        solicitarApresentacao();
     }
 
     void tarefaDisplay(void* parametro) {
         (void)parametro;
 
-        TickType_t proximaExecucao = xTaskGetTickCount();
-
         while (true) {
             processarDisplay();
 
-            xTaskDelayUntil(
-                &proximaExecucao,
+            ulTaskNotifyTake(
+                pdTRUE,
                 pdMS_TO_TICKS(
                     INTERVALO_SERVICO_DISPLAY_MS
                 )
@@ -1118,17 +1128,10 @@ void mostrarMensagem(
         return;
     }
 
+    mensagemAtual = mensagem;
     telaAtual = TelaDisplay::MENSAGEM;
-
-    prepararTela();
-
-    escreverCentralizado(
-        mensagem,
-        28,
-        1
-    );
-
-    display.display();
+    exibindoVolumeNaBarraInferior = false;
+    solicitarApresentacao();
 }
 
 void mostrarNomeRadio(
@@ -1162,7 +1165,6 @@ void mostrarNomeRadio(
     telaAtual = TelaDisplay::RADIO;
     exibindoVolumeNaBarraInferior = false;
     modoFaixaCentral = ModoFaixaCentral::ROLAGEM;
-    atualizarTextoDiagnostico(true);
 
     if (
         entrandoNaTelaRadio ||
@@ -1191,7 +1193,7 @@ void mostrarNomeRadio(
         estadoFaixaNomeRadio.momentoUltimoPassoMs = millis();
     }
 
-    desenharTelaRadio();
+    solicitarApresentacao();
 }
 
 void mostrarSelecaoRadio(
@@ -1248,10 +1250,11 @@ void mostrarVolume(
     volumeBarraInferior = volume;
     exibindoVolumeNaBarraInferior = true;
 
-    if (telaAtual == TelaDisplay::RADIO) {
-        desenharTelaRadio();
-    } else if (telaAtual == TelaDisplay::PLAYER) {
-        desenharTelaPlayer();
+    if (
+        telaAtual == TelaDisplay::RADIO ||
+        telaAtual == TelaDisplay::RELOGIO
+    ) {
+        solicitarApresentacao();
     }
 }
 
@@ -1271,71 +1274,8 @@ void mostrarTelaRelogio() {
     diaRelogioExibido = -1;
     momentoUltimaConsultaRelogioMs = 0;
     horarioRelogioDisponivel = false;
-
-    atualizarTelaRelogio(true);
-}
-
-void mostrarOpcaoEstado(const String& opcao) {
-    BloqueioDisplay bloqueio;
-
-    if (!bloqueio.foiAdquirido()) {
-        return;
-    }
-
-    if (!disponivel) {
-        return;
-    }
-
-    telaAtual = TelaDisplay::OPCAO_ESTADO;
-    prepararTela();
-
-    if (opcao == "RADIO WEB") {
-        escreverCentralizado("RADIO", 7, 3);
-        escreverCentralizado("WEB", 37, 3);
-    } else {
-        escreverCentralizado(opcao, 21, 3);
-    }
-
-    display.display();
-}
-
-void mostrarArquivoPlayer(
-    const String& nome,
-    int indiceAtual,
-    int quantidadeArquivos,
-    bool emSelecao
-) {
-    BloqueioDisplay bloqueio;
-
-    if (!bloqueio.foiAdquirido()) {
-        return;
-    }
-
-    if (!disponivel) {
-        return;
-    }
-
-    bool arquivoMudou =
-        nomeArquivoPlayer != nome ||
-        indiceArquivoPlayer != indiceAtual;
-
-    nomeArquivoPlayer = nome;
-    indiceArquivoPlayer = indiceAtual;
-    quantidadeArquivosPlayer = quantidadeArquivos;
-    arquivoPlayerEmSelecao = emSelecao;
     exibindoVolumeNaBarraInferior = false;
-    telaAtual = TelaDisplay::PLAYER;
-
-    if (arquivoMudou || estadoFaixaNomePlayer.larguraTextoPx == 0) {
-        configurarFaixaRolante(
-            nomeArquivoPlayer,
-            CONFIGURACAO_NOME_PLAYER,
-            estadoFaixaNomePlayer,
-            true
-        );
-    }
-
-    desenharTelaPlayer();
+    solicitarApresentacao();
 }
 
 void mostrarAlarme(const String& nome, int volume) {
@@ -1349,36 +1289,11 @@ void mostrarAlarme(const String& nome, int volume) {
         return;
     }
 
+    nomeAlarmeAtual = nome;
+    volumeAlarmeAtual = volume;
     telaAtual = TelaDisplay::ALARME;
-    prepararTela();
-
-    escreverCentralizado("ALARME", 2, 2);
-
-    String nomeExibido = nome;
-
-    if (nomeExibido.length() > 19) {
-        nomeExibido = nomeExibido.substring(0, 16) + "...";
-    }
-
-    escreverCentralizado(nomeExibido, 27, 1);
-
-    display.fillRect(
-        0,
-        40,
-        DISPLAY_LARGURA,
-        DISPLAY_ALTURA - 40,
-        SSD1306_WHITE
-    );
-    display.setTextColor(SSD1306_BLACK);
-    escreverCentralizado(
-        "VOLUME " + String(volume) + "/" + String(VOLUME_MAXIMO),
-        42,
-        1
-    );
-    escreverCentralizado("CLIQUE PARA PARAR", 53, 1);
-    display.setTextColor(SSD1306_WHITE);
-
-    display.display();
+    exibindoVolumeNaBarraInferior = false;
+    solicitarApresentacao();
 }
 
 void mostrarConfiguracaoWifi() {
@@ -1392,26 +1307,9 @@ void mostrarConfiguracaoWifi() {
         return;
     }
 
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-
-    display.setTextSize(1);
-    display.setCursor(9, 0);
-    display.println("CONECTE-SE A REDE");
-
-    display.setTextSize(2);
-    display.setCursor(10, 12);
-    display.println("RADIO-WEB");
-
-    display.setTextSize(1);
-    display.setCursor(12, 34);
-    display.println("ABRA NO NAVEGADOR");
-
-    display.setTextSize(1);
-    display.setCursor(31, 50);
-    display.println("192.168.4.1");
-
-    display.display();
+    telaAtual = TelaDisplay::CONFIGURACAO_WIFI;
+    exibindoVolumeNaBarraInferior = false;
+    solicitarApresentacao();
 }
 
 void processarDisplay() {
@@ -1422,69 +1320,62 @@ void processarDisplay() {
         return;
     }
 
-    BloqueioDisplay bloqueio;
+    bool apresentar = false;
 
-    if (!bloqueio.foiAdquirido()) {
-        return;
-    }
+    {
+        BloqueioDisplay bloqueio;
 
-    if (!disponivel) {
-        return;
-    }
-
-    if (telaAtual == TelaDisplay::RELOGIO) {
-        atualizarTelaRelogio(false);
-        return;
-    }
-
-    if (telaAtual == TelaDisplay::PLAYER) {
-        if (
-            !arquivoPlayerEmSelecao &&
-            avancarFaixaRolante(
-                CONFIGURACAO_NOME_PLAYER,
-                estadoFaixaNomePlayer,
-                millis()
-            )
-        ) {
-            desenharTelaPlayer();
+        if (!bloqueio.foiAdquirido() || !disponivel) {
+            return;
         }
 
-        return;
+        bool forcarAtualizacao = atualizacaoPendente;
+        atualizacaoPendente = false;
+
+        if (telaAtual == TelaDisplay::RELOGIO) {
+            apresentar = atualizarTelaRelogio(forcarAtualizacao);
+        } else if (telaAtual == TelaDisplay::RADIO) {
+            unsigned long agoraMs = millis();
+            bool precisaRedesenhar = forcarAtualizacao;
+
+            if (atualizarTextoDiagnostico()) {
+                precisaRedesenhar = true;
+            }
+
+            if (
+                avancarFaixaRolante(
+                    CONFIGURACAO_FAIXA_DIAGNOSTICO,
+                    estadoFaixaDiagnostico,
+                    agoraMs
+                )
+            ) {
+                precisaRedesenhar = true;
+            }
+
+            if (
+                modoFaixaCentral == ModoFaixaCentral::ROLAGEM &&
+                avancarFaixaRolante(
+                    CONFIGURACAO_FAIXA_NOME_RADIO,
+                    estadoFaixaNomeRadio,
+                    agoraMs
+                )
+            ) {
+                precisaRedesenhar = true;
+            }
+
+            if (precisaRedesenhar) {
+                desenharTelaRadio();
+                apresentar = true;
+            }
+        } else if (forcarAtualizacao) {
+            desenharTelaAtual();
+            apresentar = true;
+        }
     }
 
-    if (telaAtual != TelaDisplay::RADIO) {
-        return;
-    }
-
-    unsigned long agoraMs = millis();
-    bool precisaRedesenhar = false;
-
-    if (atualizarTextoDiagnostico()) {
-        precisaRedesenhar = true;
-    }
-
-    if (
-        avancarFaixaRolante(
-            CONFIGURACAO_FAIXA_DIAGNOSTICO,
-            estadoFaixaDiagnostico,
-            agoraMs
-        )
-    ) {
-        precisaRedesenhar = true;
-    }
-
-    if (
-        modoFaixaCentral == ModoFaixaCentral::ROLAGEM &&
-        avancarFaixaRolante(
-            CONFIGURACAO_FAIXA_NOME_RADIO,
-            estadoFaixaNomeRadio,
-            agoraMs
-        )
-    ) {
-        precisaRedesenhar = true;
-    }
-
-    if (precisaRedesenhar) {
-        desenharTelaRadio();
+    if (apresentar) {
+        // A transferência integral do framebuffer é a parte lenta. Ela fica
+        // fora do mutex do modelo para os encoders nunca aguardarem o I2C.
+        display.display();
     }
 }

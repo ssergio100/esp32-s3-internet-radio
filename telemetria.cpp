@@ -85,13 +85,8 @@ namespace {
         if (audio.alarmeAtivo) {
             if (audio.radioAlarme) {
                 origemSom = "radio web";
-            } else if (audio.somPadraoAlarme) {
-                origemSom =
-                    audio.arquivoAlarmeSolicitado
-                        ? "padrao (arquivo indisponivel)"
-                        : "padrao";
             } else {
-                origemSom = "arquivo do microSD";
+                origemSom = "padrao";
             }
         }
 

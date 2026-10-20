@@ -233,7 +233,7 @@ bool iniciarArmazenamentoEServidorWeb() {
         "/api/arquivos-player",
         HTTP_GET,
         []() {
-            responderArquivosPlayer(servidor);
+            servidor.send(200, "application/json", "[]");
         }
     );
 

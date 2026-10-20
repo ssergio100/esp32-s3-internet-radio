@@ -35,10 +35,8 @@ namespace {
             statusAudio.ultimoErro;
         documento["alarmeAtivo"] =
             statusAudio.alarmeAtivo;
-        documento["arquivoAlarmeSolicitado"] =
-            statusAudio.arquivoAlarmeSolicitado;
-        documento["arquivoAlarmeDisponivel"] =
-            statusAudio.arquivoAlarmeDisponivel;
+        documento["arquivoAlarmeSolicitado"] = false;
+        documento["arquivoAlarmeDisponivel"] = false;
         documento["somPadraoAlarme"] =
             statusAudio.somPadraoAlarme;
         documento["radioAlarme"] =

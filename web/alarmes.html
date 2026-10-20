@@ -519,11 +519,6 @@
                 return radio ? "Rádio: " + radio.nome : "Rádio removida";
             }
 
-            if (alarme.arquivo) {
-                const partes = alarme.arquivo.split("/");
-                return "MP3: " + partes[partes.length - 1];
-            }
-
             return "Som padrão";
         }
 
@@ -573,15 +568,14 @@
             try {
                 const resultados = await Promise.all([
                     requisitar("/api/alarmes"),
-                    requisitar("/api/arquivos-player"),
                     requisitar("/api/radios-alarmes")
                 ]);
 
                 alarmes = Array.isArray(resultados[0].alarmes)
                     ? resultados[0].alarmes
                     : [];
-                arquivos = Array.isArray(resultados[1]) ? resultados[1] : [];
-                radios = Array.isArray(resultados[2]) ? resultados[2] : [];
+                arquivos = [];
+                radios = Array.isArray(resultados[1]) ? resultados[1] : [];
                 preencherFontes();
                 renderizar();
             } catch (erro) {
@@ -600,7 +594,7 @@
             campoFonte.innerHTML =
                 '<option value="padrao">Som padrão do alarme</option>' +
                 '<optgroup label="Rádio Web">' + opcoesRadios + '</optgroup>' +
-                '<optgroup label="MP3 do microSD">' + opcoesArquivos + '</optgroup>';
+                '<optgroup label="Rádio FM (em breve)"></optgroup>';
         }
 
         function atualizarTipo() {
@@ -627,8 +621,6 @@
 
                 if (alarme.radioId) {
                     valorFonte = "radio:" + alarme.radioId;
-                } else if (alarme.arquivo) {
-                    valorFonte = "arquivo:" + alarme.arquivo;
                 }
 
                 if (!Array.from(campoFonte.options).some(function (opcao) {
@@ -685,8 +677,6 @@
 
             if (campoFonte.value.startsWith("radio:")) {
                 alarme.radioId = Number(campoFonte.value.substring(6));
-            } else if (campoFonte.value.startsWith("arquivo:")) {
-                alarme.arquivo = campoFonte.value.substring(8);
             }
 
             return alarme;

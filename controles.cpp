@@ -164,13 +164,9 @@ void iniciarRotacaoEncoder(
     encoder.begin();
     encoder.setup(rotinaInterrupcao);
 
-    // O limite amplo evita perder deslocamentos acumulados. As regras de
-    // navegação e volume ficam no programa principal.
-    encoder.setBoundaries(
-        -10000,
-        10000,
-        false
-    );
+    // O encoder é relativo e permanece ativo durante toda a vida do produto.
+    // Mantemos os limites nativos amplos da biblioteca; o antigo intervalo de
+    // -10000 a 10000 saturaria o controle depois de uso prolongado.
 
     encoder.setEncoderValue(0);
     encoder.disableAcceleration();

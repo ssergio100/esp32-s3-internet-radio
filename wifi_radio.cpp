@@ -329,7 +329,7 @@ bool iniciarReconexaoWifiSalvo() {
         millis() - INTERVALO_RECONEXAO_WIFI_MS;
     processarSelecaoPontoPermitido();
 
-    Serial.println("Reconexao Wi-Fi do alarme iniciada.");
+    Serial.println("Reconexao Wi-Fi iniciada.");
     return true;
 }
 

@@ -1,7 +1,6 @@
 #include "audio_radio.h"
 #include "alarmes.h"
 #include "configuracao.h"
-#include "player.h"
 #include "radios.h"
 
 #include <Arduino.h>
@@ -39,10 +38,8 @@ constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
 enum class TipoComandoAudio : uint8_t {
     TOCAR_RADIO,
     TOCAR_ALARME_RADIO,
-    TOCAR_ARQUIVO,
     TOCAR_ALARME,
     PARAR,
-    VOLUME,
     SUSPENDER,
     RETOMAR
 };
@@ -51,7 +48,6 @@ enum class FonteAudioAtiva : uint8_t {
     NENHUMA,
     RADIO,
     ALARME_RADIO,
-    ARQUIVO,
     ALARME
 };
 
@@ -64,7 +60,7 @@ struct ComandoAudio {
 
     char nome[TAMANHO_NOME_RADIO] = "";
     char url[TAMANHO_URL_RADIO] = "";
-    char caminhoArquivo[TAMANHO_MAXIMO_CAMINHO_PLAYER] = "";
+    char caminhoArquivo[256] = "";
 };
 
 Audio audio;
@@ -73,6 +69,8 @@ QueueHandle_t filaComandos = nullptr;
 SemaphoreHandle_t mutexStatus = nullptr;
 TaskHandle_t tarefaAudioHandle = nullptr;
 std::atomic<bool> servicoAudioAtivo{true};
+std::atomic<uint8_t> volumeDesejado{VOLUME_PADRAO};
+std::atomic<bool> ajusteVolumePendente{false};
 
 StatusAudio statusAudio;
 
@@ -345,52 +343,6 @@ void conectarAgora(
     );
 }
 
-void abrirArquivoAgora(
-    const char* caminho
-) {
-    fs::FS* sistemaArquivos =
-        obterSistemaArquivosPlayer();
-
-    if (sistemaArquivos == nullptr) {
-        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-        definirErro("Cartao microSD indisponivel");
-        definirEstado(EstadoAudio::ERRO);
-        return;
-    }
-
-    if (!sistemaArquivos->exists(caminho)) {
-        fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-        definirErro("Arquivo MP3 nao encontrado");
-        definirEstado(EstadoAudio::ERRO);
-        Serial.print("Player: arquivo inexistente: ");
-        Serial.println(caminho);
-        return;
-    }
-
-    nomeDesejado[0] = '\0';
-    urlDesejada[0] = '\0';
-    proximaTentativa = 0;
-    inicioDegradacao = 0;
-    fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-
-    atualizarRadioStatus(caminho);
-    limparErro();
-    definirEstado(EstadoAudio::BUFFERIZANDO);
-
-    audio.stopSong();
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    if (!audio.connecttoFS(*sistemaArquivos, caminho)) {
-        definirErro("Falha ao abrir arquivo MP3");
-        definirEstado(EstadoAudio::ERRO);
-        return;
-    }
-
-    fonteAudioAtiva = FonteAudioAtiva::ARQUIVO;
-    inicioBufferizacao = 0;
-    definirEstado(EstadoAudio::TOCANDO);
-}
-
 void abrirArquivoAlarmeAgora(
     const char* caminho,
     uint8_t volume
@@ -424,25 +376,6 @@ void abrirArquivoAlarmeAgora(
     vTaskDelay(pdMS_TO_TICKS(20));
 
     if (arquivoSolicitado) {
-        fs::FS* sistemaArquivos =
-            obterSistemaArquivosPlayer();
-
-        if (
-            sistemaArquivos != nullptr &&
-            sistemaArquivos->exists(caminho)
-        ) {
-            arquivoDisponivel =
-                audio.connecttoFS(*sistemaArquivos, caminho);
-        }
-
-        if (arquivoDisponivel) {
-            fonteAudioAtiva = FonteAudioAtiva::ALARME;
-            inicioBufferizacao = 0;
-            atualizarStatusAlarme(true, true, true, false);
-            definirEstado(EstadoAudio::TOCANDO);
-            return;
-        }
-
         Serial.print("Alarme: arquivo indisponivel; usando padrao: ");
         Serial.println(caminho);
         audio.stopSong();
@@ -687,10 +620,6 @@ void tratarEventoAudio(
                 agendarReconexao(
                     "Fim inesperado do fluxo"
                 );
-            } else if (fonteAudioAtiva == FonteAudioAtiva::ARQUIVO) {
-                fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
-                definirEstado(EstadoAudio::PARADO);
-                Serial.println("Player: arquivo finalizado.");
             } else if (fonteAudioAtiva == FonteAudioAtiva::ALARME) {
                 fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
                 marcarAlarmeInativo();
@@ -932,26 +861,13 @@ void processarComando(
             break;
         }
 
-        case TipoComandoAudio::TOCAR_ARQUIVO:
-            limparStatusAlarme();
-            perfilPlayerAtivo = true;
-            vTaskPrioritySet(
-                nullptr,
-                PRIORIDADE_SERVICO_AUDIO_PLAYER
-            );
 
-            falhasConsecutivas = 0;
-            proximaTentativa = 0;
-            inicioDegradacao = 0;
-
-            abrirArquivoAgora(comando.caminhoArquivo);
-            break;
 
         case TipoComandoAudio::TOCAR_ALARME:
             perfilPlayerAtivo = true;
             vTaskPrioritySet(
                 nullptr,
-                PRIORIDADE_SERVICO_AUDIO_PLAYER
+                PRIORIDADE_SERVICO_AUDIO_RADIO
             );
 
             falhasConsecutivas = 0;
@@ -980,12 +896,6 @@ void processarComando(
             );
             break;
 
-        case TipoComandoAudio::VOLUME:
-            audio.setVolume(
-                comando.volume
-            );
-            break;
-
         case TipoComandoAudio::SUSPENDER:
             limparStatusAlarme();
             nomeDesejado[0] = '\0';
@@ -1008,11 +918,18 @@ void processarComando(
             break;
 
         case TipoComandoAudio::RETOMAR:
+            // RETOMAR também precisa reativar o laço dentro da própria
+            // tarefa. Em uma alternância rápida, SUSPENDER e RETOMAR podem
+            // estar juntos na fila; o último comando deve determinar o estado.
+            servicoAudioAtivo.store(
+                true,
+                std::memory_order_release
+            );
             perfilPlayerAtivo = comando.perfilPlayer;
             vTaskPrioritySet(
                 nullptr,
                 perfilPlayerAtivo
-                    ? PRIORIDADE_SERVICO_AUDIO_PLAYER
+                    ? PRIORIDADE_SERVICO_AUDIO_RADIO
                     : PRIORIDADE_SERVICO_AUDIO_RADIO
             );
             audio.setMute(false);
@@ -1049,6 +966,18 @@ void tarefaAudio(
             ) == pdTRUE
         ) {
             processarComando(comando);
+        }
+
+        // O ajuste interativo sempre vence comandos de transição que também
+        // carregam volume (alarme e retomada). Vários detentes são
+        // consolidados no valor mais recente.
+        if (ajusteVolumePendente.exchange(
+            false,
+            std::memory_order_acq_rel
+        )) {
+            audio.setVolume(
+                volumeDesejado.load(std::memory_order_acquire)
+            );
         }
 
         audio.loop();
@@ -1147,6 +1076,10 @@ bool iniciarAudio(int volume) {
 
     // A interface e a ESP32-audioI2S usam a mesma escala de 0 a 21.
     audio.setVolume(volumeLimitado);
+    volumeDesejado.store(
+        static_cast<uint8_t>(volumeLimitado),
+        std::memory_order_release
+    );
 
     BaseType_t criada =
         xTaskCreatePinnedToCore(
@@ -1255,39 +1188,13 @@ bool tocarRadioAlarme(
     return enviarComando(comando);
 }
 
-bool tocarArquivoPlayer(const String& caminho) {
-    if (
-        caminho.length() == 0 ||
-        caminho.length() >= TAMANHO_MAXIMO_CAMINHO_PLAYER ||
-        !caminhoPlayerValido(caminho.c_str())
-    ) {
-        definirErro("Caminho de arquivo MP3 invalido");
-        return false;
-    }
 
-    ComandoAudio comando;
-    comando.tipo = TipoComandoAudio::TOCAR_ARQUIVO;
-
-    copiarTexto(
-        comando.caminhoArquivo,
-        sizeof(comando.caminhoArquivo),
-        caminho.c_str()
-    );
-
-    return enviarComando(comando);
-}
 
 bool tocarArquivoAlarme(
     const String& caminho,
     int volume
 ) {
-    if (
-        caminho.length() >= TAMANHO_MAXIMO_CAMINHO_PLAYER ||
-        (
-            caminho.length() > 0 &&
-            !caminhoPlayerValido(caminho.c_str())
-        )
-    ) {
+    if (caminho.length() > 0) {
         definirErro("Caminho do alarme invalido");
         return false;
     }
@@ -1358,21 +1265,13 @@ bool retomarAudio(int volume, bool paraPlayer) {
 }
 
 void alterarVolumeAudio(int volume) {
-    ComandoAudio comando;
-
-    comando.tipo =
-        TipoComandoAudio::VOLUME;
-
-    comando.volume =
+    volumeDesejado.store(
         static_cast<uint8_t>(
-            constrain(
-                volume,
-                VOLUME_MINIMO,
-                VOLUME_MAXIMO
-            )
-        );
-
-    enviarComando(comando);
+            constrain(volume, VOLUME_MINIMO, VOLUME_MAXIMO)
+        ),
+        std::memory_order_release
+    );
+    ajusteVolumePendente.store(true, std::memory_order_release);
 }
 
 StatusAudio obterStatusAudio() {

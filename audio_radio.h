@@ -51,10 +51,6 @@ bool tocarRadioAlarme(
     int volume
 );
 
-// Reproduz progressivamente um MP3 de /sons usando o mesmo decoder e I2S da
-// rádio. Rádio web e arquivo local nunca são executados simultaneamente.
-bool tocarArquivoPlayer(const String& caminho);
-
 // Interrompe a fonte atual e abre o MP3 solicitado. Quando o caminho estiver
 // vazio, ausente ou não puder ser aberto, usa o WAV padrão armazenado na FFat.
 bool tocarArquivoAlarme(

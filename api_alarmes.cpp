@@ -5,7 +5,6 @@
 
 #include "alarmes.h"
 #include "persistencia_alarmes.h"
-#include "player.h"
 #include "radios.h"
 
 namespace {
@@ -55,17 +54,14 @@ bool copiarDadosAlarme(
 ) {
     JsonVariantConst arquivo = origem["arquivo"];
     JsonVariantConst radioId = origem["radioId"];
-    bool possuiArquivo =
-        arquivo.is<const char*>() &&
-        arquivo.as<const char*>()[0] != '\0';
+    bool possuiArquivo = false;
     bool possuiDias = origem["dias"].is<JsonArrayConst>();
     bool possuiData = origem["data"].is<const char*>();
 
     if (
         possuiDias == possuiData ||
         (
-            !arquivo.isNull() &&
-            !arquivo.is<const char*>()
+            !arquivo.isNull()
         ) ||
         (
             !radioId.isNull() &&
@@ -73,10 +69,6 @@ bool copiarDadosAlarme(
                 !radioId.is<uint32_t>() ||
                 radioId.as<uint32_t>() == 0
             )
-        ) ||
-        (
-            possuiArquivo &&
-            !radioId.isNull()
         ) ||
         (
             !origem["ativo"].isNull() &&
@@ -103,12 +95,6 @@ bool copiarDadosAlarme(
         }
     } else {
         destino["data"] = origem["data"];
-    }
-
-    if (
-        possuiArquivo
-    ) {
-        destino["arquivo"] = arquivo;
     }
 
     if (radioId.is<uint32_t>()) {
@@ -317,32 +303,6 @@ void excluirAlarmePelaApi(WebServer& servidor) {
     salvarERecarregar(servidor, documento, 200);
 }
 
-void responderArquivosPlayer(WebServer& servidor) {
-    JsonDocument documento;
-    JsonArray arquivos = documento.to<JsonArray>();
-    int quantidade = obterQuantidadeArquivosPlayer();
-
-    for (int indice = 0; indice < quantidade; indice++) {
-        const ArquivoPlayer* arquivo = obterArquivoPlayer(indice);
-
-        if (arquivo == nullptr) {
-            continue;
-        }
-
-        JsonObject item = arquivos.add<JsonObject>();
-        item["nome"] = arquivo->nome;
-        item["caminho"] = arquivo->caminho;
-    }
-
-    String resposta;
-    serializeJson(documento, resposta);
-
-    servidor.send(
-        200,
-        "application/json",
-        resposta
-    );
-}
 
 void responderRadiosParaAlarmes(WebServer& servidor) {
     JsonDocument documento;
