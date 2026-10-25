@@ -10,6 +10,7 @@
 #include "configuracao.h"
 #include "dfplayer.h"
 #include "relogio_rtc.h"
+#include "ui_tft_poc.h"
 
 namespace {
 
@@ -147,6 +148,27 @@ namespace {
         );
     }
 
+#if RADIO_UI_TFT_POC
+    void registrarTftPoc() {
+        MetricasUiTftPoc tft = obterMetricasUiTftPoc();
+
+        Serial.printf(
+            "TFT PoC: %s | Atualizacoes: %lu | Campos: %lu | "
+            "Desenho ultimo/medio/max: %lu/%lu/%lu us | "
+            "Latencia modelo: %lu ms | Heap: %+ld | PSRAM: %+ld bytes\n",
+            tft.disponivel ? "driver inicializado" : "inativo",
+            static_cast<unsigned long>(tft.atualizacoes),
+            static_cast<unsigned long>(tft.camposRedesenhados),
+            static_cast<unsigned long>(tft.duracaoUltimaUs),
+            static_cast<unsigned long>(tft.duracaoMediaUs),
+            static_cast<unsigned long>(tft.duracaoMaximaUs),
+            static_cast<unsigned long>(tft.latenciaUltimaMs),
+            static_cast<long>(tft.variacaoHeapBytes),
+            static_cast<long>(tft.variacaoPsramBytes)
+        );
+    }
+#endif
+
 }
 
 void registrarTelemetriaPeriodica() {
@@ -169,4 +191,7 @@ void registrarTelemetriaPeriodica() {
     registrarPresencaRtc();
     registrarAlarmes();
     registrarChime();
+#if RADIO_UI_TFT_POC
+    registrarTftPoc();
+#endif
 }

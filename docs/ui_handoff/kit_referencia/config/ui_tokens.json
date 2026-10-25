@@ -1,0 +1,12 @@
+{
+  "resolution": {"width": 320, "height": 240},
+  "layout": {"top_bar": 27, "bottom_bar": 35, "content": 178},
+  "fonts": {"small": 12, "normal": 16, "highlight": 24, "frequency": 56},
+  "themes": {
+    "laranja": {"primary": "#FFA94A", "secondary": "#BA7636", "muted": "#684522", "surface": "#181109", "background": "#000000"},
+    "verde": {"primary": "#8DF17D", "secondary": "#66A85D", "muted": "#375A33", "surface": "#0A180D", "background": "#000000"},
+    "azul": {"primary": "#8BCBFF", "secondary": "#6199C2", "muted": "#36516D", "surface": "#0A111A", "background": "#000000"},
+    "branco": {"primary": "#E6E6E6", "secondary": "#ACACAC", "muted": "#606060", "surface": "#181818", "background": "#000000"},
+    "vermelho": {"primary": "#FF827B", "secondary": "#BB5C57", "muted": "#653230", "surface": "#180D0C", "background": "#000000"}
+  }
+}
