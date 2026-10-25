@@ -69,6 +69,8 @@ bool ativacaoRadioPendente = false;
 bool ativacaoRadioFmPendente = false;
 unsigned long inicioPowerDownDacMs = 0;
 long navegacaoFmDurantePowerDown = 0;
+uint32_t momentoNavegacaoFmDurantePowerDownUs = 0;
+uint32_t sequenciaNavegacaoFmDurantePowerDown = 0;
 
 bool alarmeEmExecucao = false;
 bool alarmeObservouAudioAtivo = false;
@@ -934,9 +936,15 @@ void processarLeituraControles(
             if (ativacaoRadioFmPendente) {
                 navegacaoFmDurantePowerDown +=
                     leitura.deslocamentoEncoderNavegacao;
+                momentoNavegacaoFmDurantePowerDownUs =
+                    leitura.momentoEncoderNavegacaoUs;
+                sequenciaNavegacaoFmDurantePowerDown =
+                    leitura.sequenciaEncoderNavegacao;
             } else {
                 navegarRadioFm(
-                    leitura.deslocamentoEncoderNavegacao
+                    leitura.deslocamentoEncoderNavegacao,
+                    leitura.momentoEncoderNavegacaoUs,
+                    leitura.sequenciaEncoderNavegacao
                 );
                 atualizarApresentacaoRadioFm(true);
             }
@@ -1131,6 +1139,8 @@ void entrarEstadoRelogio() {
     ativacaoRadioPendente = false;
     ativacaoRadioFmPendente = false;
     navegacaoFmDurantePowerDown = 0;
+    momentoNavegacaoFmDurantePowerDownUs = 0;
+    sequenciaNavegacaoFmDurantePowerDown = 0;
     estadoEquipamento = EstadoEquipamento::RELOGIO;
     modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
@@ -1177,6 +1187,8 @@ void entrarEstadoRadioWeb() {
     ativacaoRadioPendente = true;
     ativacaoRadioFmPendente = false;
     navegacaoFmDurantePowerDown = 0;
+    momentoNavegacaoFmDurantePowerDownUs = 0;
+    sequenciaNavegacaoFmDurantePowerDown = 0;
     estadoEquipamento = EstadoEquipamento::RELOGIO;
     modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
@@ -1226,6 +1238,8 @@ void entrarEstadoRadioFm() {
     ativacaoRadioPendente = false;
     ativacaoRadioFmPendente = false;
     navegacaoFmDurantePowerDown = 0;
+    momentoNavegacaoFmDurantePowerDownUs = 0;
+    sequenciaNavegacaoFmDurantePowerDown = 0;
     estadoEquipamento = EstadoEquipamento::RADIO_FM;
     modoInterface = ModoInterface::REPOUSO;
     barraVolumeVisivel = false;
@@ -1233,13 +1247,10 @@ void entrarEstadoRadioFm() {
     // Primeiro responde ao clique no OLED; em seguida encerra os recursos da
     // fonte web e acorda o receptor dedicado.
     StatusRadioFm statusAtual = obterStatusRadioFm();
-    mostrarRadioFm(
-        statusAtual.frequencia10kHz,
-        "",
-        "Ativando...",
-        false,
-        0
-    );
+    DadosDisplayRadioFm dadosAtivacao;
+    dadosAtivacao.frequencia10kHz = statusAtual.frequencia10kHz;
+    dadosAtivacao.estado = "Ativando...";
+    mostrarRadioFm(dadosAtivacao);
 
     desativarServidorWeb();
 
@@ -1284,10 +1295,16 @@ void processarAtivacaoRadioFm() {
     }
 
     if (radioAtivado && navegacaoFmDurantePowerDown != 0) {
-        navegarRadioFm(navegacaoFmDurantePowerDown);
+        navegarRadioFm(
+            navegacaoFmDurantePowerDown,
+            momentoNavegacaoFmDurantePowerDownUs,
+            sequenciaNavegacaoFmDurantePowerDown
+        );
     }
 
     navegacaoFmDurantePowerDown = 0;
+    momentoNavegacaoFmDurantePowerDownUs = 0;
+    sequenciaNavegacaoFmDurantePowerDown = 0;
     atualizarApresentacaoRadioFm(true);
 
     Serial.println("Estado do equipamento: Radio FM.");
@@ -1825,11 +1842,20 @@ void atualizarApresentacaoRadioFm(
             break;
     }
 
-    mostrarRadioFm(
-        status.frequencia10kHz,
-        status.nomeEstacao,
-        textoEstado,
-        status.qualidadeValida,
-        status.nivelDecimosDbuv
-    );
+    DadosDisplayRadioFm dados;
+    dados.frequencia10kHz = status.frequencia10kHz;
+    dados.nomeEstacao = status.nomeEstacao;
+    dados.radioTexto = status.radioTexto;
+    dados.estado = textoEstado.c_str();
+    dados.nomeEstacaoValido = status.nomeEstacaoValido;
+    dados.radioTextoValido = status.radioTextoValido;
+    dados.buscando = status.estado == EstadoRadioFm::BUSCANDO;
+    dados.buscaConcluida =
+        status.estado == EstadoRadioFm::ATIVO &&
+        status.sequenciaEventoEncoder != 0;
+    dados.qualidadeValida = status.qualidadeValida;
+    dados.nivelDecimosDbuv = status.nivelDecimosDbuv;
+    dados.sequenciaEventoEncoder = status.sequenciaEventoEncoder;
+    dados.momentoEventoEncoderUs = status.momentoEventoEncoderUs;
+    mostrarRadioFm(dados);
 }

@@ -166,6 +166,19 @@ namespace {
             static_cast<long>(tft.variacaoHeapBytes),
             static_cast<long>(tft.variacaoPsramBytes)
         );
+
+        Serial.printf(
+            "TFT FM encoder->BUSCANDO ultimo/max/p95: %lu/%lu/%lu us (%lu amostras) | "
+            "encoder->resultado ultimo/max/p95: %lu/%lu/%lu us (%lu amostras)\n",
+            static_cast<unsigned long>(tft.latenciaBuscandoUltimaUs),
+            static_cast<unsigned long>(tft.latenciaBuscandoMaximaUs),
+            static_cast<unsigned long>(tft.latenciaBuscandoP95Us),
+            static_cast<unsigned long>(tft.amostrasLatenciaBuscando),
+            static_cast<unsigned long>(tft.latenciaResultadoUltimaUs),
+            static_cast<unsigned long>(tft.latenciaResultadoMaximaUs),
+            static_cast<unsigned long>(tft.latenciaResultadoP95Us),
+            static_cast<unsigned long>(tft.amostrasLatenciaResultado)
+        );
     }
 #endif
 

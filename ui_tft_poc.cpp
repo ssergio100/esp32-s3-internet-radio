@@ -7,18 +7,13 @@
 #include <SPI.h>
 
 #include "ui_tft_fontes_aa.h"
+#include "ui_tft_paleta.h"
 
 namespace {
 
-    // Paleta laranja gerada a partir de docs/ui_handoff/.../ui_tokens.json.
-    constexpr uint16_t COR_PRIMARIA = 0xFD49;
-    constexpr uint16_t COR_SECUNDARIA = 0xBBA6;
-    constexpr uint16_t COR_ATENUADA = 0x6A24;
-    constexpr uint16_t COR_SUPERFICIE = 0x1881;
-    constexpr uint16_t COR_FUNDO = 0x0000;
-
     constexpr int ALTURA_TOPO = 27;
     constexpr int TOPO_RODAPE = 205;
+    constexpr size_t QUANTIDADE_AMOSTRAS_LATENCIA = 64;
 
     Adafruit_ST7789 tft(
         &SPI,
@@ -32,6 +27,17 @@ namespace {
     EstadoUiTftPoc estadoAnterior;
     MetricasUiTftPoc metricas;
     uint64_t somaDuracoesUs = 0;
+    uint32_t ultimaSequenciaBuscandoMedida = 0;
+    uint32_t ultimaSequenciaResultadoMedida = 0;
+
+    struct HistoricoLatencia {
+        uint32_t valores[QUANTIDADE_AMOSTRAS_LATENCIA] = {};
+        size_t quantidade = 0;
+        size_t proxima = 0;
+    };
+
+    HistoricoLatencia historicoBuscando;
+    HistoricoLatencia historicoResultado;
 
     struct GlifoPosicionado {
         GlifoFonteAa glifo;
@@ -42,6 +48,54 @@ namespace {
     constexpr size_t MAXIMO_GLIFOS_CAMPO = 96;
     GlifoPosicionado glifosCampo[MAXIMO_GLIFOS_CAMPO];
     uint16_t linhaCampo[TFT_LARGURA];
+
+    uint32_t calcularPercentil95(const HistoricoLatencia& historico) {
+        if (historico.quantidade == 0) {
+            return 0;
+        }
+
+        uint32_t ordenadas[QUANTIDADE_AMOSTRAS_LATENCIA];
+        for (size_t i = 0; i < historico.quantidade; i++) {
+            ordenadas[i] = historico.valores[i];
+        }
+
+        for (size_t i = 1; i < historico.quantidade; i++) {
+            uint32_t valor = ordenadas[i];
+            size_t posicao = i;
+            while (posicao > 0 && ordenadas[posicao - 1] > valor) {
+                ordenadas[posicao] = ordenadas[posicao - 1];
+                --posicao;
+            }
+            ordenadas[posicao] = valor;
+        }
+
+        size_t ordem =
+            (historico.quantidade * 95 + 99) / 100;
+        return ordenadas[ordem - 1];
+    }
+
+    void registrarAmostraLatencia(
+        HistoricoLatencia& historico,
+        uint32_t valorUs,
+        uint32_t& ultimaUs,
+        uint32_t& maximaUs,
+        uint32_t& percentil95Us,
+        uint32_t& quantidadeTotal
+    ) {
+        historico.valores[historico.proxima] = valorUs;
+        historico.proxima =
+            (historico.proxima + 1) % QUANTIDADE_AMOSTRAS_LATENCIA;
+        if (historico.quantidade < QUANTIDADE_AMOSTRAS_LATENCIA) {
+            ++historico.quantidade;
+        }
+
+        ultimaUs = valorUs;
+        if (valorUs > maximaUs) {
+            maximaUs = valorUs;
+        }
+        ++quantidadeTotal;
+        percentil95Us = calcularPercentil95(historico);
+    }
 
     const GlifoFonteAa* localizarGlifo(
         const FonteAa& fonte,
@@ -130,7 +184,7 @@ namespace {
         int altura,
         const FonteAa& fonte,
         uint16_t cor,
-        uint16_t fundo = COR_FUNDO,
+        uint16_t fundo = PALETA_UI_TFT_LARANJA.fundo,
         bool centralizar = false
     ) {
         if (
@@ -227,13 +281,15 @@ namespace {
     }
 
     void desenharEstrutura(const EstadoUiTftPoc& estado) {
-        tft.fillScreen(COR_FUNDO);
-        tft.fillRect(0, 0, TFT_LARGURA, ALTURA_TOPO, COR_SUPERFICIE);
-        tft.fillRect(0, TOPO_RODAPE, TFT_LARGURA, TFT_ALTURA - TOPO_RODAPE, COR_SUPERFICIE);
+        tft.fillScreen(PALETA_UI_TFT_LARANJA.fundo);
+        tft.fillRect(0, 0, TFT_LARGURA, ALTURA_TOPO, PALETA_UI_TFT_LARANJA.superficie);
+        tft.fillRect(0, TOPO_RODAPE, TFT_LARGURA, TFT_ALTURA - TOPO_RODAPE, PALETA_UI_TFT_LARANJA.superficie);
         desenharTexto(
             textoOuTraco(estado.titulo),
             8, 0, 210, ALTURA_TOPO,
-            FONTE_AA_PEQUENA, COR_PRIMARIA, COR_SUPERFICIE
+            FONTE_AA_PEQUENA,
+            PALETA_UI_TFT_LARANJA.primaria,
+            PALETA_UI_TFT_LARANJA.superficie
         );
     }
 
@@ -243,7 +299,9 @@ namespace {
         desenharTexto(
             texto,
             210, TOPO_RODAPE, 106, TFT_ALTURA - TOPO_RODAPE,
-            FONTE_AA_NORMAL, COR_PRIMARIA, COR_SUPERFICIE
+            FONTE_AA_NORMAL,
+            PALETA_UI_TFT_LARANJA.primaria,
+            PALETA_UI_TFT_LARANJA.superficie
         );
     }
 
@@ -254,17 +312,17 @@ namespace {
     ) {
         uint32_t campos = 0;
         if (completo || strcmp(atual.estacao, anterior->estacao) != 0) {
-            desenharTexto(textoOuTraco(atual.estacao), 10, 38, 300, 34, FONTE_AA_DESTAQUE, COR_PRIMARIA);
+            desenharTexto(textoOuTraco(atual.estacao), 10, 38, 300, 34, FONTE_AA_DESTAQUE, PALETA_UI_TFT_LARANJA.primaria);
             campos++;
         }
         if (completo || strcmp(atual.faixa, anterior->faixa) != 0) {
-            desenharTexto(textoOuTraco(atual.faixa), 10, 76, 300, 38, FONTE_AA_NORMAL, COR_SECUNDARIA);
+            desenharTexto(textoOuTraco(atual.faixa), 10, 76, 300, 38, FONTE_AA_NORMAL, PALETA_UI_TFT_LARANJA.secundaria);
             campos++;
         }
         if (completo || strcmp(atual.codec, anterior->codec) != 0) {
             char texto[32];
             snprintf(texto, sizeof(texto), "CODEC  %s", textoOuTraco(atual.codec));
-            desenharTexto(texto, 10, 124, 145, 25, FONTE_AA_PEQUENA, COR_SECUNDARIA);
+            desenharTexto(texto, 10, 124, 145, 25, FONTE_AA_PEQUENA, PALETA_UI_TFT_LARANJA.secundaria);
             campos++;
         }
         if (completo || atual.bitrate != anterior->bitrate) {
@@ -274,7 +332,7 @@ namespace {
             } else {
                 snprintf(texto, sizeof(texto), "BITRATE  -");
             }
-            desenharTexto(texto, 165, 124, 145, 25, FONTE_AA_PEQUENA, COR_SECUNDARIA);
+            desenharTexto(texto, 165, 124, 145, 25, FONTE_AA_PEQUENA, PALETA_UI_TFT_LARANJA.secundaria);
             campos++;
         }
         if (completo || atual.bufferMs != anterior->bufferMs) {
@@ -284,7 +342,7 @@ namespace {
             } else {
                 snprintf(texto, sizeof(texto), "BUFFER  -");
             }
-            desenharTexto(texto, 10, 157, 145, 25, FONTE_AA_PEQUENA, COR_SECUNDARIA);
+            desenharTexto(texto, 10, 157, 145, 25, FONTE_AA_PEQUENA, PALETA_UI_TFT_LARANJA.secundaria);
             campos++;
         }
         if (completo || atual.wifiConectado != anterior->wifiConectado || atual.wifiRssi != anterior->wifiRssi) {
@@ -294,7 +352,7 @@ namespace {
             } else {
                 snprintf(texto, sizeof(texto), "WI-FI  -");
             }
-            desenharTexto(texto, 165, 157, 145, 25, FONTE_AA_PEQUENA, COR_SECUNDARIA);
+            desenharTexto(texto, 165, 157, 145, 25, FONTE_AA_PEQUENA, PALETA_UI_TFT_LARANJA.secundaria);
             campos++;
         }
         return campos;
@@ -303,7 +361,8 @@ namespace {
     uint32_t desenharRadioFm(
         const EstadoUiTftPoc& atual,
         const EstadoUiTftPoc* anterior,
-        bool completo
+        bool completo,
+        bool& estadoOperacaoRedesenhado
     ) {
         uint32_t campos = 0;
         if (completo || atual.frequenciaFm10kHz != anterior->frequenciaFm10kHz) {
@@ -313,29 +372,112 @@ namespace {
             } else {
                 snprintf(texto, sizeof(texto), "-.-");
             }
-            desenharTexto(texto, 10, 39, 240, 70, FONTE_AA_FREQUENCIA, COR_PRIMARIA);
-            desenharTexto("MHz", 252, 65, 58, 35, FONTE_AA_NORMAL, COR_SECUNDARIA);
+            desenharTexto(
+                texto,
+                8, 28, 304, 67,
+                FONTE_AA_FREQUENCIA,
+                PALETA_UI_TFT_LARANJA.primaria,
+                PALETA_UI_TFT_LARANJA.fundo,
+                true
+            );
             campos++;
         }
-        if (completo || strcmp(atual.estacao, anterior->estacao) != 0) {
-            desenharTexto(textoOuTraco(atual.estacao), 10, 116, 300, 34, FONTE_AA_DESTAQUE, COR_PRIMARIA);
+
+        if (
+            completo ||
+            atual.fmBuscando != anterior->fmBuscando ||
+            strcmp(atual.estadoFm, anterior->estadoFm) != 0
+        ) {
+            estadoOperacaoRedesenhado = true;
+            char texto[80];
+            if (atual.fmBuscando) {
+                snprintf(texto, sizeof(texto), "MHz  ·  BUSCANDO");
+            } else if (atual.estadoFm[0] != '\0') {
+                snprintf(texto, sizeof(texto), "MHz  ·  %s", atual.estadoFm);
+            } else {
+                snprintf(texto, sizeof(texto), "MHz");
+            }
+            desenharTexto(
+                texto,
+                8, 95, 304, 18,
+                FONTE_AA_PEQUENA,
+                atual.fmBuscando
+                    ? PALETA_UI_TFT_LARANJA.primaria
+                    : PALETA_UI_TFT_LARANJA.secundaria,
+                PALETA_UI_TFT_LARANJA.fundo,
+                true
+            );
             campos++;
         }
-        if (completo || atual.sinalFmValido != anterior->sinalFmValido || atual.sinalFmDecimosDbuv != anterior->sinalFmDecimosDbuv) {
+
+        if (
+            completo ||
+            atual.psFmValido != anterior->psFmValido ||
+            strcmp(atual.psFm, anterior->psFm) != 0
+        ) {
+            desenharTexto(
+                atual.psFmValido ? textoOuTraco(atual.psFm) : "-",
+                8, 114, 304, 28,
+                FONTE_AA_DESTAQUE,
+                PALETA_UI_TFT_LARANJA.primaria,
+                PALETA_UI_TFT_LARANJA.fundo,
+                true
+            );
+            campos++;
+        }
+
+        if (
+            completo ||
+            atual.radioTextoFmValido != anterior->radioTextoFmValido ||
+            strcmp(atual.radioTextoFm, anterior->radioTextoFm) != 0
+        ) {
+            desenharTexto(
+                atual.radioTextoFmValido
+                    ? textoOuTraco(atual.radioTextoFm)
+                    : "-",
+                8, 143, 304, 24,
+                FONTE_AA_PEQUENA,
+                PALETA_UI_TFT_LARANJA.secundaria,
+                PALETA_UI_TFT_LARANJA.fundo,
+                true
+            );
+            campos++;
+        }
+
+        if (
+            completo ||
+            atual.sinalFmValido != anterior->sinalFmValido ||
+            atual.sinalFmDecimosDbuv != anterior->sinalFmDecimosDbuv
+        ) {
             char texto[40];
             if (atual.sinalFmValido) {
-                int sinal = atual.sinalFmDecimosDbuv;
-                snprintf(texto, sizeof(texto), "SINAL  %d.%01d dBuV", sinal / 10, abs(sinal % 10));
+                int32_t sinal = atual.sinalFmDecimosDbuv;
+                bool negativo = sinal < 0;
+                uint32_t absoluto = static_cast<uint32_t>(
+                    negativo ? -sinal : sinal
+                );
+                snprintf(
+                    texto,
+                    sizeof(texto),
+                    "SINAL  %s%lu.%01lu dBµV",
+                    negativo ? "-" : "",
+                    static_cast<unsigned long>(absoluto / 10),
+                    static_cast<unsigned long>(absoluto % 10)
+                );
             } else {
                 snprintf(texto, sizeof(texto), "SINAL  -");
             }
-            desenharTexto(texto, 10, 160, 180, 28, FONTE_AA_NORMAL, COR_SECUNDARIA);
+            desenharTexto(
+                texto,
+                8, 174, 304, 25,
+                FONTE_AA_NORMAL,
+                PALETA_UI_TFT_LARANJA.secundaria,
+                PALETA_UI_TFT_LARANJA.fundo,
+                true
+            );
             campos++;
         }
-        if (completo) {
-            desenharTexto("ESTEREO  -", 195, 160, 115, 28, FONTE_AA_PEQUENA, COR_ATENUADA);
-            campos++;
-        }
+
         return campos;
     }
 
@@ -352,11 +494,11 @@ namespace {
             } else {
                 snprintf(texto, sizeof(texto), "--:--");
             }
-            desenharTexto(texto, 10, 49, 300, 72, FONTE_AA_FREQUENCIA, COR_PRIMARIA, COR_FUNDO, true);
+            desenharTexto(texto, 10, 49, 300, 72, FONTE_AA_FREQUENCIA, PALETA_UI_TFT_LARANJA.primaria, PALETA_UI_TFT_LARANJA.fundo, true);
             campos++;
         }
         if (completo || strcmp(atual.data, anterior->data) != 0) {
-            desenharTexto(textoOuTraco(atual.data), 10, 132, 300, 34, FONTE_AA_NORMAL, COR_SECUNDARIA, COR_FUNDO, true);
+            desenharTexto(textoOuTraco(atual.data), 10, 132, 300, 34, FONTE_AA_NORMAL, PALETA_UI_TFT_LARANJA.secundaria, PALETA_UI_TFT_LARANJA.fundo, true);
             campos++;
         }
         return campos;
@@ -370,7 +512,7 @@ namespace {
         if (!completo && strcmp(atual.mensagem, anterior->mensagem) == 0) {
             return 0;
         }
-        desenharTexto(textoOuTraco(atual.mensagem), 10, 82, 300, 52, FONTE_AA_DESTAQUE, COR_PRIMARIA, COR_FUNDO, true);
+        desenharTexto(textoOuTraco(atual.mensagem), 10, 82, 300, 52, FONTE_AA_DESTAQUE, PALETA_UI_TFT_LARANJA.primaria, PALETA_UI_TFT_LARANJA.fundo, true);
         return 1;
     }
 
@@ -385,7 +527,7 @@ bool iniciarUiTftPoc() {
     tft.setSPISpeed(FREQUENCIA_SPI_TFT_HZ);
     tft.setRotation(1);
     tft.setTextWrap(false);
-    tft.fillScreen(COR_FUNDO);
+    tft.fillScreen(PALETA_UI_TFT_LARANJA.fundo);
 
     disponivel = tft.width() == TFT_LARGURA && tft.height() == TFT_ALTURA;
     metricas.disponivel = disponivel;
@@ -424,12 +566,20 @@ void processarUiTftPoc(const EstadoUiTftPoc& estado) {
 
     uint32_t inicioUs = micros();
     uint32_t campos = 0;
+    bool estadoOperacaoFmRedesenhado = false;
+    bool conteudoFmRedesenhado = false;
 
     if (completo) {
         desenharEstrutura(estado);
         campos += 3;
     } else if (tituloMudou) {
-        desenharTexto(textoOuTraco(estado.titulo), 8, 0, 210, ALTURA_TOPO, FONTE_AA_PEQUENA, COR_PRIMARIA, COR_SUPERFICIE);
+        desenharTexto(
+            textoOuTraco(estado.titulo),
+            8, 0, 210, ALTURA_TOPO,
+            FONTE_AA_PEQUENA,
+            PALETA_UI_TFT_LARANJA.primaria,
+            PALETA_UI_TFT_LARANJA.superficie
+        );
         campos++;
     }
 
@@ -438,8 +588,17 @@ void processarUiTftPoc(const EstadoUiTftPoc& estado) {
             campos += desenharRadioWeb(estado, &estadoAnterior, completo);
             break;
         case TelaUiTftPoc::RADIO_FM:
-            campos += desenharRadioFm(estado, &estadoAnterior, completo);
+        {
+            uint32_t camposAntes = campos;
+            campos += desenharRadioFm(
+                estado,
+                &estadoAnterior,
+                completo,
+                estadoOperacaoFmRedesenhado
+            );
+            conteudoFmRedesenhado = campos > camposAntes;
             break;
+        }
         case TelaUiTftPoc::RELOGIO:
             campos += desenharRelogio(estado, &estadoAnterior, completo);
             break;
@@ -450,12 +609,19 @@ void processarUiTftPoc(const EstadoUiTftPoc& estado) {
             break;
     }
 
-    if (volumeMudou) {
+    if (
+        volumeMudou &&
+        estado.tela != TelaUiTftPoc::RADIO_FM
+    ) {
         desenharVolume(estado.volume);
         campos++;
     }
 
-    uint32_t duracaoUs = micros() - inicioUs;
+    // writePixels() usa o caminho bloqueante do Adafruit_SPITFT no ESP32;
+    // o HAL espera cada transacao terminar. Portanto este instante ocorre
+    // depois de os ultimos pixels terem sido enviados ao controlador.
+    uint32_t fimUs = micros();
+    uint32_t duracaoUs = fimUs - inicioUs;
     metricas.atualizacoes++;
     metricas.camposRedesenhados += campos;
     metricas.duracaoUltimaUs = duracaoUs;
@@ -463,6 +629,47 @@ void processarUiTftPoc(const EstadoUiTftPoc& estado) {
     somaDuracoesUs += duracaoUs;
     metricas.duracaoMediaUs = somaDuracoesUs / metricas.atualizacoes;
     metricas.latenciaUltimaMs = millis() - estado.momentoAlteracaoMs;
+
+    if (
+        estado.tela == TelaUiTftPoc::RADIO_FM &&
+        estado.sequenciaEventoEncoderFm != 0
+    ) {
+        if (
+            estado.fmBuscando &&
+            estadoOperacaoFmRedesenhado &&
+            estado.sequenciaEventoEncoderFm !=
+                ultimaSequenciaBuscandoMedida
+        ) {
+            ultimaSequenciaBuscandoMedida =
+                estado.sequenciaEventoEncoderFm;
+            registrarAmostraLatencia(
+                historicoBuscando,
+                fimUs - estado.momentoEventoEncoderFmUs,
+                metricas.latenciaBuscandoUltimaUs,
+                metricas.latenciaBuscandoMaximaUs,
+                metricas.latenciaBuscandoP95Us,
+                metricas.amostrasLatenciaBuscando
+            );
+        }
+
+        if (
+            estado.fmBuscaConcluida &&
+            conteudoFmRedesenhado &&
+            estado.sequenciaEventoEncoderFm !=
+                ultimaSequenciaResultadoMedida
+        ) {
+            ultimaSequenciaResultadoMedida =
+                estado.sequenciaEventoEncoderFm;
+            registrarAmostraLatencia(
+                historicoResultado,
+                fimUs - estado.momentoEventoEncoderFmUs,
+                metricas.latenciaResultadoUltimaUs,
+                metricas.latenciaResultadoMaximaUs,
+                metricas.latenciaResultadoP95Us,
+                metricas.amostrasLatenciaResultado
+            );
+        }
+    }
 
     estadoAnterior = estado;
     possuiEstadoAnterior = true;

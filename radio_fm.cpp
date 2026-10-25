@@ -16,7 +16,16 @@ namespace {
     int8_t direcaoBuscaAtual = 0;
     unsigned long ultimaLeituraQualidadeMs = 0;
     unsigned long ultimaLeituraRdsMs = 0;
-    unsigned long ultimaPublicacaoQualidadeMs = 0;
+    constexpr unsigned long INTERVALO_MEDIA_SINAL_MS = 2000;
+    int32_t somaAmostrasSinal = 0;
+    uint16_t quantidadeAmostrasSinal = 0;
+    unsigned long inicioJanelaMediaSinalMs = 0;
+
+    void reiniciarMediaSinal() {
+        somaAmostrasSinal = 0;
+        quantidadeAmostrasSinal = 0;
+        inicioJanelaMediaSinalMs = 0;
+    }
 
     void incrementarRevisao() {
         ++status.revisao;
@@ -42,11 +51,18 @@ namespace {
         bool mudou =
             status.qualidadeValida ||
             status.nivelDecimosDbuv != 0 ||
-            status.nomeEstacao[0] != '\0';
+            status.nomeEstacaoValido ||
+            status.radioTextoValido ||
+            status.nomeEstacao[0] != '\0' ||
+            status.radioTexto[0] != '\0';
 
         status.qualidadeValida = false;
         status.nivelDecimosDbuv = 0;
         status.nomeEstacao[0] = '\0';
+        status.radioTexto[0] = '\0';
+        status.nomeEstacaoValido = false;
+        status.radioTextoValido = false;
+        reiniciarMediaSinal();
 
         if (mudou) {
             incrementarRevisao();
@@ -188,7 +204,12 @@ namespace {
 
         status.frequencia10kHz = frequencia;
         status.nomeEstacao[0] = '\0';
+        status.radioTexto[0] = '\0';
+        status.nomeEstacaoValido = false;
+        status.radioTextoValido = false;
         status.qualidadeValida = false;
+        status.nivelDecimosDbuv = 0;
+        reiniciarMediaSinal();
         incrementarRevisao();
         return true;
     }
@@ -222,25 +243,35 @@ namespace {
             return false;
         }
 
-        int diferenca =
-            qualidade.nivelDecimosDbuv - status.nivelDecimosDbuv;
-        if (diferenca < 0) {
-            diferenca = -diferenca;
+        if (quantidadeAmostrasSinal == 0) {
+            inicioJanelaMediaSinalMs = agoraMs;
         }
 
-        bool publicar =
-            !status.qualidadeValida ||
-            diferenca >= 10 ||
-            agoraMs - ultimaPublicacaoQualidadeMs >= 500;
+        somaAmostrasSinal += qualidade.nivelDecimosDbuv;
+        ++quantidadeAmostrasSinal;
 
-        status.qualidadeValida = true;
-        status.nivelDecimosDbuv = qualidade.nivelDecimosDbuv;
-
-        if (!publicar) {
+        if (
+            agoraMs - inicioJanelaMediaSinalMs <
+            INTERVALO_MEDIA_SINAL_MS
+        ) {
             return false;
         }
 
-        ultimaPublicacaoQualidadeMs = agoraMs;
+        int32_t media = somaAmostrasSinal /
+            static_cast<int32_t>(quantidadeAmostrasSinal);
+        reiniciarMediaSinal();
+
+        bool mudou =
+            !status.qualidadeValida ||
+            status.nivelDecimosDbuv != media;
+
+        status.qualidadeValida = true;
+        status.nivelDecimosDbuv = static_cast<int16_t>(media);
+
+        if (!mudou) {
+            return false;
+        }
+
         incrementarRevisao();
         return true;
     }
@@ -265,8 +296,14 @@ namespace {
         }
 
         const char* nome = rds.psValido ? rds.ps : "";
+        const char* texto = rds.textoValido ? rds.texto : "";
+        bool mudou =
+            status.nomeEstacaoValido != rds.psValido ||
+            status.radioTextoValido != rds.textoValido ||
+            strcmp(status.nomeEstacao, nome) != 0 ||
+            strcmp(status.radioTexto, texto) != 0;
 
-        if (strcmp(status.nomeEstacao, nome) == 0) {
+        if (!mudou) {
             return false;
         }
 
@@ -275,6 +312,13 @@ namespace {
             sizeof(status.nomeEstacao),
             nome
         );
+        copiarTexto(
+            status.radioTexto,
+            sizeof(status.radioTexto),
+            texto
+        );
+        status.nomeEstacaoValido = rds.psValido;
+        status.radioTextoValido = rds.textoValido;
         incrementarRevisao();
         return true;
     }
@@ -285,6 +329,7 @@ bool iniciarRadioFm(int volumeInterface) {
     status = StatusRadioFm{};
     buscasPendentes = 0;
     direcaoBuscaAtual = 0;
+    reiniciarMediaSinal();
     inicializado = false;
     ativo = false;
 
@@ -371,7 +416,7 @@ bool ativarRadioFm(int volumeInterface) {
 
     ultimaLeituraQualidadeMs = 0;
     ultimaLeituraRdsMs = 0;
-    ultimaPublicacaoQualidadeMs = 0;
+    reiniciarMediaSinal();
     publicarEstado(EstadoRadioFm::ATIVO);
     return true;
 }
@@ -398,6 +443,8 @@ void desativarRadioFm() {
     }
 
     limparDadosEstacao();
+    status.sequenciaEventoEncoder = 0;
+    status.momentoEventoEncoderUs = 0;
     limparErro();
     publicarEstado(EstadoRadioFm::REPOUSO);
 }
@@ -425,9 +472,18 @@ void ajustarVolumeRadioFm(int volumeInterface) {
     }
 }
 
-void navegarRadioFm(long deslocamento) {
+void navegarRadioFm(
+    long deslocamento,
+    uint32_t momentoEventoEncoderUs,
+    uint32_t sequenciaEventoEncoder
+) {
     if (!inicializado || !ativo || deslocamento == 0) {
         return;
+    }
+
+    if (sequenciaEventoEncoder != 0) {
+        status.sequenciaEventoEncoder = sequenciaEventoEncoder;
+        status.momentoEventoEncoderUs = momentoEventoEncoderUs;
     }
 
     somarBuscasPendentes(deslocamento);

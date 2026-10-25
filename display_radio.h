@@ -27,15 +27,24 @@ void mostrarEstadoRadio(
     int quantidadeRadios
 );
 
+struct DadosDisplayRadioFm {
+    uint16_t frequencia10kHz = 0;
+    const char* nomeEstacao = "";
+    const char* radioTexto = "";
+    const char* estado = "";
+    bool nomeEstacaoValido = false;
+    bool radioTextoValido = false;
+    bool buscando = false;
+    bool buscaConcluida = false;
+    bool qualidadeValida = false;
+    int16_t nivelDecimosDbuv = 0;
+    uint32_t sequenciaEventoEncoder = 0;
+    uint32_t momentoEventoEncoderUs = 0;
+};
+
 // Atualiza o modelo da tela FM. A implementação do display não acessa o
 // driver TEF6686; recebe apenas dados já tratados pelo coordenador principal.
-void mostrarRadioFm(
-    uint16_t frequencia10kHz,
-    const String& nomeEstacao,
-    const String& estado,
-    bool qualidadeValida,
-    int16_t nivelDecimosDbuv
-);
+void mostrarRadioFm(const DadosDisplayRadioFm& dados);
 
 void mostrarVolume(int volume);
 

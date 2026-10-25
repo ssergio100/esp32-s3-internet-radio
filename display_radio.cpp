@@ -33,6 +33,9 @@ namespace {
     bool statusAudioTftDisponivel = false;
     bool wifiTftConectado = false;
     int16_t wifiTftRssi = 0;
+    bool horarioTopoFmDisponivel = false;
+    struct tm ultimaDataHoraTopoFm = {};
+    unsigned long momentoUltimaConsultaTopoFmMs = 0;
 
     void marcarModeloTftAlterado() {
         revisaoModeloTft++;
@@ -118,7 +121,14 @@ namespace {
     int16_t nivelRadioFmDecimosDbuv = 0;
     bool qualidadeRadioFmValida = false;
     String nomeEstacaoRadioFm;
+    char radioTextoRadioFm[193] = {};
     String estadoRadioFm;
+    bool nomeEstacaoRadioFmValido = false;
+    bool radioTextoRadioFmValido = false;
+    bool radioFmBuscando = false;
+    bool buscaRadioFmConcluida = false;
+    uint32_t sequenciaEventoEncoderFm = 0;
+    uint32_t momentoEventoEncoderFmUs = 0;
 
     // Os valores também representam o passo horizontal de um pixel.
     enum class SentidoRolagem {
@@ -197,6 +207,33 @@ namespace {
         strlcpy(destino, origem != nullptr ? origem : "", tamanho);
     }
 
+    bool atualizarHorarioTopoFm() {
+        unsigned long agoraMs = millis();
+        if (
+            agoraMs - momentoUltimaConsultaTopoFmMs < 500 &&
+            momentoUltimaConsultaTopoFmMs != 0
+        ) {
+            return false;
+        }
+
+        momentoUltimaConsultaTopoFmMs = agoraMs;
+        struct tm dataHora = {};
+        bool disponivelAgora = obterDataHoraLocal(dataHora);
+        bool mudou =
+            disponivelAgora != horarioTopoFmDisponivel;
+
+        if (disponivelAgora) {
+            mudou =
+                mudou ||
+                dataHora.tm_hour != ultimaDataHoraTopoFm.tm_hour ||
+                dataHora.tm_min != ultimaDataHoraTopoFm.tm_min;
+            ultimaDataHoraTopoFm = dataHora;
+        }
+
+        horarioTopoFmDisponivel = disponivelAgora;
+        return mudou;
+    }
+
     EstadoUiTftPoc criarEstadoUiTftPoc() {
         EstadoUiTftPoc estado;
         estado.revisao = revisaoModeloTft;
@@ -232,15 +269,46 @@ namespace {
 
             case TelaDisplay::RADIO_FM:
                 estado.tela = TelaUiTftPoc::RADIO_FM;
-                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "RADIO FM");
+                {
+                    int volumeLimitado = constrain(
+                        volumeBarraInferior,
+                        VOLUME_MINIMO,
+                        VOLUME_MAXIMO
+                    );
+                    int volumePercentual =
+                        (volumeLimitado * 100 + VOLUME_MAXIMO / 2) /
+                        VOLUME_MAXIMO;
+
+                    if (horarioTopoFmDisponivel) {
+                        snprintf(
+                            estado.titulo,
+                            sizeof(estado.titulo),
+                            "FM · %d%% · %02d:%02d",
+                            volumePercentual,
+                            ultimaDataHoraTopoFm.tm_hour,
+                            ultimaDataHoraTopoFm.tm_min
+                        );
+                    } else {
+                        snprintf(
+                            estado.titulo,
+                            sizeof(estado.titulo),
+                            "FM · %d%% · --:--",
+                            volumePercentual
+                        );
+                    }
+                }
                 estado.frequenciaFm10kHz = frequenciaRadioFm10kHz;
                 estado.sinalFmDecimosDbuv = nivelRadioFmDecimosDbuv;
                 estado.sinalFmValido = qualidadeRadioFmValida;
-                if (!nomeEstacaoRadioFm.isEmpty()) {
-                    copiarTextoTft(estado.estacao, sizeof(estado.estacao), nomeEstacaoRadioFm);
-                } else {
-                    copiarTextoTft(estado.estacao, sizeof(estado.estacao), estadoRadioFm);
-                }
+                estado.psFmValido = nomeEstacaoRadioFmValido;
+                estado.radioTextoFmValido = radioTextoRadioFmValido;
+                estado.fmBuscando = radioFmBuscando;
+                estado.fmBuscaConcluida = buscaRadioFmConcluida;
+                estado.sequenciaEventoEncoderFm = sequenciaEventoEncoderFm;
+                estado.momentoEventoEncoderFmUs = momentoEventoEncoderFmUs;
+                copiarTextoTft(estado.psFm, sizeof(estado.psFm), nomeEstacaoRadioFm);
+                copiarTextoTft(estado.radioTextoFm, sizeof(estado.radioTextoFm), radioTextoRadioFm);
+                copiarTextoTft(estado.estadoFm, sizeof(estado.estadoFm), estadoRadioFm);
                 break;
 
             case TelaDisplay::RELOGIO:
@@ -1505,24 +1573,31 @@ void mostrarEstadoRadio(
     );
 }
 
-void mostrarRadioFm(
-    uint16_t frequencia10kHz,
-    const String& nomeEstacao,
-    const String& estado,
-    bool qualidadeValida,
-    int16_t nivelDecimosDbuv
-) {
+void mostrarRadioFm(const DadosDisplayRadioFm& dados) {
     BloqueioDisplay bloqueio;
 
     if (!bloqueio.foiAdquirido() || !disponivel) {
         return;
     }
 
-    frequenciaRadioFm10kHz = frequencia10kHz;
-    nomeEstacaoRadioFm = nomeEstacao;
-    estadoRadioFm = estado;
-    qualidadeRadioFmValida = qualidadeValida;
-    nivelRadioFmDecimosDbuv = nivelDecimosDbuv;
+    frequenciaRadioFm10kHz = dados.frequencia10kHz;
+    nomeEstacaoRadioFm = dados.nomeEstacaoValido
+        ? dados.nomeEstacao
+        : "";
+    strlcpy(
+        radioTextoRadioFm,
+        dados.radioTextoValido ? dados.radioTexto : "",
+        sizeof(radioTextoRadioFm)
+    );
+    estadoRadioFm = dados.estado;
+    nomeEstacaoRadioFmValido = dados.nomeEstacaoValido;
+    radioTextoRadioFmValido = dados.radioTextoValido;
+    radioFmBuscando = dados.buscando;
+    buscaRadioFmConcluida = dados.buscaConcluida;
+    qualidadeRadioFmValida = dados.qualidadeValida;
+    nivelRadioFmDecimosDbuv = dados.nivelDecimosDbuv;
+    sequenciaEventoEncoderFm = dados.sequenciaEventoEncoder;
+    momentoEventoEncoderFmUs = dados.momentoEventoEncoderUs;
     telaAtual = TelaDisplay::RADIO_FM;
     exibindoVolumeNaBarraInferior = false;
     solicitarApresentacao();
@@ -1664,6 +1739,16 @@ void processarDisplay() {
 
             if (precisaRedesenhar) {
                 desenharTelaRadio();
+                apresentar = true;
+            }
+        } else if (telaAtual == TelaDisplay::RADIO_FM) {
+#if RADIO_UI_TFT_POC
+            if (atualizarHorarioTopoFm()) {
+                marcarModeloTftAlterado();
+            }
+#endif
+            if (forcarAtualizacao) {
+                desenharTelaRadioFm();
                 apresentar = true;
             }
         } else if (forcarAtualizacao) {

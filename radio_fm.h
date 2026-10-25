@@ -17,7 +17,12 @@ struct StatusRadioFm {
     int16_t nivelDecimosDbuv = 0;
     bool qualidadeValida = false;
     char nomeEstacao[25] = {};
+    char radioTexto[193] = {};
+    bool nomeEstacaoValido = false;
+    bool radioTextoValido = false;
     char ultimoErro[64] = {};
+    uint32_t sequenciaEventoEncoder = 0;
+    uint32_t momentoEventoEncoderUs = 0;
     uint32_t revisao = 0;
 };
 
@@ -31,7 +36,11 @@ void ajustarVolumeRadioFm(int volumeInterface);
 
 // Cada detente procura a estação seguinte (positivo) ou anterior (negativo).
 // As etapas ficam enfileiradas para movimentos rápidos não perderem passos.
-void navegarRadioFm(long deslocamento);
+void navegarRadioFm(
+    long deslocamento,
+    uint32_t momentoEventoEncoderUs = 0,
+    uint32_t sequenciaEventoEncoder = 0
+);
 
 // Executa no máximo uma etapa da busca e uma consulta periódica por chamada.
 // Retorna true quando alguma informação visível mudou.
