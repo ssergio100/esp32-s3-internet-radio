@@ -24,6 +24,7 @@ constexpr unsigned long INTERVALO_VERIFICACAO_ALARMES_MS = 500;
 struct AlarmeCarregado {
     uint32_t id = 0;
     uint32_t radioId = 0;
+    bool radioFm = false;
     bool ativo = false;
     bool execucaoUnica = false;
     uint8_t hora = 0;
@@ -34,7 +35,6 @@ struct AlarmeCarregado {
     uint8_t dia = 0;
     uint8_t volume = 0;
     String nome;
-    String arquivo;
 };
 
 AlarmeCarregado alarmes[QUANTIDADE_MAXIMA_ALARMES];
@@ -335,6 +335,7 @@ void carregarAlarmes() {
         alarme.nome = item["nome"].as<const char*>();
         alarme.volume = item["volume"] | 1;
         alarme.radioId = item["radioId"] | 0;
+        alarme.radioFm = item["radioFm"] | false;
 
         interpretarHorario(
             item["horario"].as<const char*>(),
@@ -436,8 +437,8 @@ bool verificarDisparoAlarme(DisparoAlarme& disparo) {
 
     disparo.id = escolhido.id;
     disparo.radioId = escolhido.radioId;
+    disparo.radioFm = escolhido.radioFm;
     disparo.nome = escolhido.nome;
-    disparo.arquivo = "";
     disparo.volume = escolhido.volume;
 
     return true;

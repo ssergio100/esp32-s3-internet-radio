@@ -6,6 +6,7 @@
 #include <WebServer.h>
 
 #include "alarmes.h"
+#include "chime.h"
 #include "persistencia_alarmes.h"
 #include "persistencia_radios.h"
 #include "radios.h"
@@ -197,6 +198,7 @@ bool salvarListaAlarmesRecebida() {
     }
 
     carregarAlarmes();
+    carregarConfiguracaoChime();
     Serial.println(
         "alarmes.json validado e atualizado."
     );

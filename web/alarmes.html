@@ -104,6 +104,46 @@
             box-shadow: 0 3px 14px rgba(0, 0, 0, 0.08);
         }
 
+        .painel-chime {
+            padding: 18px 20px;
+            margin-bottom: 18px;
+        }
+
+        .chime-cabecalho {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 17px;
+        }
+
+        .chime-cabecalho h2 {
+            margin: 0 0 4px;
+            font-size: 19px;
+        }
+
+        .chime-cabecalho p { margin: 0; }
+
+        .chime-grade {
+            display: grid;
+            grid-template-columns:
+                minmax(180px, 1fr)
+                minmax(180px, 1fr)
+                minmax(170px, 0.8fr)
+                auto;
+            align-items: end;
+            gap: 16px;
+        }
+
+        .chime-grade .campo { margin: 0; }
+        .acoes-chime {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+        .acoes-chime button { min-height: 42px; white-space: nowrap; }
+        .chime-estado { margin-top: 12px; }
+
         .tabela-responsiva { overflow-x: auto; }
 
         table {
@@ -310,6 +350,9 @@
             .cabecalho { align-items: stretch; flex-direction: column; }
             .acoes-cabecalho .btn-principal { width: 100%; }
             .linha-campos { grid-template-columns: 1fr; gap: 0; }
+            .chime-grade { grid-template-columns: 1fr; }
+            .acoes-chime { align-items: stretch; flex-direction: column; }
+            .acoes-chime button { width: 100%; }
             th, td { padding: 11px 9px; }
             .coluna-som, .coluna-volume { display: none; }
             .acoes-linha { flex-direction: column; align-items: stretch; }
@@ -339,6 +382,60 @@
         </header>
 
         <div class="mensagem" id="mensagem" role="status" aria-live="polite"></div>
+
+        <section class="painel painel-chime">
+            <form id="formChime">
+                <div class="chime-cabecalho">
+                    <div>
+                        <h2>Chime horário</h2>
+                        <p class="detalhe">Toca uma vez em cada intervalo configurado.</p>
+                    </div>
+                    <label class="interruptor" title="Ativar chime horário">
+                        <input id="chimeAtivo" type="checkbox">
+                        <span class="trilho"></span>
+                    </label>
+                </div>
+
+                <div class="chime-grade">
+                    <div class="campo">
+                        <label for="chimeSom">Som do DFPlayer</label>
+                        <select id="chimeSom"></select>
+                    </div>
+
+                    <div class="campo">
+                        <label for="chimeVolume">Volume</label>
+                        <div class="volume-linha">
+                            <input id="chimeVolume" type="range" min="1" max="21" value="15">
+                            <span class="volume-valor" id="chimeVolumeValor">15/21</span>
+                        </div>
+                    </div>
+
+                    <div class="campo">
+                        <label for="chimeIntervalo">Intervalo</label>
+                        <select id="chimeIntervalo">
+                            <option value="1">A cada 1 minuto — teste</option>
+                            <option value="2">A cada 2 minutos — teste</option>
+                            <option value="5">A cada 5 minutos — teste</option>
+                            <option value="10">A cada 10 minutos</option>
+                            <option value="15">A cada 15 minutos</option>
+                            <option value="30">A cada 30 minutos</option>
+                            <option value="60">A cada hora</option>
+                        </select>
+                    </div>
+
+                    <div class="acoes-chime">
+                        <button class="btn-secundario" id="btnPreviaChime" type="button">
+                            Ouvir prévia
+                        </button>
+                        <button class="btn-principal" id="btnSalvarChime" type="submit">
+                            Salvar chime
+                        </button>
+                    </div>
+                </div>
+
+                <div class="detalhe chime-estado" id="chimeEstado"></div>
+            </form>
+        </section>
 
         <section class="painel">
             <div class="tabela-responsiva">
@@ -422,7 +519,7 @@
                             <option value="padrao">Som padrão do alarme</option>
                         </select>
                         <div class="detalhe">
-                            MP3 ausente ou rádio removida usa o som padrão.
+                            A opção Rádio FM usa a última frequência sintonizada.
                         </div>
                     </div>
 
@@ -477,10 +574,25 @@
         const volumeValor = document.getElementById("volumeValor");
         const campoAtivo = document.getElementById("ativo");
         const botaoSalvar = document.getElementById("btnSalvar");
+        const formChime = document.getElementById("formChime");
+        const chimeAtivo = document.getElementById("chimeAtivo");
+        const chimeSom = document.getElementById("chimeSom");
+        const chimeVolume = document.getElementById("chimeVolume");
+        const chimeVolumeValor = document.getElementById("chimeVolumeValor");
+        const chimeIntervalo = document.getElementById("chimeIntervalo");
+        const chimeEstado = document.getElementById("chimeEstado");
+        const botaoPreviaChime = document.getElementById("btnPreviaChime");
+        const botaoSalvarChime = document.getElementById("btnSalvarChime");
 
         let alarmes = [];
-        let arquivos = [];
         let radios = [];
+        let sonsDfPlayer = [];
+        let configuracaoChime = {
+            ativo: false,
+            som: 1,
+            volume: 15,
+            intervaloMinutos: 60
+        };
         let idEmEdicao = null;
 
         function escapar(texto) {
@@ -512,11 +624,15 @@
         }
 
         function nomeFonte(alarme) {
+            if (alarme.radioFm) {
+                return "Rádio FM: última frequência sintonizada";
+            }
+
             if (alarme.radioId) {
                 const radio = radios.find(function (item) {
                     return Number(item.id) === Number(alarme.radioId);
                 });
-                return radio ? "Rádio: " + radio.nome : "Rádio removida";
+                return radio ? "Rádio Web: " + radio.nome : "Rádio Web removida";
             }
 
             return "Som padrão";
@@ -568,17 +684,32 @@
             try {
                 const resultados = await Promise.all([
                     requisitar("/api/alarmes"),
-                    requisitar("/api/radios-alarmes")
+                    requisitar("/api/radios-alarmes"),
+                    requisitar("/api/chime"),
+                    requisitar("/api/sons-dfplayer")
                 ]);
 
                 alarmes = Array.isArray(resultados[0].alarmes)
                     ? resultados[0].alarmes
                     : [];
-                arquivos = [];
                 radios = Array.isArray(resultados[1]) ? resultados[1] : [];
+                configuracaoChime = resultados[2];
+                sonsDfPlayer = Array.isArray(resultados[3].sons)
+                    ? resultados[3].sons
+                    : [];
+                console.debug(
+                    "[CHIME DEBUG] dados carregados",
+                    configuracaoChime,
+                    { quantidadeSons: sonsDfPlayer.length }
+                );
                 preencherFontes();
+                preencherChime();
                 renderizar();
             } catch (erro) {
+                console.error(
+                    "[CHIME DEBUG] falha ao carregar dados iniciais",
+                    erro
+                );
                 exibirMensagem(erro.message, "erro");
             }
         }
@@ -587,14 +718,115 @@
             const opcoesRadios = radios.map(function (radio) {
                 return `<option value="radio:${Number(radio.id)}">${escapar(radio.nome)}</option>`;
             }).join("");
-            const opcoesArquivos = arquivos.map(function (arquivo) {
-                return `<option value="arquivo:${escapar(arquivo.caminho)}">${escapar(arquivo.nome)}</option>`;
-            }).join("");
 
             campoFonte.innerHTML =
                 '<option value="padrao">Som padrão do alarme</option>' +
-                '<optgroup label="Rádio Web">' + opcoesRadios + '</optgroup>' +
-                '<optgroup label="Rádio FM (em breve)"></optgroup>';
+                '<option value="fm">Rádio FM — última frequência sintonizada</option>' +
+                '<optgroup label="Rádio Web">' + opcoesRadios + '</optgroup>';
+        }
+
+        function preencherChime() {
+            chimeSom.innerHTML = sonsDfPlayer.map(function (som) {
+                return `<option value="${Number(som.id)}">${escapar(som.nome)} — ${escapar(som.arquivo)}</option>`;
+            }).join("");
+
+            const somConfigurado = Number(configuracaoChime.som) || 1;
+            const somExiste = sonsDfPlayer.some(function (som) {
+                return Number(som.id) === somConfigurado;
+            });
+
+            if (!somExiste) {
+                const opcaoAusente = document.createElement("option");
+                opcaoAusente.value = String(somConfigurado);
+                opcaoAusente.textContent =
+                    "Som " + String(somConfigurado).padStart(3, "0") +
+                    " (indisponível)";
+                chimeSom.appendChild(opcaoAusente);
+            }
+
+            chimeAtivo.checked = Boolean(configuracaoChime.ativo);
+            chimeSom.value = String(somConfigurado);
+            chimeVolume.value = String(Number(configuracaoChime.volume) || 15);
+            chimeVolumeValor.textContent = chimeVolume.value + "/21";
+            const intervalo = Number(configuracaoChime.intervaloMinutos) || 60;
+            if (!Array.from(chimeIntervalo.options).some(function (opcao) {
+                return Number(opcao.value) === intervalo;
+            })) {
+                const opcaoIntervalo = document.createElement("option");
+                opcaoIntervalo.value = String(intervalo);
+                opcaoIntervalo.textContent = "A cada " + intervalo + " minutos";
+                chimeIntervalo.appendChild(opcaoIntervalo);
+            }
+            chimeIntervalo.value = String(intervalo);
+            chimeSom.disabled = sonsDfPlayer.length === 0;
+            botaoPreviaChime.disabled = sonsDfPlayer.length === 0;
+            chimeAtivo.disabled =
+                sonsDfPlayer.length === 0 && !chimeAtivo.checked;
+            chimeEstado.textContent = sonsDfPlayer.length === 0
+                ? "Nenhum som disponível no DFPlayer."
+                : (configuracaoChime.executando
+                    ? "Chime em reprodução."
+                    : "O alarme tem prioridade se coincidir com o disparo.");
+        }
+
+        async function salvarConfiguracaoChime(evento) {
+            evento.preventDefault();
+            botaoSalvarChime.disabled = true;
+            botaoSalvarChime.setAttribute("aria-busy", "true");
+            botaoSalvarChime.textContent = "Salvando...";
+
+            try {
+                const dadosChime = {
+                    ativo: chimeAtivo.checked,
+                    som: Number(chimeSom.value),
+                    volume: Number(chimeVolume.value),
+                    intervaloMinutos: Number(chimeIntervalo.value)
+                };
+                console.debug("[CHIME DEBUG] salvando", dadosChime);
+                configuracaoChime = await requisitar("/api/chime", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(dadosChime)
+                });
+                console.debug("[CHIME DEBUG] configuração salva", configuracaoChime);
+                preencherChime();
+                exibirMensagem("Chime salvo.", "sucesso");
+            } catch (erro) {
+                console.error("[CHIME DEBUG] falha ao salvar", erro);
+                exibirMensagem(erro.message, "erro");
+            } finally {
+                botaoSalvarChime.disabled = false;
+                botaoSalvarChime.removeAttribute("aria-busy");
+                botaoSalvarChime.textContent = "Salvar chime";
+            }
+        }
+
+        async function ouvirPreviaChime() {
+            botaoPreviaChime.disabled = true;
+            botaoPreviaChime.setAttribute("aria-busy", "true");
+            botaoPreviaChime.textContent = "Iniciando...";
+
+            try {
+                const dadosPrevia = {
+                    som: Number(chimeSom.value),
+                    volume: Number(chimeVolume.value)
+                };
+                console.debug("[CHIME DEBUG] solicitando prévia", dadosPrevia);
+                await requisitar("/api/chime/preview", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(dadosPrevia)
+                });
+                console.debug("[CHIME DEBUG] prévia aceita");
+                chimeEstado.textContent = "Prévia em reprodução.";
+            } catch (erro) {
+                console.error("[CHIME DEBUG] falha na prévia", erro);
+                exibirMensagem(erro.message, "erro");
+            } finally {
+                botaoPreviaChime.disabled = sonsDfPlayer.length === 0;
+                botaoPreviaChime.removeAttribute("aria-busy");
+                botaoPreviaChime.textContent = "Ouvir prévia";
+            }
         }
 
         function atualizarTipo() {
@@ -619,7 +851,9 @@
 
                 let valorFonte = "padrao";
 
-                if (alarme.radioId) {
+                if (alarme.radioFm) {
+                    valorFonte = "fm";
+                } else if (alarme.radioId) {
                     valorFonte = "radio:" + alarme.radioId;
                 }
 
@@ -675,7 +909,9 @@
                 }
             }
 
-            if (campoFonte.value.startsWith("radio:")) {
+            if (campoFonte.value === "fm") {
+                alarme.radioFm = true;
+            } else if (campoFonte.value.startsWith("radio:")) {
                 alarme.radioId = Number(campoFonte.value.substring(6));
             }
 
@@ -783,6 +1019,11 @@
         campoVolume.addEventListener("input", function () {
             volumeValor.textContent = campoVolume.value + "/21";
         });
+        chimeVolume.addEventListener("input", function () {
+            chimeVolumeValor.textContent = chimeVolume.value + "/21";
+        });
+        botaoPreviaChime.addEventListener("click", ouvirPreviaChime);
+        formChime.addEventListener("submit", salvarConfiguracaoChime);
         form.addEventListener("submit", salvarFormulario);
         modal.addEventListener("click", function (evento) {
             if (evento.target === modal) fecharModal();

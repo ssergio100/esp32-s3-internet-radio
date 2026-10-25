@@ -16,7 +16,9 @@ String ssidSalvo;
 String senhaSalva;
 bool selecaoPontoPermitidoNecessaria = false;
 bool varreduraWifiEmAndamento = false;
+bool conexaoDiretaEmAndamento = false;
 unsigned long momentoUltimaVarreduraMs = 0;
+unsigned long momentoInicioConexaoDiretaMs = 0;
 
 bool bssidEstaBloqueado(const String& bssid) {
     for (const char* bssidBloqueado : BSSIDS_WIFI_BLOQUEADOS) {
@@ -54,6 +56,7 @@ bool rejeitarAssociacaoBloqueada() {
     Serial.println(WiFi.BSSIDstr());
 
     WiFi.disconnect(false, false);
+    conexaoDiretaEmAndamento = false;
     selecaoPontoPermitidoNecessaria = true;
     momentoUltimaVarreduraMs =
         millis() - INTERVALO_RECONEXAO_WIFI_MS;
@@ -179,6 +182,7 @@ void supervisionarWifi() {
     }
 
     if (estadoAtual == WL_CONNECTED) {
+        conexaoDiretaEmAndamento = false;
         selecaoPontoPermitidoNecessaria = false;
 
         if (estadoAnterior != WL_CONNECTED) {
@@ -194,6 +198,24 @@ void supervisionarWifi() {
 
         estadoAnterior = estadoAtual;
         return;
+    }
+
+    if (conexaoDiretaEmAndamento) {
+        if (
+            millis() - momentoInicioConexaoDiretaMs <
+                INTERVALO_RECONEXAO_WIFI_MS
+        ) {
+            estadoAnterior = estadoAtual;
+            return;
+        }
+
+        conexaoDiretaEmAndamento = false;
+        selecaoPontoPermitidoNecessaria = true;
+        momentoUltimaVarreduraMs =
+            millis() - INTERVALO_RECONEXAO_WIFI_MS;
+        Serial.println(
+            "Conexao direta expirou; iniciando busca de ponto permitido."
+        );
     }
 
     if (estadoAnterior == WL_CONNECTED) {
@@ -289,7 +311,7 @@ void conectarWifi() {
 
     apagarIndicadorLed();
 
-    WiFi.setSleep(true);
+    WiFi.setSleep(false);
 
     Serial.println();
     Serial.println("Wi-Fi conectado.");
@@ -311,8 +333,28 @@ void conectarWifi() {
     Serial.println(WiFi.localIP());
 
     mostrarMensagem("Wi-Fi conectado");
+}
 
-    delay(500);
+void prepararWifiEmStandby() {
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(false);
+
+    WiFiManager leitorCredenciais;
+    if (leitorCredenciais.getWiFiIsSaved()) {
+        ssidSalvo = leitorCredenciais.getWiFiSSID(true);
+        senhaSalva = leitorCredenciais.getWiFiPass(true);
+    }
+
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_OFF);
+    conexaoDiretaEmAndamento = false;
+    varreduraWifiEmAndamento = false;
+    selecaoPontoPermitidoNecessaria = false;
+
+    Serial.printf(
+        "Wi-Fi preparado em standby; credenciais salvas: %s.\n",
+        ssidSalvo.isEmpty() ? "nao" : "sim"
+    );
 }
 
 bool iniciarReconexaoWifiSalvo() {
@@ -322,14 +364,19 @@ bool iniciarReconexaoWifiSalvo() {
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
-    WiFi.setSleep(true);
+    WiFi.setSleep(false);
 
-    selecaoPontoPermitidoNecessaria = true;
-    momentoUltimaVarreduraMs =
-        millis() - INTERVALO_RECONEXAO_WIFI_MS;
-    processarSelecaoPontoPermitido();
+    selecaoPontoPermitidoNecessaria = false;
+    varreduraWifiEmAndamento = false;
+    conexaoDiretaEmAndamento = true;
+    momentoInicioConexaoDiretaMs = millis();
 
-    Serial.println("Reconexao Wi-Fi iniciada.");
+    WiFi.begin(
+        ssidSalvo.c_str(),
+        senhaSalva.c_str()
+    );
+
+    Serial.println("Conexao Wi-Fi direta iniciada.");
     return true;
 }
 
@@ -337,6 +384,7 @@ void desligarWifi() {
     guardarCredenciaisAtuais();
 
     WiFi.scanDelete();
+    conexaoDiretaEmAndamento = false;
     varreduraWifiEmAndamento = false;
     selecaoPontoPermitidoNecessaria = false;
 

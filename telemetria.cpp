@@ -1,3 +1,4 @@
+
 #include "telemetria.h"
 
 #include <Arduino.h>
@@ -5,7 +6,9 @@
 
 #include "alarmes.h"
 #include "audio_radio.h"
+#include "chime.h"
 #include "configuracao.h"
+#include "dfplayer.h"
 #include "relogio_rtc.h"
 
 namespace {
@@ -54,16 +57,39 @@ namespace {
     void registrarAudio() {
         StatusAudio statusAudio = obterStatusAudio();
 
+        const uint32_t total =
+            statusAudio.bufferTotalBytes;
+
+        const uint32_t ocupado =
+            statusAudio.bufferBytes;
+
+        const uint32_t livre =
+            total >= ocupado ? total - ocupado : 0;
+
+        const float percentual =
+            total > 0
+                ? ocupado * 100.0f / total
+                : 0.0f;
+
         Serial.printf(
             "Audio: %s | Buffer: %lu ms | Bitrate: %lu | "
             "Fluxo lento: %lu | Reconexoes: %lu | "
             "Pilha livre min.: %lu bytes\n",
             obterTextoEstadoAudio(statusAudio.estado),
-            statusAudio.bufferMilissegundos,
-            statusAudio.bitrate,
-            statusAudio.eventosFluxoLento,
-            statusAudio.tentativasReconexao,
-            statusAudio.stackMinimoBytes
+            (unsigned long)statusAudio.bufferMilissegundos,
+            (unsigned long)statusAudio.bitrate,
+            (unsigned long)statusAudio.eventosFluxoLento,
+            (unsigned long)statusAudio.tentativasReconexao,
+            (unsigned long)statusAudio.stackMinimoBytes
+        );
+
+        Serial.printf(
+            "Buffer fisico: %lu / %lu bytes (%.1f%%) | "
+            "Livre: %lu bytes\n",
+            (unsigned long)ocupado,
+            (unsigned long)total,
+            percentual,
+            (unsigned long)livre
         );
     }
 
@@ -83,7 +109,9 @@ namespace {
         const char* origemSom = "inativo";
 
         if (audio.alarmeAtivo) {
-            if (audio.radioAlarme) {
+            if (audio.radioFmAlarme) {
+                origemSom = "radio FM";
+            } else if (audio.radioAlarme) {
                 origemSom = "radio web";
             } else {
                 origemSom = "padrao";
@@ -98,6 +126,24 @@ namespace {
                 ? "disponivel"
                 : "indisponivel",
             origemSom
+        );
+    }
+
+    void registrarChime() {
+        ConfiguracaoChime chime = obterConfiguracaoChime();
+        EstadoDfPlayer dfPlayer = obterEstadoDfPlayer();
+
+        Serial.printf(
+            "CHIME DEBUG telemetria: %s | Intervalo: %u min | Som: %03u | Volume: %u/%u | "
+            "DFPlayer: %s | Uso: %u | Erro: %u\n",
+            chime.ativo ? "ativo" : "inativo",
+            static_cast<unsigned>(chime.intervaloMinutos),
+            static_cast<unsigned>(chime.som),
+            static_cast<unsigned>(chime.volume),
+            static_cast<unsigned>(VOLUME_MAXIMO),
+            obterTextoFaseDfPlayer(dfPlayer.fase),
+            static_cast<unsigned>(dfPlayer.uso),
+            static_cast<unsigned>(dfPlayer.erro)
         );
     }
 
@@ -122,4 +168,5 @@ void registrarTelemetriaPeriodica() {
     registrarAudio();
     registrarPresencaRtc();
     registrarAlarmes();
+    registrarChime();
 }

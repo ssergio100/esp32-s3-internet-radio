@@ -12,18 +12,41 @@
 
 // DAC estéreo I2S PCM5102A. O módulo usa o BCK como referência para a PLL
 // interna; SCK deve permanecer em GND e não consome um GPIO do ESP32-S3.
-constexpr int PIN_PCM5102A_BCK  = 12;
-constexpr int PIN_PCM5102A_LRCK = 10;  // Rotulado LCK no módulo.
-constexpr int PIN_PCM5102A_DIN  = 11;
+// Os três sinais ficam no conector J3. GPIO45 é um pino de strap, mas no
+// módulo N16R8 a tensão da memória é fixada por eFuse; a entrada BCK do DAC
+// não deve impor nível ao GPIO45 durante o reset.
+constexpr int PIN_PCM5102A_BCK  = 21;
+constexpr int PIN_PCM5102A_LRCK = 45;  // Rotulado LCK no módulo.
+constexpr int PIN_PCM5102A_DIN  = 47;
 
-// Barramento I2C compartilhado pelo display OLED e pelo RTC DS3231.
+// Barramento I2C compartilhado pelo display OLED, RTC DS3231 e TEF6686.
 // Estes pinos mantêm o barramento fora do grupo reservado às válvulas Nixie.
 constexpr int PIN_BARRAMENTO_I2C_SDA = 16;
 constexpr int PIN_BARRAMENTO_I2C_SCL = 17;
+constexpr uint32_t FREQUENCIA_BARRAMENTO_I2C_HZ = 100000;
+
+// Chaveamento da saída de áudio pelo MCP23017. A0, A1 e A2 do endereço do
+// expansor devem estar ligados ao GND para selecionar 0x20. GPA7 seleciona,
+// por relé, DAC ou FM nas entradas dos NS8002. GPA6/GPA5 são enables ativos
+// em LOW: LOW habilita e HIGH silencia. O DFPlayer chega diretamente aos
+// NS8002 e altera somente GPA6/GPA5, sem comandar GPA7. Não são GPIOs do ESP32.
+constexpr uint8_t ENDERECO_I2C_MCP23017 = 0x20;
+constexpr uint8_t PIN_MCP23017_RELE_8002_SELECIONA_DAC = 7;
+constexpr uint8_t PIN_MCP23017_ENABLE_N_8002_DIREITO = 6;
+constexpr uint8_t PIN_MCP23017_ENABLE_N_8002_ESQUERDO = 5;
 
 constexpr int DISPLAY_LARGURA  = 128;
 constexpr int DISPLAY_ALTURA   = 64;
 constexpr int DISPLAY_ENDERECO = 0x3C;
+
+// Rádio FM TEF6686. Estes parâmetros reproduzem o exemplo funcional e ficam
+// fora do coordenador principal para permitir trocar apenas o firmware do rádio.
+constexpr uint8_t ENDERECO_I2C_TEF6686 = 0x64;
+constexpr uint32_t CLOCK_TEF6686_HZ = 9216000;
+constexpr bool CLOCK_TEF6686_EXTERNO = false;
+constexpr uint16_t FREQUENCIA_INICIAL_RADIO_FM_10KHZ = 10010;
+constexpr unsigned long INTERVALO_LEITURA_QUALIDADE_RADIO_FM_MS = 100;
+constexpr unsigned long INTERVALO_LEITURA_RDS_RADIO_FM_MS = 43;
 
 struct ConfiguracaoEncoder {
     int pinoDt;
@@ -33,8 +56,9 @@ struct ConfiguracaoEncoder {
     uint8_t transicoesPorDetente;
 };
 
-// O primeiro encoder ajusta o volume e seu botão alterna entre Rádio Web e
-// Relógio. Quatro transições por detente foram confirmadas no componente.
+// O primeiro encoder ajusta o volume durante a reprodução. Seu botão abre a
+// seleção de fonte; nessa tela, o giro percorre Relógio, Rádio FM e Rádio Web e
+// o clique confirma. Quatro transições por detente foram confirmadas.
 constexpr ConfiguracaoEncoder ENCODER_VOLUME  = {
     2,  // DT
     1,  // CLK
@@ -53,16 +77,47 @@ constexpr ConfiguracaoEncoder ENCODER_NAVEGACAO = {
     4
 };
 
-// Cartão microSD do Player, em barramento SPI com pinos explícitos.
-// constexpr int PIN_CARTAO_PLAYER_SCK  = 38;
-// constexpr int PIN_CARTAO_PLAYER_MISO = 41;
-// constexpr int PIN_CARTAO_PLAYER_MOSI = 40;
-// constexpr int PIN_CARTAO_PLAYER_CS   = 39;
+// -----------------------------------------------------
+// DFPlayer Mini — UART2, conector J3
+// -----------------------------------------------------
+// Os nomes RX/TX identificam os terminais do DFPlayer: o GPIO20 transmite do
+// ESP32 para o RX do módulo; o GPIO19 recebe no ESP32 o TX do módulo. BUSY
+// fica em LOW enquanto o módulo reproduz.
+// GPIO19/GPIO20 deixam de atender ao USB nativo/JTAG. Programação e diagnóstico
+// permanecem no USB-UART ligado à UART0 em GPIO43/GPIO44.
+// UART_DFPLAYER seleciona um controlador serial interno do ESP32-S3: o valor 2
+// significa UART2 e NÃO representa o GPIO2 nem um pino físico do DFPlayer.
+constexpr int UART_DFPLAYER = 2;
+constexpr uint32_t BAUD_DFPLAYER = 9600;
+constexpr int PIN_DFPLAYER_RX = 20;  // GPIO ligado ao RX do DFPlayer (ESP TX).
+constexpr int PIN_DFPLAYER_TX = 19;  // GPIO ligado ao TX do DFPlayer (ESP RX).
+constexpr int PIN_DFPLAYER_BUSY = 38;
 
-// Reservados para o futuro driver das quatro válvulas Nixie:
-// BCD compartilhado: GPIO8, GPIO3, GPIO9 e GPIO10.
-// Ânodos independentes: GPIO11, GPIO12, GPIO13 e GPIO14, um por válvula.
-// O GPIO46, situado entre esses grupos na placa, permanece sem conexão.
+// O DFPlayer não endereça pastas por nomes livres. A "pasta sons" do cartão
+// deve ser fisicamente /01, com arquivos /01/001.mp3, /01/002.mp3 etc.
+// O comando playFolder suporta pastas 1..99 e até 255 arquivos por pasta.
+constexpr uint8_t PASTA_SONS_DFPLAYER = 1;
+constexpr uint8_t VOLUME_MAXIMO_DFPLAYER = 30;  // Faixa nativa: 0..30.
+// Diagnóstico temporário do agendador, UART/BUSY e chaveamento do chime.
+constexpr bool DEBUG_CHIME = true;
+constexpr uint32_t TIMEOUT_DFPLAYER_MS = 800;
+
+// -----------------------------------------------------
+// Driver das quatro válvulas Nixie — reserva definitiva no conector J1
+// -----------------------------------------------------
+// As quatro linhas BCD são compartilhadas pelo driver. A, B, C e D possuem,
+// respectivamente, os pesos binários 1, 2, 4 e 8.
+constexpr int PIN_NIXIE_BCD_A = 4;  // peso 1
+constexpr int PIN_NIXIE_BCD_B = 5;  // peso 2
+constexpr int PIN_NIXIE_BCD_C = 6;  // peso 4
+constexpr int PIN_NIXIE_BCD_D = 7;  // peso 8
+
+// Uma linha independente seleciona o cátodo de cada válvula. A polaridade
+// ativa será definida no driver quando o estágio elétrico estiver confirmado.
+constexpr int PIN_NIXIE_CATODO_1 = 11;
+constexpr int PIN_NIXIE_CATODO_2 = 12;
+constexpr int PIN_NIXIE_CATODO_3 = 13;
+constexpr int PIN_NIXIE_CATODO_4 = 14;
 
 // =====================================================
 // Comportamento ajustável pelo usuário
@@ -79,6 +134,11 @@ constexpr const char* BSSIDS_WIFI_BLOQUEADOS[] = {
 constexpr int VOLUME_MINIMO = 0;
 constexpr int VOLUME_MAXIMO = 21;
 constexpr int VOLUME_PADRAO = 10;
+
+// O PCM5102A entra em power-down após os clocks permanecerem parados por
+// aproximadamente 1 segundo. A margem garante que o TEF6686 só seja acordado
+// depois desse desligamento, sem bloquear o loop nem a leitura dos encoders.
+constexpr uint32_t TEMPO_POWER_DOWN_PCM5102A_MS = 1100;
 
 // Frequências maiores encurtam os bloqueios de leitura que disputam CPU com o
 // OLED. Reduza somente se o cartão instalado ficar instável.

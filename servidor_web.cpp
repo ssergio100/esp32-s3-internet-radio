@@ -1,5 +1,7 @@
 #include "servidor_web.h"
 #include "api_alarmes.h"
+#include "api_chime.h"
+#include "api_dfplayer.h"
 #include "api_radios.h"
 #include "api_status.h"
 #include "upload_arquivos.h"
@@ -165,7 +167,7 @@ void responderStatusSistema() {
 
 }
 
-bool iniciarArmazenamentoEServidorWeb() {
+bool iniciarArmazenamentoEServidorWeb(bool ativarServidor) {
     // Um ESP32 novo ainda não possui um sistema de arquivos na partição.
     // A formatação na falha torna o formulário incorporado de /upload
     // acessível para restaurar index.html, alarmes.html e upload.html.
@@ -230,18 +232,42 @@ bool iniciarArmazenamentoEServidorWeb() {
     );
 
     servidor.on(
-        "/api/arquivos-player",
-        HTTP_GET,
-        []() {
-            servidor.send(200, "application/json", "[]");
-        }
-    );
-
-    servidor.on(
         "/api/radios-alarmes",
         HTTP_GET,
         []() {
             responderRadiosParaAlarmes(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/sons-dfplayer",
+        HTTP_GET,
+        []() {
+            responderCatalogoSonsDfPlayer(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/chime",
+        HTTP_GET,
+        []() {
+            responderConfiguracaoChime(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/chime",
+        HTTP_PUT,
+        []() {
+            atualizarConfiguracaoChime(servidor);
+        }
+    );
+
+    servidor.on(
+        "/api/chime/preview",
+        HTTP_POST,
+        []() {
+            reproduzirPreviaChime(servidor);
         }
     );
 
@@ -297,6 +323,14 @@ bool iniciarArmazenamentoEServidorWeb() {
             "{\"erro\":\"Endereço não encontrado\"}"
         );
     });
+
+    if (!ativarServidor) {
+        servidorAtivo = false;
+        Serial.println(
+            "Armazenamento e rotas preparados; servidor web em standby."
+        );
+        return true;
+    }
 
     servidor.begin();
     servidorAtivo = true;

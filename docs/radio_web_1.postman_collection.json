@@ -494,20 +494,95 @@
       ]
     },
     {
-      "name": "Catálogos auxiliares",
-      "description": "Listas somente de leitura usadas pelo formulário de alarmes.",
+      "name": "Chime horário",
       "item": [
         {
-          "name": "Listar MP3 do Player",
+          "name": "Consultar chime",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/arquivos-player",
+              "raw": "{{baseUrl}}/api/chime",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "arquivos-player"]
+              "path": ["api", "chime"]
             },
-            "description": "Retorna a fotografia em RAM dos MP3 encontrados em /sons no microSD durante o boot."
+            "description": "Retorna ativação, som, volume e estado de reprodução do chime horário."
+          },
+          "response": []
+        },
+        {
+          "name": "Configurar chime",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativo\": true,\n  \"som\": 1,\n  \"volume\": 10,\n  \"intervaloMinutos\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chime",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chime"]
+            },
+            "description": "Ativa ou desativa o chime e seleciona som, volume de 1 a 21 e intervalo de 1 a 60 minutos."
+          },
+          "response": []
+        },
+        {
+          "name": "Ouvir prévia do chime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"som\": 1,\n  \"volume\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chime/preview",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chime", "preview"]
+            },
+            "description": "Reproduz imediatamente o som e volume informados sem alterar a configuração persistida."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Catálogos auxiliares",
+      "description": "Listas somente de leitura usadas pelo formulário de alarmes.",
+      "item": [
+        {
+          "name": "Listar sons do DFPlayer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sons-dfplayer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sons-dfplayer"]
+            },
+            "description": "Retorna o catálogo numérico da pasta /01 informado pelo DFPlayer durante o boot."
           },
           "event": [
             {
@@ -516,7 +591,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Resposta é uma lista\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                  "pm.test(\"Catálogo possui lista de sons\", function () { pm.expect(pm.response.json().sons).to.be.an(\"array\"); });"
                 ]
               }
             }

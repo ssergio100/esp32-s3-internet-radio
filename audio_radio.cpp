@@ -1,3 +1,4 @@
+
 #include "audio_radio.h"
 #include "alarmes.h"
 #include "configuracao.h"
@@ -8,6 +9,7 @@
 #include <WiFi.h>
 #include <atomic>
 #include <cstring>
+#include <new>
 #include "Audio.h"
 
 #include "freertos/FreeRTOS.h"
@@ -34,6 +36,12 @@ constexpr uint32_t BUFFER_RECUPERADO_MS =
 
 constexpr uint32_t INTERVALO_AMOSTRA_STATUS_MS =
     250;
+
+constexpr uint32_t TEMPO_LIMITE_DESLIGAMENTO_AUDIO_MS =
+    2000;
+
+constexpr uint32_t TEMPO_LIMITE_INICIALIZACAO_AUDIO_MS =
+    5000;
 
 enum class TipoComandoAudio : uint8_t {
     TOCAR_RADIO,
@@ -63,12 +71,16 @@ struct ComandoAudio {
     char caminhoArquivo[256] = "";
 };
 
-Audio audio;
+Audio* audio = nullptr;
 
 QueueHandle_t filaComandos = nullptr;
 SemaphoreHandle_t mutexStatus = nullptr;
+SemaphoreHandle_t semaforoAudioDesligado = nullptr;
+SemaphoreHandle_t semaforoAudioIniciado = nullptr;
 TaskHandle_t tarefaAudioHandle = nullptr;
 std::atomic<bool> servicoAudioAtivo{true};
+std::atomic<bool> decoderDacAtivo{false};
+std::atomic<bool> ultimaInicializacaoBemSucedida{false};
 std::atomic<uint8_t> volumeDesejado{VOLUME_PADRAO};
 std::atomic<bool> ajusteVolumePendente{false};
 
@@ -81,6 +93,7 @@ uint32_t inicioBufferizacao = 0;
 uint32_t inicioDegradacao = 0;
 uint32_t proximaTentativa = 0;
 uint32_t ultimaAmostraStatus = 0;
+uint32_t geracaoConexaoAudio = 0;
 
 uint8_t falhasConsecutivas = 0;
 FonteAudioAtiva fonteAudioAtiva =
@@ -186,6 +199,7 @@ void atualizarStatusAlarme(
     statusAudio.arquivoAlarmeDisponivel = arquivoDisponivel;
     statusAudio.somPadraoAlarme = somPadrao;
     statusAudio.radioAlarme = radio;
+    statusAudio.radioFmAlarme = false;
 
     liberarStatus();
 }
@@ -308,6 +322,7 @@ void conectarAgora(
     }
 
     proximaTentativa = 0;
+    ++geracaoConexaoAudio;
 
     definirEstado(
         reconexao
@@ -315,7 +330,7 @@ void conectarAgora(
             : EstadoAudio::CONECTANDO
     );
 
-    audio.stopSong();
+    audio->stopSong();
 
     vTaskDelay(
         pdMS_TO_TICKS(100)
@@ -324,7 +339,7 @@ void conectarAgora(
     fonteAudioAtiva = fonteRadioDesejada;
 
     bool conectado =
-        audio.connecttohost(
+        audio->connecttohost(
             urlDesejada
         );
 
@@ -371,20 +386,20 @@ void abrirArquivoAlarmeAgora(
     limparErro();
     definirEstado(EstadoAudio::BUFFERIZANDO);
 
-    audio.stopSong();
-    audio.setVolume(volume);
+    audio->stopSong();
+    audio->setVolume(volume);
     vTaskDelay(pdMS_TO_TICKS(20));
 
     if (arquivoSolicitado) {
         Serial.print("Alarme: arquivo indisponivel; usando padrao: ");
         Serial.println(caminho);
-        audio.stopSong();
+        audio->stopSong();
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     bool somPadraoAberto =
         FFat.exists(CAMINHO_SOM_PADRAO_ALARME) &&
-        audio.connecttoFS(
+        audio->connecttoFS(
             FFat,
             CAMINHO_SOM_PADRAO_ALARME
         );
@@ -578,7 +593,7 @@ void tratarEventoAudio(
                     "Stream lost"
                 ) != nullptr
             ) {
-                if (audio.isRunning()) {
+                if (audio != nullptr && audio->isRunning()) {
                     inicioBufferizacao =
                         millis();
 
@@ -634,6 +649,73 @@ void tratarEventoAudio(
     }
 }
 
+void manterLinhasI2sEmNivelBaixo() {
+    // Sem BCK e LRCK o PCM5102A entra no power-down automático. Fixar também
+    // DIN em zero evita que as linhas deixadas pelo periférico flutuem.
+    digitalWrite(PIN_PCM5102A_BCK, LOW);
+    digitalWrite(PIN_PCM5102A_LRCK, LOW);
+    digitalWrite(PIN_PCM5102A_DIN, LOW);
+
+    pinMode(PIN_PCM5102A_BCK, OUTPUT);
+    pinMode(PIN_PCM5102A_LRCK, OUTPUT);
+    pinMode(PIN_PCM5102A_DIN, OUTPUT);
+}
+
+bool iniciarDecoderDacAgora(int volume) {
+    if (audio != nullptr) {
+        audio->setMute(false);
+        audio->setVolume(volume);
+        decoderDacAtivo.store(true, std::memory_order_release);
+        return true;
+    }
+
+    manterLinhasI2sEmNivelBaixo();
+
+    audio = new (std::nothrow) Audio();
+    if (audio == nullptr) {
+        definirErro("Sem memoria para iniciar decoder de audio");
+        return false;
+    }
+
+    Audio::audio_info_callback = tratarEventoAudio;
+
+    if (!audio->setPinout(
+        PIN_PCM5102A_BCK,
+        PIN_PCM5102A_LRCK,
+        PIN_PCM5102A_DIN
+    )) {
+        delete audio;
+        audio = nullptr;
+        manterLinhasI2sEmNivelBaixo();
+        definirErro("Falha ao inicializar I2S ou PSRAM");
+        return false;
+    }
+
+    audio->setAudioTaskCore(NUCLEO_DECODIFICADOR_AUDIO);
+    audio->setMute(false);
+    audio->setVolume(volume);
+    decoderDacAtivo.store(true, std::memory_order_release);
+
+    return true;
+}
+
+void desligarDecoderDacAgora() {
+    decoderDacAtivo.store(false, std::memory_order_release);
+
+    if (audio != nullptr) {
+        audio->setMute(true);
+        audio->stopSong();
+        delete audio;
+        audio = nullptr;
+    }
+
+    manterLinhasI2sEmNivelBaixo();
+
+    Serial.println(
+        "Audio web desligado: decoder destruido, I2S removido e pinos em LOW."
+    );
+}
+
 void atualizarAmostraStatus() {
     uint32_t agora = millis();
 
@@ -647,13 +729,13 @@ void atualizarAmostraStatus() {
     ultimaAmostraStatus = agora;
 
     uint32_t preenchido =
-        audio.inBufferFilled();
+        audio->inBufferFilled();
 
     uint32_t total =
-        audio.getInBufferSize();
+        audio->getInBufferSize();
 
     uint32_t bitrate =
-        audio.getBitRate();
+        audio->getBitRate();
 
     uint32_t bufferMs =
         calcularDuracaoBufferMs(
@@ -662,7 +744,7 @@ void atualizarAmostraStatus() {
         );
 
     const char* codec =
-        audio.getCodecname();
+        audio->getCodecname();
 
     if (!bloquearStatus()) {
         return;
@@ -736,7 +818,7 @@ void supervisionarAudio() {
         agora - inicioBufferizacao >=
             TEMPO_LIMITE_BUFFERIZACAO_MS
     ) {
-        audio.stopSong();
+        audio->stopSong();
 
         agendarReconexao(
             "Tempo limite ao preparar a radio"
@@ -754,7 +836,7 @@ void supervisionarAudio() {
             estado ==
                 EstadoAudio::BUFFERIZANDO
         ) &&
-        !audio.isRunning()
+        !audio->isRunning()
     ) {
         agendarReconexao(
             "Conexao de audio encerrada"
@@ -766,12 +848,12 @@ void supervisionarAudio() {
     if (
         estado ==
             EstadoAudio::DEGRADADO &&
-        audio.isRunning()
+        audio->isRunning()
     ) {
         uint32_t bufferMs =
             calcularDuracaoBufferMs(
-                audio.inBufferFilled(),
-                audio.getBitRate()
+                audio->inBufferFilled(),
+                audio->getBitRate()
             );
 
         if (
@@ -793,7 +875,7 @@ void supervisionarAudio() {
             agora - inicioDegradacao >=
                 TEMPO_LIMITE_DEGRADADO_MS
         ) {
-            audio.stopSong();
+            audio->stopSong();
             inicioDegradacao = 0;
 
             agendarReconexao(
@@ -839,7 +921,7 @@ void processarComando(
             inicioDegradacao = 0;
 
             if (radioDeAlarme) {
-                audio.setVolume(comando.volume);
+                audio->setVolume(comando.volume);
             } else {
                 limparStatusAlarme();
             }
@@ -889,7 +971,7 @@ void processarComando(
             inicioDegradacao = 0;
             fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
 
-            audio.stopSong();
+            audio->stopSong();
 
             definirEstado(
                 EstadoAudio::PARADO
@@ -905,26 +987,22 @@ void processarComando(
             inicioDegradacao = 0;
             fonteAudioAtiva = FonteAudioAtiva::NENHUMA;
 
-            audio.stopSong();
-            audio.setMute(true);
-
+            desligarDecoderDacAgora();
             atualizarRadioStatus("");
             definirEstado(EstadoAudio::DESLIGADO);
-            ulTaskNotifyTake(pdTRUE, 0);
             servicoAudioAtivo.store(
                 false,
                 std::memory_order_release
             );
+            if (semaforoAudioDesligado != nullptr) {
+                xSemaphoreGive(semaforoAudioDesligado);
+            }
             break;
 
         case TipoComandoAudio::RETOMAR:
             // RETOMAR também precisa reativar o laço dentro da própria
             // tarefa. Em uma alternância rápida, SUSPENDER e RETOMAR podem
             // estar juntos na fila; o último comando deve determinar o estado.
-            servicoAudioAtivo.store(
-                true,
-                std::memory_order_release
-            );
             perfilPlayerAtivo = comando.perfilPlayer;
             vTaskPrioritySet(
                 nullptr,
@@ -932,9 +1010,34 @@ void processarComando(
                     ? PRIORIDADE_SERVICO_AUDIO_RADIO
                     : PRIORIDADE_SERVICO_AUDIO_RADIO
             );
-            audio.setMute(false);
-            audio.setVolume(comando.volume);
-            definirEstado(EstadoAudio::PARADO);
+
+            ultimaInicializacaoBemSucedida.store(
+                iniciarDecoderDacAgora(comando.volume),
+                std::memory_order_release
+            );
+
+            if (ultimaInicializacaoBemSucedida.load(
+                std::memory_order_acquire
+            )) {
+                servicoAudioAtivo.store(
+                    true,
+                    std::memory_order_release
+                );
+                definirEstado(EstadoAudio::PARADO);
+            } else {
+                servicoAudioAtivo.store(
+                    false,
+                    std::memory_order_release
+                );
+                definirEstado(EstadoAudio::ERRO);
+                Serial.println(
+                    "Falha ao recriar decoder e I2S."
+                );
+            }
+
+            if (semaforoAudioIniciado != nullptr) {
+                xSemaphoreGive(semaforoAudioIniciado);
+            }
             break;
     }
 }
@@ -945,6 +1048,20 @@ void tarefaAudio(
     (void)parametro;
 
     ComandoAudio comando;
+
+    // Diagnostico restrito a tarefa proprietaria do objeto Audio.
+    constexpr uint32_t JANELA_DIAGNOSTICO_MS = 5000;
+    uint32_t janelaInicioMs = 0;
+    uint32_t geracaoMedida = UINT32_MAX;
+    uint32_t chamadas = 0;
+    uint64_t somaDuracoesUs = 0;
+    uint32_t maiorDuracaoUs = 0;
+    uint32_t proximaAmostraBufferMs = 0;
+    uint32_t bufferInicial = 0;
+    uint32_t bufferFinal = 0;
+    uint32_t bufferMinimo = UINT32_MAX;
+    uint32_t bufferMaximo = 0;
+    uint32_t amostrasBuffer = 0;
 
     while (true) {
         if (!servicoAudioAtivo.load(
@@ -966,6 +1083,23 @@ void tarefaAudio(
             ) == pdTRUE
         ) {
             processarComando(comando);
+
+            if (
+                !servicoAudioAtivo.load(std::memory_order_acquire) ||
+                audio == nullptr
+            ) {
+                break;
+            }
+        }
+
+        // SUSPENDER destrói o objeto Audio nesta própria tarefa. Não pode
+        // existir nenhuma chamada ao decoder depois da confirmação enviada ao
+        // coordenador.
+        if (
+            !servicoAudioAtivo.load(std::memory_order_acquire) ||
+            audio == nullptr
+        ) {
+            continue;
         }
 
         // O ajuste interativo sempre vence comandos de transição que também
@@ -975,15 +1109,106 @@ void tarefaAudio(
             false,
             std::memory_order_acq_rel
         )) {
-            audio.setVolume(
+            audio->setVolume(
                 volumeDesejado.load(std::memory_order_acquire)
             );
         }
 
-        audio.loop();
+        // Reinicia a janela ao trocar de stream, reconectar ou parar.
+        const bool radioAtiva =
+            fonteAudioAtiva == FonteAudioAtiva::RADIO ||
+            fonteAudioAtiva == FonteAudioAtiva::ALARME_RADIO;
+
+        if (!radioAtiva || geracaoMedida != geracaoConexaoAudio) {
+            geracaoMedida = geracaoConexaoAudio;
+            janelaInicioMs = 0;
+            chamadas = 0;
+            somaDuracoesUs = 0;
+            maiorDuracaoUs = 0;
+            proximaAmostraBufferMs = 0;
+            bufferMinimo = UINT32_MAX;
+            bufferMaximo = 0;
+            amostrasBuffer = 0;
+        }
+
+        const uint32_t inicioLoopUs = micros();
+        audio->loop();
+        const uint32_t duracaoLoopUs = micros() - inicioLoopUs;
 
         supervisionarAudio();
         atualizarAmostraStatus();
+
+        if (radioAtiva && audio->isRunning()) {
+            const uint32_t agoraMs = millis();
+            if (janelaInicioMs == 0) {
+                janelaInicioMs = agoraMs;
+                proximaAmostraBufferMs = agoraMs;
+            }
+
+            ++chamadas;
+            somaDuracoesUs += duracaoLoopUs;
+            if (duracaoLoopUs > maiorDuracaoUs) {
+                maiorDuracaoUs = duracaoLoopUs;
+            }
+
+            // Amostra buffer a cada 250 ms, sem acesso por outra tarefa.
+            if (static_cast<int32_t>(agoraMs - proximaAmostraBufferMs) >= 0) {
+                const uint32_t bytes = audio->inBufferFilled();
+                if (amostrasBuffer == 0) bufferInicial = bytes;
+                bufferFinal = bytes;
+                if (bytes < bufferMinimo) bufferMinimo = bytes;
+                if (bytes > bufferMaximo) bufferMaximo = bytes;
+                ++amostrasBuffer;
+                proximaAmostraBufferMs = agoraMs + INTERVALO_AMOSTRA_STATUS_MS;
+            }
+
+            const uint32_t decorridoMs = agoraMs - janelaInicioMs;
+            if (decorridoMs >= JANELA_DIAGNOSTICO_MS && chamadas > 0) {
+                const float loopsPorSegundo =
+                    static_cast<float>(chamadas) * 1000.0f / decorridoMs;
+                const float tempoMedioMs =
+                    static_cast<float>(somaDuracoesUs) / chamadas / 1000.0f;
+                const int32_t variacaoBytes =
+                    static_cast<int32_t>(bufferFinal) -
+                    static_cast<int32_t>(bufferInicial);
+
+                Serial.printf(
+                    "Audio diag (%lu ms): %.1f loops/s | medio %.3f ms | "
+                    "maximo %.3f ms\n",
+                    (unsigned long)decorridoMs,
+                    loopsPorSegundo,
+                    tempoMedioMs,
+                    maiorDuracaoUs / 1000.0f
+                );
+                if (amostrasBuffer > 0) {
+                    Serial.printf(
+                        "Audio buffer: inicial %lu | final %lu | "
+                        "minimo %lu | maximo %lu | variacao %+ld bytes/janela\n",
+                        (unsigned long)bufferInicial,
+                        (unsigned long)bufferFinal,
+                        (unsigned long)bufferMinimo,
+                        (unsigned long)bufferMaximo,
+                        (long)variacaoBytes
+                    );
+                }
+
+                janelaInicioMs = 0;
+                chamadas = 0;
+                somaDuracoesUs = 0;
+                maiorDuracaoUs = 0;
+                amostrasBuffer = 0;
+                bufferMinimo = UINT32_MAX;
+                bufferMaximo = 0;
+            }
+        } else {
+            janelaInicioMs = 0;
+            chamadas = 0;
+            somaDuracoesUs = 0;
+            maiorDuracaoUs = 0;
+            amostrasBuffer = 0;
+            bufferMinimo = UINT32_MAX;
+            bufferMaximo = 0;
+        }
 
         vTaskDelay(
             pdMS_TO_TICKS(
@@ -1012,13 +1237,19 @@ bool enviarComando(
 
 }
 
-bool iniciarAudio(int volume) {
+bool iniciarAudio(int volume, bool iniciarDesligado) {
     if (tarefaAudioHandle != nullptr) {
         return true;
     }
 
     mutexStatus =
         xSemaphoreCreateMutex();
+
+    semaforoAudioDesligado =
+        xSemaphoreCreateBinary();
+
+    semaforoAudioIniciado =
+        xSemaphoreCreateBinary();
 
     filaComandos =
         xQueueCreate(
@@ -1028,6 +1259,8 @@ bool iniciarAudio(int volume) {
 
     if (
         mutexStatus == nullptr ||
+        semaforoAudioDesligado == nullptr ||
+        semaforoAudioIniciado == nullptr ||
         filaComandos == nullptr
     ) {
         Serial.println(
@@ -1037,21 +1270,17 @@ bool iniciarAudio(int volume) {
         return false;
     }
 
-    Audio::audio_info_callback =
-        tratarEventoAudio;
-
-    bool i2sIniciado =
-        audio.setPinout(
-            PIN_PCM5102A_BCK,
-            PIN_PCM5102A_LRCK,
-            PIN_PCM5102A_DIN
+    int volumeLimitado =
+        constrain(
+            volume,
+            VOLUME_MINIMO,
+            VOLUME_MAXIMO
         );
 
-    if (!i2sIniciado) {
-        definirErro(
-            "Falha ao inicializar I2S ou PSRAM"
-        );
-
+    if (
+        !iniciarDesligado &&
+        !iniciarDecoderDacAgora(volumeLimitado)
+    ) {
         definirEstado(
             EstadoAudio::ERRO
         );
@@ -1063,23 +1292,18 @@ bool iniciarAudio(int volume) {
         return false;
     }
 
-    audio.setAudioTaskCore(
-        NUCLEO_DECODIFICADOR_AUDIO
-    );
-
-    int volumeLimitado =
-        constrain(
-            volume,
-            VOLUME_MINIMO,
-            VOLUME_MAXIMO
-        );
-
     // A interface e a ESP32-audioI2S usam a mesma escala de 0 a 21.
-    audio.setVolume(volumeLimitado);
     volumeDesejado.store(
         static_cast<uint8_t>(volumeLimitado),
         std::memory_order_release
     );
+
+    if (iniciarDesligado) {
+        manterLinhasI2sEmNivelBaixo();
+        servicoAudioAtivo.store(false, std::memory_order_release);
+    } else {
+        servicoAudioAtivo.store(true, std::memory_order_release);
+    }
 
     BaseType_t criada =
         xTaskCreatePinnedToCore(
@@ -1094,6 +1318,7 @@ bool iniciarAudio(int volume) {
 
     if (criada != pdPASS) {
         tarefaAudioHandle = nullptr;
+        desligarDecoderDacAgora();
 
         definirErro(
             "Falha ao criar a tarefa de audio"
@@ -1110,13 +1335,23 @@ bool iniciarAudio(int volume) {
         return false;
     }
 
-    definirEstado(EstadoAudio::PARADO);
-
-    Serial.printf(
-        "Servico de audio iniciado. Biblioteca %s, volume %d.\n",
-        audio.getVersion(),
-        volumeLimitado
+    definirEstado(
+        iniciarDesligado
+            ? EstadoAudio::DESLIGADO
+            : EstadoAudio::PARADO
     );
+
+    if (audio != nullptr) {
+        Serial.printf(
+            "Servico de audio iniciado. Biblioteca %s, volume %d.\n",
+            audio->getVersion(),
+            volumeLimitado
+        );
+    } else {
+        Serial.println(
+            "Servico de audio pronto em standby; decoder e I2S desligados."
+        );
+    }
 
     return true;
 }
@@ -1224,18 +1459,48 @@ bool pararAudio() {
 }
 
 bool suspenderAudio() {
+    if (
+        tarefaAudioHandle == nullptr ||
+        semaforoAudioDesligado == nullptr
+    ) {
+        return false;
+    }
+
+    if (!decoderDacAtivo.load(std::memory_order_acquire)) {
+        manterLinhasI2sEmNivelBaixo();
+        return true;
+    }
+
+    xSemaphoreTake(semaforoAudioDesligado, 0);
+
     ComandoAudio comando;
 
     comando.tipo =
         TipoComandoAudio::SUSPENDER;
 
-    return enviarComando(comando);
+    if (!enviarComando(comando)) {
+        return false;
+    }
+
+    return xSemaphoreTake(
+        semaforoAudioDesligado,
+        pdMS_TO_TICKS(TEMPO_LIMITE_DESLIGAMENTO_AUDIO_MS)
+    ) == pdTRUE;
 }
 
 bool retomarAudio(int volume, bool paraPlayer) {
-    if (tarefaAudioHandle == nullptr) {
+    if (
+        tarefaAudioHandle == nullptr ||
+        semaforoAudioIniciado == nullptr
+    ) {
         return false;
     }
+
+    xSemaphoreTake(semaforoAudioIniciado, 0);
+    ultimaInicializacaoBemSucedida.store(
+        false,
+        std::memory_order_release
+    );
 
     ComandoAudio comando;
 
@@ -1261,7 +1526,16 @@ bool retomarAudio(int volume, bool paraPlayer) {
     );
     xTaskNotifyGive(tarefaAudioHandle);
 
-    return true;
+    if (xSemaphoreTake(
+        semaforoAudioIniciado,
+        pdMS_TO_TICKS(TEMPO_LIMITE_INICIALIZACAO_AUDIO_MS)
+    ) != pdTRUE) {
+        return false;
+    }
+
+    return ultimaInicializacaoBemSucedida.load(
+        std::memory_order_acquire
+    );
 }
 
 void alterarVolumeAudio(int volume) {
@@ -1272,6 +1546,25 @@ void alterarVolumeAudio(int volume) {
         std::memory_order_release
     );
     ajusteVolumePendente.store(true, std::memory_order_release);
+}
+
+bool decoderDacEstaAtivo() {
+    return decoderDacAtivo.load(
+        std::memory_order_acquire
+    );
+}
+
+void definirAlarmeFmAtivo(bool ativo) {
+    if (!bloquearStatus()) {
+        return;
+    }
+
+    statusAudio.alarmeAtivo = ativo;
+    statusAudio.radioFmAlarme = ativo;
+    statusAudio.radioAlarme = false;
+    statusAudio.somPadraoAlarme = false;
+
+    liberarStatus();
 }
 
 StatusAudio obterStatusAudio() {

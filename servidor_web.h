@@ -2,7 +2,7 @@
 #define SERVIDOR_WEB_H
 
 // Monta a FFat e, somente depois, registra e inicia as rotas HTTP.
-bool iniciarArmazenamentoEServidorWeb();
+bool iniciarArmazenamentoEServidorWeb(bool ativarServidor = true);
 
 void desativarServidorWeb();
 void reativarServidorWeb();

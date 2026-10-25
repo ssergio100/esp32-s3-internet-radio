@@ -203,6 +203,9 @@ bool alarmeValido(JsonObjectConst alarme) {
 
     JsonVariantConst arquivo = alarme["arquivo"];
     JsonVariantConst radioId = alarme["radioId"];
+    JsonVariantConst radioFm = alarme["radioFm"];
+    bool usaRadioFm =
+        radioFm.is<bool>() && radioFm.as<bool>();
 
     if (!arquivo.isNull()) {
         return false;
@@ -218,11 +221,53 @@ bool alarmeValido(JsonObjectConst alarme) {
         return false;
     }
 
-    if (!arquivo.isNull() && !radioId.isNull()) {
+    if (
+        !radioFm.isNull() &&
+        (!radioFm.is<bool>() || !usaRadioFm)
+    ) {
+        return false;
+    }
+
+    if (
+        (!arquivo.isNull() && !radioId.isNull()) ||
+        (usaRadioFm && !radioId.isNull())
+    ) {
         return false;
     }
 
     return true;
+}
+
+bool configuracaoChimeValida(JsonVariantConst valor) {
+    if (valor.isNull()) {
+        return true;
+    }
+    if (!valor.is<JsonObjectConst>()) {
+        return false;
+    }
+
+    JsonObjectConst chime = valor.as<JsonObjectConst>();
+    JsonVariantConst ativo = chime["ativo"];
+    JsonVariantConst som = chime["som"];
+    JsonVariantConst volume = chime["volume"];
+    JsonVariantConst intervalo = chime["intervaloMinutos"];
+    int numeroSom = som | -1;
+    int nivelVolume = volume | -1;
+
+    return
+        ativo.is<bool>() &&
+        som.is<int>() &&
+        numeroSom >= 1 && numeroSom <= 255 &&
+        volume.is<int>() &&
+        nivelVolume >= 1 && nivelVolume <= VOLUME_MAXIMO &&
+        (
+            intervalo.isNull() ||
+            (
+                intervalo.is<int>() &&
+                intervalo.as<int>() >= 1 &&
+                intervalo.as<int>() <= 60
+            )
+        );
 }
 
 bool arquivoAlarmesValido(const char* caminho) {
@@ -241,9 +286,74 @@ bool arquivoAlarmesValido(const char* caminho) {
     return !erro && documentoAlarmesValido(documento);
 }
 
+bool carregarDocumentoAlarmesLegado(
+    JsonDocument& documento,
+    const char* caminho
+) {
+    File arquivo = FFat.open(caminho, FILE_READ);
+
+    if (!arquivo) {
+        return false;
+    }
+
+    documento.clear();
+    DeserializationError erro =
+        deserializeJson(documento, arquivo);
+
+    arquivo.close();
+
+    if (
+        erro ||
+        (documento["versao"] | 0) != 1 ||
+        !documento["alarmes"].is<JsonArray>()
+    ) {
+        return false;
+    }
+
+    bool documentoAlterado = false;
+    JsonArray alarmes = documento["alarmes"].as<JsonArray>();
+
+    for (JsonVariant item : alarmes) {
+        if (!item.is<JsonObject>()) {
+            return false;
+        }
+
+        JsonObject alarme = item.as<JsonObject>();
+
+        if (!alarme["arquivo"].isNull()) {
+            alarme.remove("arquivo");
+
+            if (alarme["radioId"].isNull()) {
+                alarme["radioFm"] = true;
+            }
+
+            documentoAlterado = true;
+        }
+
+        JsonVariant radioId = alarme["radioId"];
+
+        if (
+            radioId.is<uint32_t>() &&
+            radioId.as<uint32_t>() == 0
+        ) {
+            alarme.remove("radioId");
+            documentoAlterado = true;
+        }
+    }
+
+    return
+        documentoAlterado &&
+        documentoAlarmesValido(documento);
+}
+
 void criarDocumentoAlarmesVazio(JsonDocument& documento) {
     documento.clear();
     documento["versao"] = 1;
+    JsonObject chime = documento["chime"].to<JsonObject>();
+    chime["ativo"] = false;
+    chime["som"] = 1;
+    chime["volume"] = VOLUME_PADRAO;
+    chime["intervaloMinutos"] = 60;
     documento["alarmes"].to<JsonArray>();
 }
 
@@ -252,7 +362,8 @@ void criarDocumentoAlarmesVazio(JsonDocument& documento) {
 bool documentoAlarmesValido(JsonDocument& documento) {
     if (
         (documento["versao"] | 0) != 1 ||
-        !documento["alarmes"].is<JsonArray>()
+        !documento["alarmes"].is<JsonArray>() ||
+        !configuracaoChimeValida(documento["chime"])
     ) {
         return false;
     }
@@ -314,11 +425,35 @@ OrigemArquivoAlarmes carregarDocumentoAlarmesPersistido(
     }
 
     if (
+        carregarDocumentoAlarmesLegado(
+            documento,
+            CAMINHO_ALARMES_ATIVO
+        )
+    ) {
+        Serial.println(
+            "Alarmes: fonte Player antiga convertida para Radio FM."
+        );
+        return OrigemArquivoAlarmes::ATIVO;
+    }
+
+    if (
         carregarDocumentoAlarmesDoArquivo(
             documento,
             CAMINHO_ALARMES_BACKUP
         )
     ) {
+        return OrigemArquivoAlarmes::BACKUP;
+    }
+
+    if (
+        carregarDocumentoAlarmesLegado(
+            documento,
+            CAMINHO_ALARMES_BACKUP
+        )
+    ) {
+        Serial.println(
+            "Alarmes: backup antigo convertido para Radio FM."
+        );
         return OrigemArquivoAlarmes::BACKUP;
     }
 

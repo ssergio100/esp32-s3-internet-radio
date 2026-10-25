@@ -27,6 +27,16 @@ void mostrarEstadoRadio(
     int quantidadeRadios
 );
 
+// Atualiza o modelo da tela FM. A implementação do display não acessa o
+// driver TEF6686; recebe apenas dados já tratados pelo coordenador principal.
+void mostrarRadioFm(
+    uint16_t frequencia10kHz,
+    const String& nomeEstacao,
+    const String& estado,
+    bool qualidadeValida,
+    int16_t nivelDecimosDbuv
+);
+
 void mostrarVolume(int volume);
 
 // Troca o OLED para a tela permanente do estado Relógio.

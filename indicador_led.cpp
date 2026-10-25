@@ -130,3 +130,15 @@ void atualizarIndicadorEstadoAudio() {
     ultimoEstadoExibido = estadoAtual;
     exibirCor(obterCorEstadoAudio(estadoAtual));
 }
+
+void mostrarIndicadorRadioFmAtivo() {
+    exibirCor(CorIndicadorLed::VERDE);
+}
+
+void mostrarIndicadorRadioFmBuscando() {
+    exibirCor(CorIndicadorLed::AZUL);
+}
+
+void mostrarIndicadorRadioFmErro() {
+    exibirCor(CorIndicadorLed::VERMELHO);
+}

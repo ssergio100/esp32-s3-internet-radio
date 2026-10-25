@@ -16,4 +16,9 @@ void apagarIndicadorLed();
 // Deve ser chamada continuamente no loop().
 void atualizarIndicadorEstadoAudio();
 
+// Estados próprios da fonte FM, sem criar dependência do LED com o driver.
+void mostrarIndicadorRadioFmAtivo();
+void mostrarIndicadorRadioFmBuscando();
+void mostrarIndicadorRadioFmErro();
+
 #endif

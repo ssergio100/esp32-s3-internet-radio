@@ -1,6 +1,6 @@
-# Dependências validadas
+# Dependências fixadas
 
-Esta revisão foi compilada com:
+O perfil de compilação fixa estas versões:
 
 | Componente | Versão |
 | --- | --- |
@@ -11,6 +11,7 @@ Esta revisão foi compilada com:
 | Adafruit GFX Library | 1.12.6 |
 | Adafruit SSD1306 | 2.5.17 |
 | Ai Esp32 Rotary Encoder | 1.7 |
+| DFRobotDFPlayerMini | 1.0.6 |
 
 Essas versões também estão registradas no perfil `esp32s3` de
 `sketch.yaml`, incluindo a dependência transitiva Adafruit BusIO 1.17.4.
@@ -18,11 +19,22 @@ Ao compilar com `--profile esp32s3`, o Arduino CLI pode instalar os
 componentes ausentes. Use `scripts/compilar.sh` para um build rotineiro sem
 provisionamento automático.
 
-O Player usa `SD`, `SPI` e `FS` fornecidos pelo próprio Arduino core ESP32; não
-acrescenta biblioteca externa para o cartão.
+A DFRobotDFPlayerMini foi acrescentada nesta etapa e ainda precisa da primeira
+compilação e validação no módulo físico. As demais versões já pertenciam à
+combinação usada pelo firmware.
+
+O DFPlayer usa seu próprio cartão microSD e é controlado pela biblioteca
+DFRobotDFPlayerMini. O ESP32 não monta nem lê diretamente esse cartão.
 O som padrão dos alarmes é um WAV PCM gerado pelo próprio firmware na FFat e
 decodificado pela mesma ESP32-audioI2S; não acrescenta biblioteca ou asset
 externo.
+
+O TEF6686 também não acrescenta uma biblioteca externa. O driver validado e o
+patch Lithio V102 p224 ficam versionados em `src/tef6686/`; a aplicação acessa
+somente a camada `radio_fm.cpp`. O MCP23017 faz parte do firmware principal
+apenas para selecionar DAC/FM nas entradas dos NS8002 (`GPA7`) e controlar os
+enables ativos em LOW dos dois amplificadores (`GPA6/GPA5`), usando acesso I2C local sem biblioteca
+adicional. Os dois encoders continuam ligados diretamente ao ESP32-S3.
 
 Na ArduinoJson 7, use `JsonDocument`, que cresce dinamicamente. As classes
 `DynamicJsonDocument` e `StaticJsonDocument` pertencem à camada de

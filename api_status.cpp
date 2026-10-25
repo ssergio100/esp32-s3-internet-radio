@@ -5,6 +5,8 @@
 
 #include "alarmes.h"
 #include "audio_radio.h"
+#include "chime.h"
+#include "dfplayer.h"
 
 namespace {
 
@@ -41,6 +43,8 @@ namespace {
             statusAudio.somPadraoAlarme;
         documento["radioAlarme"] =
             statusAudio.radioAlarme;
+        documento["radioFmAlarme"] =
+            statusAudio.radioFmAlarme;
     }
 
     void adicionarStatusAlarmes(JsonDocument& documento) {
@@ -50,6 +54,40 @@ namespace {
             status.quantidadeAtivos;
         documento["somPadraoAlarmeDisponivel"] =
             status.somPadraoDisponivel;
+    }
+
+    void adicionarStatusDfPlayer(JsonDocument& documento) {
+        EstadoDfPlayer estado = obterEstadoDfPlayer();
+        CatalogoSonsDfPlayer catalogo = obterCatalogoSonsDfPlayer();
+
+        documento["dfPlayerDisponivel"] = catalogo.disponivel;
+        documento["dfPlayerQuantidadeSons"] = catalogo.quantidade;
+        documento["dfPlayerFase"] = obterTextoFaseDfPlayer(estado.fase);
+        documento["dfPlayerSomAtual"] = estado.somAtual;
+        documento["dfPlayerVolumeEquipamento"] =
+            estado.volumeEquipamento;
+        documento["dfPlayerVolumeModulo"] = estado.volumeModulo;
+        documento["dfPlayerAvisosComunicacao"] =
+            estado.avisosComunicacao;
+        documento["dfPlayerUso"] =
+            static_cast<uint8_t>(estado.uso);
+    }
+
+    void adicionarStatusChime(JsonDocument& documento) {
+        ConfiguracaoChime configuracao = obterConfiguracaoChime();
+        EstadoDfPlayer estado = obterEstadoDfPlayer();
+
+        documento["chimeAtivo"] = configuracao.ativo;
+        documento["chimeSom"] = configuracao.som;
+        documento["chimeVolume"] = configuracao.volume;
+        documento["chimeIntervaloMinutos"] =
+            configuracao.intervaloMinutos;
+        documento["chimeExecutando"] =
+            estado.uso == UsoDfPlayer::CHIME &&
+            (
+                estado.fase == FaseDfPlayer::INICIANDO ||
+                estado.fase == FaseDfPlayer::TOCANDO
+            );
     }
 
     void adicionarStatusWifi(
@@ -81,6 +119,8 @@ String criarStatusSistemaJson() {
 
     adicionarStatusAudio(documento);
     adicionarStatusAlarmes(documento);
+    adicionarStatusDfPlayer(documento);
+    adicionarStatusChime(documento);
     adicionarStatusWifi(documento);
     adicionarStatusMemoriaEUptime(documento);
 

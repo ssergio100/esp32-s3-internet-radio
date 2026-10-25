@@ -1,5 +1,37 @@
 # Arquitetura do firmware
 
+## Requisito prioritário: Rádio FM sem decoder/I2S ativo
+
+O isolamento da recepção FM tem precedência sobre a ativação do TEF6686. A
+transição para `RADIO_FM` só termina depois que `AudioService` confirma:
+
+- stream encerrado e saída silenciada;
+- instância `Audio` destruída;
+- tarefa interna do decoder encerrada;
+- canal I2S desabilitado e removido;
+- `BCK`, `LRCK` e `DIN` configurados como saída em nível baixo.
+
+Essa confirmação é síncrona e tem prazo limitado. Falha ou timeout bloqueiam a
+ativação do TEF6686; o equipamento volta ao estado de relógio e publica o erro
+no display. Confirmado o desligamento, o Wi-Fi é desligado e começa uma espera
+não bloqueante de 1,1 segundo antes de ativar o receptor FM. O `loop()`, o OLED
+e os encoders continuam ativos; passos de sintonia recebidos nesse intervalo
+são acumulados e executados quando o TEF6686 acorda.
+
+O PCM5102A detecta a ausência de clocks e entra em power-down automático. Nesse
+estado ele desliga DAC, driver de linha, charge pump e circuitos internos de
+polarização, conforme a seção *Power Down* do
+[datasheet da Texas Instruments](https://www.ti.com/lit/ds/symlink/pcm5102a.pdf).
+Isso é o desligamento máximo possível somente por firmware na montagem atual:
+a alimentação do módulo permanece presente porque não existe load switch,
+regulador com `EN` nem GPIO ligado ao trilho de alimentação.
+
+O MCP23017 não liga nem desliga o DAC. Ele roteia as entradas dos amplificadores
+NS8002: `GPA7` controla o relé que seleciona DAC ou TEF6686, enquanto `GPA6` e
+`GPA5` são enables ativos em LOW dos amplificadores direito e esquerdo. Os três bits são
+atualizados juntos pelo registrador `OLATA`. Falhas nessa escrita geram
+diagnóstico serial, mas não comandam nem bloqueiam a máquina de estados.
+
 ## Responsabilidades
 
 ### Serviço de áudio
@@ -25,10 +57,49 @@ para espaçar as leituras do microSD. O decoder interno permanece no núcleo 1 e
 prioridade 2 e, portanto, pode preemptar o `loop()` da interface quando precisar
 alimentar o I2S. O SPI do cartão opera por padrão a 4 MHz e a rolagem do nome
 redesenha o OLED a cada 80 ms.
-Ao entrar no estado Relógio, um comando encerra o stream, silencia a saída e
-faz `AudioService` aguardar uma notificação sem consumir ciclos continuamente.
-O retorno ao estado Rádio Web acorda a mesma tarefa antes de solicitar a
-estação que já estava selecionada.
+Ao entrar em Relógio ou Rádio FM, um comando encerra o stream e destrói a
+instância `Audio`; com isso, a própria biblioteca encerra sua tarefa interna e
+remove o canal I2S. `AudioService` então aguarda uma notificação sem consumir
+ciclos continuamente. O retorno a uma fonte digital recria decoder e I2S, e só
+depois solicita a estação que já estava selecionada.
+
+### Receptor FM
+
+`src/tef6686/` contém o driver validado, o protocolo I2C, o patch do receptor,
+RDS, medidas de qualidade, mute, standby e o scanner. Esse código não conhece
+display, encoders, Wi-Fi, alarmes ou os estados gerais do produto.
+
+`radio_fm.cpp` é a fronteira entre o driver e a aplicação. Ele converte o
+volume comum de `0..21` para `-60..0 dB`, conserva a última frequência, publica
+um `StatusRadioFm` e executa a busca cooperativa. Cada chamada de
+`processarRadioFm()` faz no máximo uma etapa do scanner e as consultas
+periódicas previstas; não existe uma tarefa concorrente lendo respostas do
+TEF6686.
+
+O receptor usa endereço `0x64`, clock interno de 9,216 MHz e começa em
+100,10 MHz. Ele é inicializado uma vez no boot e mantido em standby até a fonte
+Rádio FM ser escolhida. A ausência do módulo é publicada como indisponibilidade
+da fonte FM e não impede Rádio Web, Relógio ou alarmes de iniciar.
+
+### DFPlayer
+
+`dfplayer.cpp` é a fronteira do DFPlayer com a aplicação. Ele é o único módulo
+que conhece UART2, a biblioteca DFRobot e o pino `BUSY`. A interface inicializa
+o cartão uma vez, compara a contagem de `/01` com a contagem total, toca uma
+faixa pelo índice e publica estado explícito para alarme, chime ou prévia.
+
+O cartão pertence ao DFPlayer; ele não é montado pelo ESP32. A pasta lógica de
+sons deve ser gravada como `/01`, com nomes `001.mp3`, `002.mp3` etc. Como o
+protocolo serial não fornece nomes reais, o catálogo público usa os identificadores
+`Som 001`, `Som 002` etc. O coordenador inicializa e processa a interface em todos
+os modos, mantendo o DAC do módulo e os NS8002 em mute até uma reprodução.
+
+`GET /api/sons-dfplayer` publica o catálogo numérico e as duas contagens usadas
+para diagnosticá-lo sem montar o cartão no ESP32. O volume público permanece na
+faixa geral do equipamento; somente o driver converte para a faixa nativa 0..30.
+`GET /api/chime` lê e `PUT /api/chime` grava ativação, som, volume e intervalo.
+`POST /api/chime/preview` reproduz a seleção atual sem persistir. A escolha do
+som é validada contra o catálogo antes de qualquer reprodução.
 
 ### Aplicação
 
@@ -39,10 +110,38 @@ execução do serviço de áudio.
 
 As regras centrais de interação permanecem no arquivo principal: entrar na
 seleção de estações, navegar, confirmar, cancelar por inatividade e ajustar o
-volume recebido do encoder dedicado. As transições entre Rádio Web e Relógio
+volume recebido do encoder dedicado. As transições entre Rádio Web, Rádio FM e Relógio
 também permanecem explícitas nesse arquivo. Cada transição usa uma função
 nomeada para que o fluxo seja legível sem conhecer previamente os detalhes do
 display ou do serviço de áudio.
+
+### Chaveamento da saída de áudio
+
+`chaveamento_audio.cpp` é a única camada que conhece os registradores do
+MCP23017. O expansor usa o endereço `0x20` e compartilha o barramento I2C de
+100 kHz. Somente `GPA7`, `GPA6` e `GPA5` são configurados como saída; os demais
+pinos da porta A permanecem como entradas.
+
+O latch é preparado com `GPA7=LOW` e `GPA6/GPA5=HIGH` antes da mudança de
+direção, evitando habilitar os NS8002 durante a inicialização. A tabela aplicada é:
+
+| Estado | GPA7: seleção | GPA6/GPA5: NS8002 |
+| --- | --- | --- |
+| Relógio/standby | LOW, lado FM | HIGH, mute |
+| Rádio FM | LOW, TEF6686 | LOW, habilitados |
+| Rádio Web/alarme digital | HIGH, DAC | LOW, habilitados |
+| DFPlayer, ligação direta | Preservado | LOW, habilitados |
+| Volume zero | Preserva a fonte | HIGH, mute |
+| Busca FM | LOW, TEF6686 | HIGH, mute |
+
+GPA6/GPA5 nunca são consultados para decidir o funcionamento do DAC ou das
+fontes; são somente enables ativos em LOW. Como os pinos voltam ao modo de
+entrada durante reset do MCP23017, o estado seguro anterior ao firmware requer
+pull-down em GPA7 e pull-ups em GPA6/GPA5.
+
+As saídas `DAC_L` e `DAC_R` do DFPlayer chegam diretamente aos NS8002 e não
+passam pelo relé. Por isso, sua interface preserva o estado de GPA7 e modifica
+somente GPA6/GPA5 para habilitar ou silenciar os amplificadores.
 
 O `loop()` supervisiona a associação Wi-Fi. Se o ponto conectado estiver em
 `BSSIDS_WIFI_BLOQUEADOS`, a associação é rejeitada. Durante a conexão inicial ou
@@ -52,8 +151,13 @@ permitido com melhor RSSI. A reconexão automática da pilha permanece desativad
 para que ela não contorne esse filtro. O WiFiManager continua responsável pelas
 credenciais e pelo portal, portanto outras redes permanecem utilizáveis.
 
-A varredura não ocorre durante uma associação permitida. O serviço de áudio
-aguarda a rede e retoma suas próprias tentativas quando a associação volta.
+A ativação normal de Rádio Web primeiro tenta associação direta com SSID e senha
+persistidos. A varredura só começa se essa tentativa não conectar dentro do
+intervalo já usado pela supervisão ou se o BSSID associado for bloqueado. Em
+paralelo à associação, `AudioService` recria decoder e I2S; a abertura do stream
+espera ambos ficarem prontos, mas não soma artificialmente seus tempos.
+O serviço de áudio aguarda a rede e retoma suas próprias tentativas quando a
+associação volta.
 O modem sleep do Wi-Fi permanece habilitado para o experimento de consumo e
 estabilidade do áudio.
 
@@ -101,6 +205,12 @@ com um corte horizontal que simula dígitos flip. A data completa ocupa uma
 faixa rolante no rodapé. Essa tela consulta somente o relógio do sistema; o RTC
 continua encapsulado em `relogio_rtc.cpp` e não é lido a cada quadro.
 
+Na fonte Rádio FM, o display recebe apenas a fotografia já tratada por
+`radio_fm.cpp`: frequência, PS do RDS, estado da busca e nível do sinal. O
+display não inclui nem chama o driver TEF6686. Mudanças de frequência e estado
+acordam a tarefa imediatamente; oscilações pequenas do nível são consolidadas
+e sua apresentação é limitada a duas atualizações por segundo.
+
 ### Indicador LED
 
 `indicador_led.cpp` é o único módulo que escreve diretamente no LED RGB.
@@ -126,36 +236,26 @@ precisa ser validado no novo componente.
 
 ### Estados do equipamento
 
-O firmware possui `RADIO_WEB`, `PLAYER` e `RELOGIO`. Um clique curto no botão do
-encoder de volume leva qualquer fonte ativa ao Relógio. Ao entrar nele, o OLED
-muda imediatamente; depois o arquivo principal apaga o LED, interrompe o
-servidor, solicita a suspensão do áudio e desliga o rádio Wi-Fi. O `loop()`
-continua atendendo somente relógio, display e os dois encoders. Esse botão não
-executa ação quando o equipamento já está no Relógio nem durante um alarme.
+O firmware possui `RADIO_WEB`, `RADIO_FM` e `RELOGIO`. O boot termina sempre em
+`RELOGIO`, estado de standby com Wi-Fi, servidor, decoder e I2S desligados e o
+TEF6686 em repouso. O clique curto no encoder de volume abre a seleção de fonte;
+o giro percorre circularmente `Relógio → Rádio FM → Rádio Web → Relógio` e outro
+clique confirma. No Relógio, o primeiro giro já abre essa seleção e aplica todos
+os passos recebidos. Durante um alarme, o clique continua ignorado.
 
-No Relógio, o encoder principal percorre um catálogo central de estados. Cada
-opção substitui toda a tela; um clique curto confirma a opção exibida. O encoder
-de volume apenas altera o nível reservado à próxima fonte, sem enviar comando
-ao serviço suspenso. Escolher Rádio Web
-conecta o Wi-Fi, reabre o servidor, acorda a tarefa e retoma a estação. Escolher
-Player mantém a rede desligada, reutiliza o microSD e o catálogo MP3 de `/sons`
-preparados durante o boot e acorda a mesma tarefa de áudio.
+Cada transição responde primeiro no OLED e depois administra os recursos da
+fonte. Rádio Web mantém Wi-Fi, servidor e `AudioService`; Rádio FM destrói o
+decoder/I2S, desliga a rede e só então acorda o TEF6686; Relógio mantém o Wi-Fi
+e as duas fontes de áudio desligados. Ao sair de Rádio FM, o receptor é silenciado
+e colocado em standby. Ao voltar a Rádio Web, a associação é assíncrona; depois
+da rede, decoder e I2S são recriados antes da reprodução.
 
-`player.cpp` limita o catálogo a 100 MP3 diretamente em `/sons`, sem busca
-recursiva. A listagem ocorre antes do serviço de áudio iniciar e nunca durante a
-reprodução. O arquivo é decodificado progressivamente por `connecttoFS()`; não
-há arquivo completo em RAM, mixer, anel PCM ou segundo decoder. A FFat, o
-catálogo e as seleções permanecem preservados entre transições. O SPI usa
-`SCK=GPIO38`, `MISO=GPIO41`, `MOSI=GPIO40` e `CS=GPIO39`; a transferência do
-clock para GPIO38 libera o GPIO42 para o botão de desligamento do encoder de
-volume.
-
-Quando `REPRODUCAO_SEQUENCIAL_PLAYER` está ativa, o arquivo principal observa o
-fim confirmado da faixa e solicita a seguinte na ordem alfabética; depois da
-última, retorna à primeira. A observação só é armada depois que o áudio realmente
-entrou em bufferização ou reprodução, para o estado parado existente antes do
-comando não provocar um salto prematuro. Enquanto o usuário navega pela lista, a
-sequência aguarda sua escolha ou o cancelamento da seleção por inatividade.
+Fora da seleção de fonte, o giro do encoder de volume altera o valor comum às
+fontes ativas. Em Rádio FM, a aplicação envia o novo nível diretamente ao
+adaptador TEF. O segundo encoder mantém a lista
+e a confirmação das estações da Rádio Web. Na fonte FM, seu giro inicia a busca
+da próxima estação no sentido escolhido; deslocamentos acumulados são
+enfileirados e a busca continua sem bloquear o `loop()`.
 
 ### Alarmes
 
@@ -165,7 +265,7 @@ semanal; `data` identifica uma execução única. Não há campo de tipo, próxi
 execução ou histórico persistido. Alarmes únicos vencidos são desativados.
 
 O arquivo principal coordena a execução sem criar outro estado permanente. O
-alarme interrompe Rádio Web, Player ou outro alarme e usa a mesma fila e a mesma
+alarme interrompe Rádio Web, Rádio FM, Relógio ou outro alarme e usa a mesma fila e a mesma
 instância de `Audio`. MP3 e WAV recomeçam depois do EOF; uma estação permanece
 no ar. Todas as fontes encerram no clique curto do encoder principal ou no
 limite configurado de 30 minutos. Um disparo posterior substitui o atual e
@@ -183,7 +283,8 @@ Uma fonte local espera qualquer stream publicar `PARADO`, desliga completamente
 o Wi-Fi e só então abre o arquivo. Uma fonte Rádio Web mantém ou restabelece a
 rede e executa sua supervisão, mas não reativa o servidor HTTP. As trocas entre
 alarmes reaplicam essa política conforme a nova fonte. Ao final, Rádio Web
-reconecta e reabre a estação anterior; Player e Relógio deixam a rede desligada.
+reconecta e reabre a estação anterior; Rádio FM volta a acordar o TEF6686;
+Relógio deixa a rede desligada.
 Se a rede ou o stream não ficar disponível no limite configurado, a fonte muda
 para o som padrão sem bloquear o `loop()` durante a espera.
 
@@ -201,18 +302,35 @@ eliminou em hardware a lentidão e a distorção na transição Relógio para R�
 Web de alarme.
 
 `/alarme_padrao.wav` é um WAV PCM curto gerado automaticamente na FFat. Ele é
-usado quando nenhuma fonte foi escolhida, quando cartão/arquivo não puder ser
-aberto ou quando o `radioId` não existir mais. O catálogo do microSD é preparado
-no boot, antes do áudio, para que `GET /api/arquivos-player` responda
-exclusivamente a partir da RAM. A página também obtém a fotografia ativa das
-estações, inclusive a reserva, por `GET /api/radios-alarmes`.
+usado quando nenhuma fonte foi escolhida ou quando o `radioId` não existir mais.
+O catálogo numérico do DFPlayer é preparado separadamente no boot e publicado
+por `GET /api/sons-dfplayer`; nesta etapa ele ainda não é uma fonte de alarme.
+A página também obtém a fotografia ativa das estações, inclusive a reserva, por
+`GET /api/radios-alarmes`.
 
-O estado Relógio não é um modo de baixo consumo. A versão instalada da
-ESP32-audioI2S encerra o stream, mas não oferece uma chamada pública para parar
-o I2S. Na montagem básica do PCM5102A, `XSMT` fica fixo em nível alto; sem seu
-controle por GPIO, o firmware não garante mute/standby físico explícito do DAC.
-Essa evolução e o eventual enable do amplificador analógico estão registrados
-em `docs/MIGRACAO_AUDIO_PCM5102A.md`.
+`chime.cpp` mantém a configuração global armazenada no objeto `chime` de
+`/alarmes.json`. O coordenador verifica a hora local sem bloquear o `loop()` e
+dispara uma única vez em cada janela de 1 a 60 minutos. A interface oferece os
+intervalos 1, 2, 5, 10, 15, 30 e 60 para operação e testes. A conclusão é
+detectada pelo evento do DFPlayer ou pela borda do pino `BUSY`.
+
+Antes da reprodução, `dfplayer.cpp` fotografa diretamente o último estado
+confirmado de GPA7/GPA6/GPA5. Ele habilita os NS8002 preservando o relé e, ao
+terminar, restaura exatamente a fotografia, inclusive quando o estado anterior
+era Relógio/mute. Isso torna chime e prévia independentes de Rádio Web, Rádio FM
+ou Relógio. Durante a reprodução, o chaveamento dá prioridade temporária ao
+DFPlayer: atualizações de mute, busca FM ou ativação de fonte não podem elevar
+GPA6/GPA5. Alarmes e trocas manuais de fonte interrompem essas reproduções,
+restauram a fotografia e então assumem o caminho de áudio.
+
+O estado Relógio não é um modo global de baixo consumo, mas o subsistema de
+áudio digital é encerrado como no Rádio FM. A API pública da ESP32-audioI2S não
+expõe a remoção do canal isoladamente; por isso o firmware destrói a instância
+`Audio`, cujo destrutor desabilita/remove I2S e encerra a tarefa interna. As três
+linhas I2S são então mantidas em nível baixo para acionar o power-down automático
+do PCM5102A. O relé de seleção e os enables dos amplificadores são controlados
+pelo MCP23017; somente um corte do trilho de alimentação do DAC continuaria
+dependendo de alteração de hardware.
 
 ### Relógio
 
@@ -272,9 +390,10 @@ transação que preserva a versão anterior antes de promover uma nova lista.
 
 `persistencia_alarmes.cpp` aplica a mesma transação a `/alarmes.json`,
 `/alarmes.tmp` e `/alarmes.bak`, validando IDs, nomes, volume, horário, dias ou
-data e uma única fonte opcional: caminho MP3 ou `radioId`. `api_alarmes.cpp`
-implementa `GET`, `POST`, `PUT` e `DELETE` em `/api/alarmes` e recarrega a
-fotografia em RAM após cada alteração.
+data, a fonte opcional do alarme e a configuração global do chime.
+`api_alarmes.cpp` implementa `GET`, `POST`, `PUT` e `DELETE` em `/api/alarmes` e
+recarrega a fotografia em RAM após cada alteração; `api_chime.cpp` preserva a
+mesma transação ao atualizar ativação, som e volume do chime.
 
 `api_radios.cpp` interpreta as requisições HTTP e delega a leitura ou a gravação
 da lista persistida. `radios.cpp` monta durante o boot a fotografia em memória

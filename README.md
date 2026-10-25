@@ -1,8 +1,39 @@
-# Rádio Web para ESP32-S3
+# Rádio Web e FM para ESP32-S3
 
-Firmware de rádio web e relógio com alarmes, DAC estéreo I2S PCM5102A,
-saída analógica de linha, display OLED, dois encoders, LED RGB, persistência
-em FFat e interface HTTP para administração.
+Firmware de rádio web, rádio FM TEF6686 e relógio com alarmes, DAC estéreo I2S
+PCM5102A, saída analógica de linha, display OLED, dois encoders, LED RGB,
+persistência em FFat e interface HTTP para administração.
+
+## Prioridade: isolamento elétrico no Rádio FM
+
+Esta é uma condição obrigatória da arquitetura: o TEF6686 não pode ser ativado
+enquanto o áudio web ainda estiver funcionando. Ao entrar em `Rádio FM`, o
+firmware, nesta ordem:
+
+1. coloca temporariamente `GPA7` em LOW e `GPA6/GPA5` em HIGH (mute);
+2. encerra o stream e silencia a saída;
+3. destrói a instância do decoder `Audio`, inclusive sua tarefa interna;
+4. desabilita e remove o canal I2S pela destruição da instância;
+5. configura `BCK`, `LRCK` e `DIN` como saídas em nível baixo;
+6. espera a confirmação síncrona dessa sequência;
+7. desliga o Wi-Fi e aguarda 1,1 segundo, sem bloquear o `loop()`, para o
+   power-down automático do PCM5102A;
+8. somente então ativa o TEF6686;
+9. mantém `GPA7` em LOW para selecionar FM e coloca `GPA6/GPA5` em LOW
+   para habilitar os dois NS8002.
+
+Se o desligamento do decoder/I2S não for confirmado, a entrada em FM é bloqueada
+e o erro aparece no display. Durante os 1,1 segundo de espera, o OLED e os encoders continuam sendo
+atendidos; movimentos do encoder de sintonia ficam acumulados e são aplicados
+quando o receptor acorda. Ao sair do FM para uma fonte que usa áudio digital,
+decoder e I2S são criados novamente antes da reprodução.
+
+Com os clocks I2S parados e mantidos em nível baixo, o PCM5102A entra
+automaticamente em power-down e desliga DAC, driver de linha, charge pump e
+polarizações internas, conforme a seção *Power Down* do
+[datasheet do PCM5102A](https://www.ti.com/lit/ds/symlink/pcm5102a.pdf). A tensão
+de alimentação do módulo continua fisicamente presente; cortá-la exigiria um
+load switch ou regulador com `EN`, inexistente na pinagem atual.
 
 ## Por onde começar
 
@@ -17,9 +48,15 @@ separados por responsabilidade:
 | `api_alarmes.cpp` | Cadastro, edição e exclusão dos alarmes pela rede |
 | `api_radios.cpp` | Operações HTTP para listar, adicionar e excluir estações |
 | `api_status.cpp` | Montagem do diagnóstico JSON solicitado pela rede |
+| `api_chime.cpp` | Leitura e gravação da configuração do chime horário |
 | `audio_radio.cpp` | Serviço dedicado de rádio web e som padrão dos alarmes |
+| `dfplayer.cpp` | Interface UART, estado e catálogo numérico do DFPlayer |
+| `chime.cpp` | Persistência e disparo horário cooperativo do DFPlayer |
+| `radio_fm.cpp` | Adaptador do TEF6686 para os estados e o volume do equipamento |
+| `chaveamento_audio.cpp` | Seleção DAC/FM e enables dos dois NS8002 pelo MCP23017 |
+| `src/tef6686/` | Driver, protocolo e patch do TEF6686, sem display ou encoders |
 | `wifi_radio.cpp` | Configuração e supervisão da conexão Wi-Fi |
-| `display_radio.cpp` | Modelo e tarefa das telas Rádio Web e Relógio |
+| `display_radio.cpp` | Modelo e tarefa das telas Rádio Web, Rádio FM e Relógio |
 | `controles.cpp` | Leitura dos dois encoders e de seus botões |
 | `indicador_led.cpp` | Cores e animações do LED RGB |
 | `radios.cpp` | Lista de estações em memória e reserva compilada |
@@ -58,8 +95,11 @@ As opções que normalmente precisam ser adaptadas ficam em
 | `INTERVALO_SERVICO_DISPLAY_MS` | Cadência da tarefa do OLED, derivada da rolagem do nome | 10 ms |
 | `INTERVALO_PISCA_LED_CONEXAO_WIFI_MS` | Intervalo da piscada azul durante a conexão | 100 ms |
 | `INTERVALO_TELEMETRIA_SERIAL_MS` | Intervalo entre diagnósticos na serial | 5000 ms |
-| `ENCODER_VOLUME` | Encoder 1: volume e alternância Rádio/Relógio | DT=2, CLK=1, SW=42, 4 transições |
+| `ENCODER_VOLUME` | Encoder 1: volume e ciclo Web/FM/Relógio | DT=2, CLK=1, SW=42, 4 transições |
 | `ENCODER_NAVEGACAO` | Encoder 2: navegação e confirmação de rádios | DT=41, CLK=40, SW=39, 4 transições |
+| `ENDERECO_I2C_TEF6686` | Endereço do receptor FM no barramento compartilhado | `0x64` |
+| `ENDERECO_I2C_MCP23017` | Endereço do expansor que chaveia a saída de áudio | `0x20` |
+| `FREQUENCIA_INICIAL_RADIO_FM_10KHZ` | Sintonia FM usada no primeiro boot | 10010 (100,10 MHz) |
 | `FUSO_HORARIO_UTC_HORAS` | Fuso aplicado ao relógio | -3 horas |
 | `INTERVALO_SINCRONIZACAO_NTP_MS` | Intervalo entre correções pela rede | 3600000 ms |
 | `DESVIO_MINIMO_AJUSTE_RTC_SEGUNDOS` | Diferença mínima para regravar o DS3231 | 2 segundos |
@@ -91,11 +131,24 @@ PCM5102A usa I2S, não I2C, e entrega dois canais em nível de linha. Portanto,
 alto-falantes passivos continuam exigindo um amplificador estéreo analógico
 depois do DAC.
 
-As ligações atuais são `SDA=GPIO16` e `SCL=GPIO17` para I2C;
-`BCK=GPIO12`, `LRCK=GPIO10` e `DIN=GPIO11` para I2S; `GPIO2/1/42` para o
-encoder 1; e `GPIO41/40/39` para o encoder 2. O Player e o barramento microSD
-foram removidos deste branch. A futura pinagem das Nixies deve ser reavaliada
-contra essas ligações antes de qualquer implementação em hardware.
+As ligações atuais são `SDA=GPIO16` e `SCL=GPIO17` para o I2C compartilhado
+por OLED, DS3231, MCP23017 (`0x20`) e TEF6686 (`0x64`);
+`BCK=GPIO21`, `LRCK=GPIO45` e `DIN=GPIO47` para I2S; `GPIO2/1/42` para o
+encoder 1; `GPIO41/40/39` para o encoder 2; e `GPIO20/19/38` para
+RX/TX/BUSY do DFPlayer. O cartão do DFPlayer é acessado pelo próprio módulo,
+não pelo barramento SPI do ESP32. Para o futuro driver das Nixies, ficam reservados
+`GPIO4/5/6/7` para BCD A/B/C/D e `GPIO11/12/13/14` para os quatro cátodos.
+
+O teste independente
+`examples/teste_dfplayer_encoder_volume/teste_dfplayer_encoder_volume.ino`
+conta os arquivos da pasta `/01` do cartão e usa cada detente do encoder de
+volume para selecionar outro som. O clique curto também avança. Esse teste não
+inicializa os demais módulos do aparelho. No firmware principal,
+`dfplayer.cpp` já inicializa o módulo, processa `BUSY` e publica um catálogo
+numérico comum para alarmes, chime e prévia. `GET /api/sons-dfplayer` expõe
+esse catálogo sem montar o cartão no ESP32. Na página `/alarmes`, o chime
+horário pode ser ativado com som e volume próprios; sua configuração fica no
+objeto `chime` de `/alarmes.json`.
 
 No firmware principal, o DS3231 conserva o horário em UTC e inicia o relógio
 do sistema antes da conexão Wi-Fi. O SNTP continua sendo a referência de
@@ -128,13 +181,51 @@ fica responsável por:
 - apresentação do estado publicado pelo serviço de áudio;
 - telemetria periódica.
 
-O equipamento possui dois estados operacionais: `Rádio Web` e `Relógio`. Em
+O equipamento possui três estados operacionais: `Rádio Web`, `Rádio FM` e
+`Relógio`. O boot sempre termina em `Relógio`, usado como standby: Wi-Fi,
+servidor HTTP, decoder e I2S ficam desligados, e o TEF6686 permanece em
+repouso. Em
 `Rádio Web`, os serviços de rede funcionam normalmente. Em `Relógio`, o stream
 fica suspenso, o servidor é interrompido, o Wi-Fi é desligado e o LED permanece
-apagado; relógio, encoders e OLED continuam sendo processados. A volta ao rádio
-usa reconexão assíncrona para não bloquear os controles.
+apagado. Em `Rádio FM`, rede e áudio web permanecem suspensos e o TEF6686 é
+acordado. O encoder de volume abre a seleção de fontes; seu giro percorre
+`Relógio → Rádio FM → Rádio Web → Relógio` e o clique confirma. A volta ao
+Rádio Web usa reconexão assíncrona para não bloquear os controles.
 
-Os alarmes são uma sobreposição temporária aos dois estados. Um alarme usa uma
+Para reduzir a espera ao selecionar Rádio Web, o firmware tenta primeiro uma
+associação direta com as credenciais persistidas, sem varredura prévia. A
+varredura de pontos permitidos continua como fallback. Decoder/I2S são recriados
+enquanto a associação ocorre, de modo que esses dois tempos se sobreponham.
+
+Quando a conexão fica pronta, uma única escrita no MCP23017 coloca `GPA7` em
+HIGH e `GPA6/GPA5` em LOW. `GPA7` aciona o relé que troca as entradas dos
+NS8002 do Rádio FM para a saída do DAC. `GPA6` e `GPA5` são enables ativos em
+LOW dos amplificadores direito e esquerdo: LOW habilita; HIGH silencia. No
+Rádio FM, os três ficam em LOW. No Relógio, `GPA7` fica em LOW e `GPA6/GPA5`
+ficam em HIGH. Alarmes do caminho digital selecionam o DAC pelo relé. O
+DFPlayer é diferente: `DAC_L` e `DAC_R` chegam diretamente aos NS8002, portanto
+ele preserva `GPA7` e altera somente `GPA6/GPA5`. `SPK1/SPK2` não são usados.
+
+Volume zero e a busca FM também aplicam mute elevando `GPA6/GPA5`, sem alterar
+a seleção de fonte de `GPA7`. Ao sair do mute, os dois enables retornam a LOW.
+
+Os níveis do MCP23017 são comandos de roteamento e enable; não são usados como
+condição para iniciar ou bloquear DAC, decoder, Rádio Web, Rádio FM ou alarmes.
+Falhas I2C nessa camada são somente registradas na serial.
+
+No boot, o firmware prepara primeiro `GPA7=LOW` e `GPA6/GPA5=HIGH` no latch e
+só depois configura esses três pinos como saídas. Durante reset, bootloader ou
+ausência de firmware, o MCP23017 mantém os pinos como entradas. Para garantir
+esse mesmo estado antes de o firmware assumir o controle, o circuito precisa
+de pull-down em GPA7 e pull-ups em GPA6/GPA5.
+
+O coordenador principal nunca acessa registradores do TEF6686. Ele chama a API
+de `radio_fm.cpp`, que por sua vez usa o driver isolado em `src/tef6686/`.
+Esse limite permite atualizar protocolo, patch, RDS ou critérios de busca do
+receptor sem levar regras de display, encoders, Wi-Fi ou alarmes para o firmware
+do rádio. A busca FM avança cooperativamente, uma etapa por passagem do loop.
+
+Os alarmes são uma sobreposição temporária aos três estados. Um alarme usa uma
 estação ou o som padrão até o clique curto no encoder 2 ou o
 limite de 30 minutos e então restaura o estado anterior. Um novo disparo substitui
 definitivamente o alarme em execução. Quando vários coincidem no mesmo minuto,
@@ -173,18 +264,20 @@ a reprodução, o nome retorna ao tamanho normal e à rolagem.
 No estado `Relógio`, o OLED mostra `HH:MM` em quatro cartões grandes com uma
 divisão horizontal inspirada em mostradores flip. O rodapé percorre a data
 completa em português, por exemplo `sexta, 12 de agosto de 2026`.
-O encoder 1 ajusta o nível reservado à próxima ativação e substitui
-temporariamente a data por uma barra de volume. Seu clique curto volta
-diretamente à Rádio Web. O encoder 2 não executa ação no Relógio.
+O estado `Rádio FM` mostra frequência, nome RDS quando disponível, busca e nível
+de sinal. Mudanças de frequência são publicadas imediatamente; a variação do
+nível é consolidada para não manter o I2C ocupado com quadros sem importância.
+No Relógio, o encoder 1 abre e percorre a seleção de fontes; seu clique confirma
+a opção exibida. O encoder 2 não executa ação nesse estado.
 
 ## Indicação do LED
 
 | Cor | Estado |
 | --- | --- |
-| Azul | Inicializando, conectando ou formando buffer |
-| Verde | Tocando normalmente |
+| Azul | Inicializando, conectando, formando buffer ou buscando estação FM |
+| Verde | Rádio Web tocando ou Rádio FM ativo |
 | Amarelo | Stream degradado |
-| Vermelho | Reconectando ou em erro |
+| Vermelho | Reconectando, erro de áudio ou erro/ausência do TEF6686 |
 | Apagado | Áudio parado |
 
 As cores indicam o estado operacional, não apenas uma leitura instantânea
@@ -194,9 +287,11 @@ do percentual do buffer.
 
 O encoder 1 usa `DT=GPIO2`, `CLK=GPIO1` e `SW=GPIO42`:
 
-- o giro controla somente o volume, inclusive durante a seleção de rádios;
-- o clique curto alterna diretamente entre Rádio Web e Relógio;
-- no Relógio, o giro altera o nível reservado à próxima ativação;
+- durante uma rádio ativa, o giro controla o volume;
+- o clique curto abre a seleção de fonte;
+- na seleção de fonte, o giro percorre Relógio, Rádio FM e Rádio Web, e o
+  clique confirma;
+- no Relógio, o primeiro giro já abre a seleção e aplica o deslocamento;
 - durante alarmes, o giro altera o volume efetivo e o clique é ignorado.
 
 O encoder 2 usa `DT=GPIO41`, `CLK=GPIO40` e `SW=GPIO39`:
@@ -204,6 +299,8 @@ O encoder 2 usa `DT=GPIO41`, `CLK=GPIO40` e `SW=GPIO39`:
 - no repouso da Rádio Web, girar abre a lista e aplica o deslocamento no mesmo
   ciclo; um clique curto também abre a lista;
 - durante a seleção, o giro escolhe a estação e o clique confirma;
+- em Rádio FM, o giro procura a estação seguinte ou anterior; a busca é
+  não bloqueante e movimentos acumulados não são descartados;
 - depois de dez segundos sem atividade, a seleção é cancelada;
 - no Relógio, giro e clique não executam ação;
 - durante um alarme, o clique curto encerra a reprodução.
@@ -222,12 +319,37 @@ presença de `dias` identifica a repetição semanal e a presença de `data`
 identifica uma execução única. Os arquivos ativos, temporário e backup são
 `/alarmes.json`, `/alarmes.tmp` e `/alarmes.bak`.
 
-A fonte pode ser uma estação da lista de Rádio Web ou o som padrão. O JSON
-guarda `radioId` quando uma estação foi escolhida; sua ausência seleciona
-`/alarme_padrao.wav`, gerado automaticamente na FFat. Uma estação removida ou
-indisponível também recorre ao som padrão. Alarmes únicos são desativados ao
-disparar; alarmes únicos já vencidos também são desativados pelo agendador. Não
-há histórico nem cálculo de próxima execução na interface.
+A fonte pode ser Rádio FM na última sintonia, uma estação da lista de Rádio Web
+ou o som padrão. O JSON guarda `radioFm` ou `radioId` quando uma dessas fontes
+foi escolhida; a ausência de ambas seleciona `/alarme_padrao.wav`, gerado
+automaticamente na FFat. Uma estação removida ou indisponível também recorre ao
+som padrão. Alarmes únicos são desativados ao disparar; alarmes únicos já
+vencidos também são desativados pelo agendador. Não há histórico nem cálculo de
+próxima execução na interface.
+
+O mesmo painel configura o chime pelo DFPlayer, com intervalos de 1, 2, 5, 10,
+15, 30 ou 60 minutos; os intervalos curtos permitem testar sem esperar uma
+hora. Som e volume são independentes dos alarmes, e o botão **Ouvir prévia**
+executa a seleção atual sem salvá-la. Um alarme tem prioridade quando coincide
+com o chime, e uma troca manual de fonte encerra a reprodução antes de alterar
+o caminho de áudio.
+
+Antes de habilitar o DFPlayer, o driver fotografa o estado efetivamente aplicado
+em GPA7/GPA6/GPA5. Os NS8002 são habilitados mesmo se o equipamento estiver em
+Relógio; ao terminar, essa fotografia é restaurada exatamente. Assim, os
+amplificadores voltam a desligar se estavam desligados e Rádio Web ou Rádio FM
+recuperam seu roteamento e mute anteriores. Enquanto o DFPlayer toca, ele tem
+prioridade temporária sobre comandos de mute das outras fontes, evitando que
+uma busca FM ou atualização de estado desligue os NS8002 no meio do chime.
+O comando de reprodução só é enviado depois que a releitura do MCP23017
+confirma `GPA6=LOW` e `GPA5=LOW`; se essa confirmação falhar, o DFPlayer não
+inicia e a falha fica registrada na serial.
+
+O diagnóstico temporário pode ser habilitado por `DEBUG_CHIME` em
+`configuracao.h`. As mensagens do firmware começam com `CHIME DEBUG`; a página
+de alarmes usa `[CHIME DEBUG]` no console do navegador. O registro acompanha a
+configuração, o instante do agendador, a requisição HTTP, o comando enviado ao
+DFPlayer, o pino BUSY, os níveis GPA7/GPA6/GPA5 e a restauração da saída.
 
 Enquanto um alarme está em execução, o encoder 1 ajusta o volume efetivo entre
 0 e 21 e o clique curto do encoder 2 encerra a reprodução. O ajuste vale também
@@ -241,11 +363,10 @@ forem acumulados entre duas passagens do `loop()`, todos são aplicados. Cada
 encoder possui configuração independente; as quatro transições por detente
 devem ser confirmadas nos dois componentes instalados.
 
-O estado `Relógio` encerra o stream e suspende a tarefa de serviço, mas a
-biblioteca ESP32-audioI2S não expõe ao firmware a parada pública do I2S. Na
-montagem básica, `XSMT` fica fixo em nível alto; portanto, o firmware ainda não
-dispõe de mute/standby físico explícito do PCM5102A. O controle de `XSMT` por
-GPIO está registrado como melhoria futura.
+Nos estados `Relógio` e `Rádio FM`, a instância `Audio` é destruída para liberar
+o decoder, sua tarefa interna e o canal I2S. Em seguida, `BCK`, `LRCK` e `DIN`
+ficam em nível baixo, levando o PCM5102A ao power-down automático. Isso desliga
+os blocos internos do DAC, mas não corta a alimentação elétrica do módulo.
 
 ## Lista de rádios
 
@@ -278,8 +399,8 @@ GET http://IP_DO_ESP32/api/v1/status
 
 A resposta JSON contém estado do áudio, rádio, título, codec, bitrate,
 buffer estimado em milissegundos, eventos de stream lento, tentativas de
-reconexão, estado dos alarmes, disponibilidade do som padrão, RSSI, heap, PSRAM
-e uptime. A porta serial também imprime um resumo a cada cinco segundos,
+reconexão, estado dos alarmes, catálogo e estado do DFPlayer, disponibilidade
+do som padrão, RSSI, heap, PSRAM e uptime. A porta serial também imprime um resumo a cada cinco segundos,
 incluindo se o RTC está presente e respondendo no barramento I2C.
 
 O endpoint responde a consultas feitas por outro equipamento da rede. O

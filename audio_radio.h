@@ -31,6 +31,7 @@ struct StatusAudio {
     bool arquivoAlarmeDisponivel = false;
     bool somPadraoAlarme = false;
     bool radioAlarme = false;
+    bool radioFmAlarme = false;
 
     char radio[64] = "";
     char titulo[128] = "";
@@ -38,7 +39,9 @@ struct StatusAudio {
     char ultimoErro[192] = "";
 };
 
-bool iniciarAudio(int volume);
+// Cria o serviço proprietário. Quando iniciarDesligado é true, decoder e I2S
+// permanecem ausentes até a primeira chamada de retomarAudio().
+bool iniciarAudio(int volume, bool iniciarDesligado = false);
 
 bool tocarRadio(
     const String& nome,
@@ -51,8 +54,7 @@ bool tocarRadioAlarme(
     int volume
 );
 
-// Interrompe a fonte atual e abre o MP3 solicitado. Quando o caminho estiver
-// vazio, ausente ou não puder ser aberto, usa o WAV padrão armazenado na FFat.
+// Interrompe a fonte atual e reproduz o WAV padrão armazenado na FFat.
 bool tocarArquivoAlarme(
     const String& caminho,
     int volume
@@ -60,13 +62,19 @@ bool tocarArquivoAlarme(
 
 bool pararAudio();
 
-// Para o stream e suspende a tarefa dedicada até o modo Rádio Web voltar.
+// Bloqueia até destruir o decoder, remover o canal I2S e manter BCK/LRCK/DIN
+// em nível baixo. Retorna false se a confirmação não chegar no prazo.
 bool suspenderAudio();
 
-// Reativa a tarefa dedicada e restaura o volume de operação.
+// Recria decoder e I2S, reativa a tarefa dedicada e restaura o volume.
 bool retomarAudio(int volume, bool paraPlayer = false);
 
 void alterarVolumeAudio(int volume);
+
+bool decoderDacEstaAtivo();
+
+// Publica na telemetria um alarme reproduzido diretamente pelo TEF6686.
+void definirAlarmeFmAtivo(bool ativo);
 
 StatusAudio obterStatusAudio();
 

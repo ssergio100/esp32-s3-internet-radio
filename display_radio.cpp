@@ -62,6 +62,7 @@ namespace {
         MENSAGEM,
         CONFIGURACAO_WIFI,
         RADIO,
+        RADIO_FM,
         RELOGIO,
 
         ALARME
@@ -85,6 +86,12 @@ namespace {
     String nomeRadioAtual;
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
+
+    uint16_t frequenciaRadioFm10kHz = 0;
+    int16_t nivelRadioFmDecimosDbuv = 0;
+    bool qualidadeRadioFmValida = false;
+    String nomeEstacaoRadioFm;
+    String estadoRadioFm;
 
     // Os valores também representam o passo horizontal de um pixel.
     enum class SentidoRolagem {
@@ -910,6 +917,114 @@ namespace {
 
     }
 
+    void desenharBarraVolumeRadioFm() {
+        constexpr int BARRA_X = 2;
+        constexpr int BARRA_Y = 51;
+        constexpr int BARRA_LARGURA = 78;
+        constexpr int BARRA_ALTURA = 10;
+
+        display.drawRect(
+            BARRA_X,
+            BARRA_Y,
+            BARRA_LARGURA,
+            BARRA_ALTURA,
+            SSD1306_WHITE
+        );
+
+        int larguraPreenchida = map(
+            volumeBarraInferior,
+            VOLUME_MINIMO,
+            VOLUME_MAXIMO,
+            0,
+            BARRA_LARGURA - 4
+        );
+
+        if (larguraPreenchida > 0) {
+            display.fillRect(
+                BARRA_X + 2,
+                BARRA_Y + 2,
+                larguraPreenchida,
+                BARRA_ALTURA - 4,
+                SSD1306_WHITE
+            );
+        }
+
+        display.setCursor(86, 52);
+        display.printf(
+            "%d/%d",
+            volumeBarraInferior,
+            VOLUME_MAXIMO
+        );
+    }
+
+    String formatarNivelRadioFm() {
+        if (!qualidadeRadioFmValida) {
+            return "SINAL --";
+        }
+
+        int16_t nivel = nivelRadioFmDecimosDbuv;
+        bool negativo = nivel < 0;
+        uint16_t absoluto = static_cast<uint16_t>(
+            negativo ? -static_cast<int32_t>(nivel) : nivel
+        );
+
+        return
+            String("SINAL ") +
+            (negativo ? "-" : "") +
+            String(absoluto / 10) +
+            "." +
+            String(absoluto % 10) +
+            " dBuV";
+    }
+
+    void desenharTelaRadioFm() {
+        prepararTela();
+        escreverCentralizado("RADIO FM", 0, 1);
+
+        char frequencia[12];
+
+        if (frequenciaRadioFm10kHz > 0) {
+            snprintf(
+                frequencia,
+                sizeof(frequencia),
+                "%u.%02u",
+                frequenciaRadioFm10kHz / 100,
+                frequenciaRadioFm10kHz % 100
+            );
+        } else {
+            snprintf(frequencia, sizeof(frequencia), "--.--");
+        }
+
+        escreverCentralizado(frequencia, 13, 2);
+        escreverCentralizado("MHz", 31, 1);
+
+        String textoCentral = !estadoRadioFm.isEmpty()
+            ? estadoRadioFm
+            : nomeEstacaoRadioFm;
+
+        if (textoCentral.isEmpty()) {
+            textoCentral = "FM";
+        }
+
+        if (textoCentral.length() > 20) {
+            textoCentral = textoCentral.substring(0, 17) + "...";
+        }
+
+        escreverCentralizado(textoCentral, 40, 1);
+
+        if (exibindoVolumeNaBarraInferior) {
+            desenharBarraVolumeRadioFm();
+        } else {
+            display.drawFastHLine(
+                2,
+                49,
+                DISPLAY_LARGURA - 4,
+                SSD1306_WHITE
+            );
+            escreverCentralizado(formatarNivelRadioFm(), 54, 1);
+        }
+    }
+
     void desenharTelaMensagem() {
         prepararTela();
         escreverCentralizado(mensagemAtual, 28, 1);
@@ -971,6 +1086,10 @@ namespace {
 
             case TelaDisplay::RADIO:
                 desenharTelaRadio();
+                break;
+
+            case TelaDisplay::RADIO_FM:
+                desenharTelaRadioFm();
                 break;
 
             case TelaDisplay::RELOGIO:
@@ -1064,7 +1183,8 @@ void iniciarDisplay() {
 
     Wire.begin(
         PIN_BARRAMENTO_I2C_SDA,
-        PIN_BARRAMENTO_I2C_SCL
+        PIN_BARRAMENTO_I2C_SCL,
+        FREQUENCIA_BARRAMENTO_I2C_HZ
     );
 
     disponivel = display.begin(
@@ -1234,6 +1354,29 @@ void mostrarEstadoRadio(
     );
 }
 
+void mostrarRadioFm(
+    uint16_t frequencia10kHz,
+    const String& nomeEstacao,
+    const String& estado,
+    bool qualidadeValida,
+    int16_t nivelDecimosDbuv
+) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido() || !disponivel) {
+        return;
+    }
+
+    frequenciaRadioFm10kHz = frequencia10kHz;
+    nomeEstacaoRadioFm = nomeEstacao;
+    estadoRadioFm = estado;
+    qualidadeRadioFmValida = qualidadeValida;
+    nivelRadioFmDecimosDbuv = nivelDecimosDbuv;
+    telaAtual = TelaDisplay::RADIO_FM;
+    exibindoVolumeNaBarraInferior = false;
+    solicitarApresentacao();
+}
+
 void mostrarVolume(
     int volume
 ) {
@@ -1252,6 +1395,7 @@ void mostrarVolume(
 
     if (
         telaAtual == TelaDisplay::RADIO ||
+        telaAtual == TelaDisplay::RADIO_FM ||
         telaAtual == TelaDisplay::RELOGIO
     ) {
         solicitarApresentacao();

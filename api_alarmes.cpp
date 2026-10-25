@@ -54,7 +54,9 @@ bool copiarDadosAlarme(
 ) {
     JsonVariantConst arquivo = origem["arquivo"];
     JsonVariantConst radioId = origem["radioId"];
-    bool possuiArquivo = false;
+    JsonVariantConst radioFm = origem["radioFm"];
+    bool usaRadioFm =
+        radioFm.is<bool>() && radioFm.as<bool>();
     bool possuiDias = origem["dias"].is<JsonArrayConst>();
     bool possuiData = origem["data"].is<const char*>();
 
@@ -70,6 +72,11 @@ bool copiarDadosAlarme(
                 radioId.as<uint32_t>() == 0
             )
         ) ||
+        (
+            !radioFm.isNull() &&
+            (!radioFm.is<bool>() || !usaRadioFm)
+        ) ||
+        (usaRadioFm && !radioId.isNull()) ||
         (
             !origem["ativo"].isNull() &&
             !origem["ativo"].is<bool>()
@@ -99,6 +106,10 @@ bool copiarDadosAlarme(
 
     if (radioId.is<uint32_t>()) {
         destino["radioId"] = radioId;
+    }
+
+    if (usaRadioFm) {
+        destino["radioFm"] = true;
     }
 
     return true;
