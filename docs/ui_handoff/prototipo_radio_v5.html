@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rádio híbrido | Wireframe navegável v5 — temas monocromáticos</title>
+<style>
+:root{color-scheme:dark;--bg:#090d12;--surface:#111923;--panel:#17222e;--line:#2b3b4c;--muted:#96aabd;--fg:#eaf1f7;--gold:#e7b974;--mint:#77cdb6;--coral:#f29c8f}
+*{box-sizing:border-box}html{min-height:100%}body{margin:0;min-height:100vh;background:radial-gradient(ellipse 65% 42% at 50% -10%,#283443 0%,#111923 64%,#090c11 100%);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid var(--gold);outline-offset:3px}button:disabled{cursor:not-allowed;opacity:.45}header{max-width:1220px;margin:auto;padding:30px 24px 20px;display:flex;justify-content:space-between;align-items:center;gap:16px}.kicker{color:var(--gold);text-transform:uppercase;letter-spacing:.16em;font-size:10px;font-weight:750}h1{font-size:25px;letter-spacing:-.04em;margin:4px 0 2px}header p{margin:0;color:var(--muted)}.version{color:#b5c6d6;font-size:12px;border:1px solid #465769;padding:6px 10px;border-radius:30px;white-space:nowrap}
+.layout{max-width:1220px;margin:auto;padding:0 24px 30px;display:grid;grid-template-columns:minmax(0,748px) minmax(300px,1fr);gap:22px;align-items:start}.device{background:linear-gradient(145deg,#27313c,#171f29 75%);border-radius:27px;padding:22px 24px 24px;border:1px solid #415060;box-shadow:0 22px 70px #0008,inset 0 1px #56616e}.engraving{display:flex;justify-content:space-between;align-items:center;color:#9fafbd;letter-spacing:.22em;font-weight:700;font-size:9px;margin:0 3px 13px}.engraving span:last-child{color:#718497;letter-spacing:.1em}
+.screen-wrap{max-width:640px;margin:auto;border:8px solid #070b10;box-shadow:0 0 0 1px #667282,0 9px 25px #0009;background:#030405;border-radius:8px;aspect-ratio:4/3;position:relative;overflow:hidden}.screen{width:320px;height:240px;transform-origin:top left;position:absolute;inset:0 auto auto 0;background:#080e14;color:#edf3f9;font:11px/1.35 system-ui,-apple-system,sans-serif;overflow:hidden}.screen *{box-sizing:border-box}.screen.off{background:#010203}.topbar{height:27px;background:#19232e;padding:0 11px;display:flex;align-items:center;justify-content:space-between;font-weight:700;letter-spacing:.04em;font-size:10px}.topbar .indicators{font-weight:500;letter-spacing:0;color:#a4b9ca}.bodyarea{height:178px;overflow:hidden;position:relative}.bottom{height:35px;background:#15202a;border-top:1px solid #2d3d4c;padding:0 10px;display:flex;align-items:center;justify-content:space-between;color:#adbfcd;font-size:9px;gap:9px}.bottom b{color:#e8ba75;font-weight:700}.bottom span:last-child{text-align:right}.scrollarea{height:178px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#455b6b #111820}.row-item{border:0;border-bottom:1px solid #283743;background:#101923;min-height:36px;width:100%;padding:6px 10px;display:flex;align-items:center;gap:9px;color:#eaf0f7;text-align:left;cursor:pointer}.row-item.selected{background:#293f50;box-shadow:inset 3px 0 var(--gold)}.row-num{width:22px;color:#879bae;font-size:9px;font-weight:700;text-align:center}.row-title{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-sub{font-size:9px;color:#94a9bd;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-copy{min-width:0;flex:1}.row-val{font-size:10px;font-weight:700;color:var(--gold);white-space:nowrap;max-width:106px;text-overflow:ellipsis;overflow:hidden}.row-val.dim{color:#8396a8}.row-arrow{color:#abbdc9}.section-flag{color:#93a9bc;background:#17222d;padding:5px 10px;font-size:9px;letter-spacing:.06em}.hint-line{text-align:center;color:#9fb4c6;font-size:10px;padding:8px 6px}
+.frequency{font-size:57px;font-weight:780;letter-spacing:-.07em;text-align:center;line-height:1.1;padding-top:10px;font-variant-numeric:tabular-nums}.unit{text-align:center;color:var(--gold);font-size:11px;font-weight:750;letter-spacing:.07em}.station-name{text-align:center;font-size:15px;font-weight:700;margin:12px 10px 2px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}.station-rds{font-size:10px;text-align:center;color:#a9bacb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 9px}.signal{position:absolute;bottom:13px;left:14px;right:14px;display:flex;align-items:center;gap:10px;color:#b9cbd9;font-size:10px}.bar{height:7px;border-radius:6px;background:#344657;flex:1;overflow:hidden}.bar > span{display:block;height:100%;background:#72c6ad;border-radius:6px}.webhead{font-size:18px;font-weight:750;text-align:center;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin:17px 12px 4px}.nowplaying{text-align:center;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin:0 12px;color:#a5b9cc;font-size:10px}.stat-row{display:flex;align-items:center;background:#1a2835;border:1px solid #324658;border-radius:6px;height:48px;margin:12px 14px 0}.stat{flex:1;text-align:center;border-right:1px solid #324658}.stat:last-child{border:0}.stat small{display:block;color:#94a8bc;font-size:9px}.stat b{display:block;font-size:12px;margin-top:1px}.bufferhead{margin:12px 16px 5px;display:flex;justify-content:space-between;font-size:10px;color:#afc1d0}.bufferbar{height:8px;background:#344657;border-radius:5px;margin:0 16px;overflow:hidden}.bufferbar span{height:100%;background:#72c6ad;display:block;border-radius:5px}.edit-title{text-align:center;color:#adc2d4;margin-top:20px;font-size:12px}.edit-num{text-align:center;font-weight:750;letter-spacing:-.02em;font-size:52px;line-height:1.35;font-variant-numeric:tabular-nums;color:#f2f6fa}.edit-unit{text-align:center;font-size:12px;color:var(--gold);margin-top:4px}.edit-note{text-align:center;color:#92a6b9;font-size:10px;margin-top:7px}.prompt-top{font-size:12px;font-weight:700;color:#f4e1c4;text-align:center;padding:20px 16px 7px}.prompt-body{font-size:11px;color:#adbdcb;text-align:center;padding:4px 24px 14px}.pill-options{display:flex;gap:8px;justify-content:center}.pill-options .p{border:1px solid #45576a;background:#243444;padding:9px 13px;border-radius:6px;font-size:11px}.pill-options .p.active{background:#63482c;color:#ffe4b7;border-color:#a88045}.offmask{width:100%;height:100%;background:#010203}.test-warning{padding:5px 12px;text-align:center;font-size:9px;color:#eac78d;background:#403023}.ringpage{background:radial-gradient(#344251,#1a2530);height:178px;text-align:center;border:3px solid #c99b59;padding:14px 8px}.ringpage h2{color:#ffe0a7;margin:0;font-size:14px}.ringpage .ringtime{font-size:41px;font-weight:800;color:#fff;margin:4px}.ringpage small{display:block;font-size:10px;color:#d1deeb}.ringpage .ringbuttons{display:flex;gap:8px;justify-content:center;margin-top:10px}.ringpage .ringbuttons span{background:#594127;border:1px solid #bc8c4a;border-radius:5px;padding:5px 12px;font-size:10px}.toast{position:absolute;z-index:20;bottom:38px;left:12px;right:12px;text-align:center;border:1px solid #8cb7b0;border-radius:5px;background:#294353;color:white;padding:9px 5px;box-shadow:0 6px 18px #000a;font-size:10px}
+.nixieunit{margin:16px 0 10px}.nixie-label{font-size:10px;color:#99a7b6;text-align:center;letter-spacing:.13em}.nixies{margin:7px auto 0;display:flex;gap:7px;justify-content:center;align-items:center}.tube{background:linear-gradient(180deg,#120d0a,#311d0c,#140e09);width:40px;height:51px;border:1px solid #76502a;box-shadow:inset 0 0 12px #000,0 0 13px #c8752a18;border-radius:9px 9px 5px 5px;text-align:center;color:#ffa64a;text-shadow:0 0 6px #ff9a34,0 0 15px #eb6728;font:34px/49px ui-monospace,monospace}.colon{color:#e6a361;font:bold 27px ui-monospace,monospace;text-shadow:0 0 9px #cf6c21}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.control{border:1px solid #3b4d5e;border-radius:12px;background:#0f1720;padding:13px;min-width:0}.control-title{font-size:10px;letter-spacing:.12em;font-weight:800;text-align:center;color:#b7c9d9}.control-sub{text-align:center;font-size:10px;color:#839bad;margin-top:7px}.knob{height:55px;width:55px;border-radius:50%;border:3px solid #808b98;margin:11px auto;background:radial-gradient(circle at 38% 32%,#4d5a68,#1c2630 70%);box-shadow:inset 0 2px 3px #c8d3dd4d,inset 0 -3px 6px #0009,0 3px 10px #0008;position:relative;cursor:pointer}.knob:before{content:"";position:absolute;top:5px;left:calc(50% - 2px);height:11px;width:4px;background:#e1c394;border-radius:3px}.knob:hover{border-color:#e0b479}.buttons{display:flex;gap:7px;justify-content:center}.button{border:1px solid #536578;border-radius:8px;padding:8px 10px;color:#eaf1f8;background:#273747;font-size:11px;font-weight:700;min-width:42px}.button.primary{background:#594531;border-color:#c19b61;color:#ffe4b5}.button:hover{filter:brightness(1.16)}.button.full{width:100%}.shortcuts{border-top:1px solid #384858;padding-top:12px;margin-top:13px;display:flex;gap:9px;align-items:center;justify-content:space-between;flex-wrap:wrap}.long-press{background:#342820;border:1px solid #80644a;color:#f5d0a4;padding:10px 14px;border-radius:8px;font-weight:700;font-size:12px}.state-pill{color:#abbcc9;font-size:11px}.state-pill b{color:#e9bf87}
+.side{display:flex;flex-direction:column;gap:15px}.panel{background:#121c27;border:1px solid #2e4051;border-radius:14px;padding:17px 18px}.panel h2{font-size:17px;margin:2px 0 7px;letter-spacing:-.02em}.panel p{color:#b4c6d6;margin:6px 0 11px}.panel .crumb{color:#8dd7bf;font-size:11px;min-height:20px}.step{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #2a3948;color:#c1d0df;font-size:12px}.step:last-child{border:0}.key{border:1px solid #5d7083;border-radius:5px;min-width:64px;padding:4px 6px;flex-shrink:0;text-align:center;font-size:10px;color:#ebf2f8;align-self:flex-start;background:#263747;font-weight:750}.callout{background:#263748;border-left:3px solid var(--gold);border-radius:6px;padding:11px 12px;font-size:12px;color:#e1ecf5}.flowbuttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.flowbuttons button{border:1px solid #466073;border-radius:7px;background:#243747;color:#e6f1fb;padding:9px;font-size:11px}.flowbuttons button:hover{background:#3a5266}.activity{border-top:1px solid #2b3b4a;padding-top:12px;margin-top:13px;font-size:11px;color:#b2c4d3;min-height:30px}.footer{max-width:1220px;padding:0 24px 40px;margin:auto;color:#8398ac;font-size:12px}.footer b{color:#d5e2ed}.menu-help-label{font-size:10px;color:#869caf;margin-top:6px}.screen button:focus-visible{outline:2px solid #deb16c;outline-offset:-2px}
+@media(max-width:1020px){.layout{grid-template-columns:1fr;max-width:780px}.side{display:grid;grid-template-columns:1fr 1fr}.side .panel:last-child{grid-column:1/-1}}
+@media(max-width:640px){header{padding:19px 12px 17px}header h1{font-size:20px}.version{display:none}.layout{padding:0 9px 25px;gap:12px}.device{padding:13px;border-radius:16px}.controls{gap:8px}.control{padding:9px 5px}.side{grid-template-columns:1fr}.side .panel:last-child{grid-column:auto}.panel{padding:13px}.button{min-width:35px;padding:7px 6px}.long-press{padding:8px 10px}}
+
+/* v3: clock via B, Nixie brightness preview and idle display */
+.clock-time{display:flex;justify-content:center;align-items:center;gap:5px;margin:6px 8px 2px;font-size:41px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.12}
+.clock-time span{padding:3px 5px;border-radius:6px;color:#8a9fb1;border:1px solid transparent}
+.clock-time span.active{color:#ffe2a3;background:#62472c;border-color:#e7b974}
+.clock-time .clock-colon{padding:0;color:#d1dce4;font-size:39px}
+.clock-notice{text-align:center;color:#a4baaa;font-size:10px;margin:3px auto 0}
+.clock-edit-title{margin-top:9px!important}.clock-edit-hint{padding:5px 6px!important}.brightness-blocks{display:flex;align-items:center;justify-content:center;gap:5px;margin:8px 14px 12px}
+.brightness-blocks i{height:20px;width:21px;border-radius:3px;border:1px solid #445364;background:#202a35}
+.brightness-blocks i.lit{background:#e4a85d;border-color:#f5c982;box-shadow:0 0 7px #e39b4470}
+
+/* Radio Web: distinguir pré-seleção de estação efetivamente conectada. */
+.webhead{margin-top:12px}
+.web-state{text-align:center;font-size:9px;font-weight:750;letter-spacing:.03em;margin-top:7px;padding:3px 4px}
+.web-preview-label{color:#e9bc78}
+.web-connect-label{color:#d9b484}
+.web-active-label{color:#8ad2b8}
+.nowplaying.dimmed{color:#8fa3b6}
+.web-state+.stat-row{margin-top:8px}
+.web-state~.bufferhead{margin-top:10px}
+
+/* V5 — Temas monocromáticos do TFT, sem glow, adequados à renderização simples RGB565.
+   Cada cor controlada por variáveis CSS; não altera chassi nem Nixies reais. */
+.screen {
+  --lcd-bg: #050200; --lcd-bg2: #120802; --lcd-panel: #1d0e04;
+  --lcd-main: #ffac4b; --lcd-bright: #ffc27d; --lcd-muted: #af6a32;
+  --lcd-selected: #462307; --lcd-stroke: #583015; --lcd-track: #372010;
+  --lcd-fill: #f09b3b;
+  background: var(--lcd-bg); color: var(--lcd-main);
+  text-shadow: none;
+}
+.screen .topbar,.screen .bottom {background:var(--lcd-panel);color:var(--lcd-main);border-color:var(--lcd-stroke)}
+.screen .topbar .indicators,.screen .bottom span {color:var(--lcd-muted)}
+.screen .bottom b {color:var(--lcd-bright)}
+.screen .row-item {background:var(--lcd-bg2);color:var(--lcd-main);border-color:var(--lcd-stroke)}
+.screen .row-item.selected {background:var(--lcd-selected);box-shadow:inset 3px 0 var(--lcd-main)}
+.screen .row-num,.screen .row-sub,.screen .row-val.dim,.screen .row-arrow,
+.screen .hint-line,.screen .section-flag,.screen .station-rds,.screen .nowplaying,
+.screen .nowplaying.dimmed,.screen .signal,.screen .bufferhead,
+.screen .edit-title,.screen .edit-note,.screen .prompt-body,
+.screen .stat small,.screen .web-preview-label,.screen .web-connect-label,
+.screen .web-active-label,.screen .clock-notice,.screen .clock-time span,
+.screen .clock-time .clock-colon {color:var(--lcd-muted)}
+.screen .row-title,.screen .station-name,.screen .webhead,.screen .frequency,
+.screen .edit-num,.screen .stat b,.screen .ringpage .ringtime,
+.screen .ringpage h2 {color:var(--lcd-main)}
+.screen .row-val,.screen .unit,.screen .edit-unit,.screen .prompt-top,
+.screen .clock-time span.active,.screen .web-state {color:var(--lcd-bright)}
+.screen .stat-row,.screen .section-flag {background:var(--lcd-panel);border-color:var(--lcd-stroke)}
+.screen .stat {border-color:var(--lcd-stroke)}
+.screen .bar,.screen .bufferbar {background:var(--lcd-track)}
+.screen .bar > span,.screen .bufferbar > span {background:var(--lcd-fill)}
+.screen .pill-options .p {background:var(--lcd-panel);border-color:var(--lcd-stroke);color:var(--lcd-main)}
+.screen .pill-options .p.active {background:var(--lcd-selected);border-color:var(--lcd-main);color:var(--lcd-bright)}
+.screen .toast,.screen .test-warning {background:var(--lcd-selected);border:1px solid var(--lcd-stroke);color:var(--lcd-bright);box-shadow:none}
+.screen .ringpage {background:var(--lcd-bg2);border-color:var(--lcd-main)}
+.screen .ringpage small {color:var(--lcd-muted)}
+.screen .ringpage .ringbuttons span {background:var(--lcd-selected);color:var(--lcd-bright);border-color:var(--lcd-stroke)}
+.screen .clock-time span.active {background:var(--lcd-selected);border-color:var(--lcd-bright)}
+.screen .brightness-blocks i {background:var(--lcd-panel);border-color:var(--lcd-stroke)}
+.screen .brightness-blocks i.lit {background:var(--lcd-fill);border-color:var(--lcd-bright);box-shadow:none}
+.screen .edit-denominator {color:var(--lcd-muted);font-size:20px}
+.screen .offmask {background:#000}
+.screen button:focus-visible {outline-color:var(--lcd-main)}
+.screen .row-item.selected .row-title {color:var(--lcd-bright)}
+/* Confirmação da mudança pela tonalidade, não por um brilho animado. */
+</style>
+</head>
+<body>
+<header>
+ <div><div class="kicker">Wireframe interativo · versão 5</div><h1>Rádio híbrido — interface e navegação</h1><p>ESP32-S3 · TFT 320 × 240 · TEF6686 · Rádio Web · DFPlayer · Nixies</p></div>
+ <span class="version">v5.0 · Cores personalizáveis</span>
+</header>
+<main class="layout">
+ <section>
+  <div class="device">
+   <div class="engraving"><span>HYBRID RADIO / CLOCK</span><span>FRONT PANEL · PROTOTYPE</span></div>
+   <div class="screen-wrap" id="screen-wrap"><div id="screen" class="screen off" aria-live="polite"></div></div>
+   <div class="nixieunit"><div class="nixie-label">RELÓGIO · NIXIES</div><div id="nixies" class="nixies" aria-label="Horas nos tubos Nixie"></div></div>
+   <div class="controls">
+    <div class="control">
+      <div class="control-title">ENCODER A · NAVEGAÇÃO / BRILHO</div>
+      <div class="knob" id="knob-a" title="Clique: selecionar. Roda do mouse: navegar." role="button" tabindex="0" aria-label="Pressionar encoder A"></div>
+      <div class="buttons"><button class="button" id="a-minus" title="Girar encoder A para a esquerda">↶</button><button class="button primary" id="a-press">A · PRESSIONAR</button><button class="button" id="a-plus" title="Girar encoder A para a direita">↷</button></div>
+      <div class="control-sub">Girar: menu / brilho Nixies em repouso · Clicar: entrar</div>
+    </div>
+    <div class="control">
+      <div class="control-title">ENCODER B · VOLUME / RELÓGIO</div>
+      <div class="knob" id="knob-b" title="Clique: voltar; ao editar relógio, alternar hora/minuto. Roda do mouse: volume / hora." role="button" tabindex="0" aria-label="Pressionar encoder B"></div>
+      <div class="buttons"><button class="button" id="b-minus" title="Diminuir volume">−</button><button class="button primary" id="b-press">B · VOLTAR</button><button class="button" id="b-plus" title="Aumentar volume">+</button></div>
+      <div class="control-sub">Girar: volume (ou hora/minuto) · Clicar: voltar (ou alternar campo)</div>
+    </div>
+   </div>
+   <div class="shortcuts"><button id="standby" class="long-press" title="Equivale a segurar o encoder B">◯  SEGURAR B · RELÓGIO</button><span class="state-pill" id="audio-state">ÁUDIO: <b>DESLIGADO</b></span></div>
+  </div>
+ </section>
+ <aside class="side">
+  <section class="panel">
+   <div class="kicker">Assistente contextual</div>
+   <h2 id="help-title">Relógio / modo de repouso</h2>
+   <div class="crumb" id="breadcrumbs">Início · Relógio</div>
+   <p id="help-description">TFT apagado e Nixies mostrando as horas. Gire A para ajustar o brilho de 0 a 10 ou pressione A para abrir o menu.</p>
+   <div id="help-actions"></div>
+   <div id="help-note" class="callout">Uma rotação exibe temporariamente o nível de brilho no TFT; depois a tela apaga novamente.</div>
+  </section>
+  <section class="panel">
+   <div class="kicker">Percursos de teste</div>
+   <h2>Explore as telas</h2>
+   <p>Esses atalhos colocam o simulador no começo de cada percurso. Depois, use os encoders como faria no equipamento.</p>
+   <div class="flowbuttons">
+    <button data-tour="fm">Sintonia FM / DX</button>
+    <button data-tour="web">Rádio Web / estações</button>
+    <button data-tour="alarms">Alarmes / dias / fonte</button>
+    <button data-tour="chime">Chimes / arquivos</button>
+    <button data-tour="settings">Configurações</button>
+    <button data-tour="off">Estado Relógio</button>
+   </div>
+   <div class="activity" id="activity">Estado inicial: relógio ativo e TFT apagado.</div>
+  </section>
+  <section class="panel">
+   <div class="kicker">Teclado e funcionamento</div>
+   <h2>Controles disponíveis</h2>
+   <div class="step"><span class="key">↑ / ↓</span><span>Girar encoder A: navegar; no Relógio, ajustar brilho dos Nixies (0–10).</span></div>
+   <div class="step"><span class="key">Enter</span><span>Pressionar encoder A: despertar, entrar ou confirmar.</span></div>
+   <div class="step"><span class="key">Esc</span><span>Pressionar encoder B: voltar; na edição do relógio, alterna horas e minutos.</span></div>
+   <div class="step"><span class="key">− / +</span><span>Girar encoder B: volume; na edição do relógio, ajusta hora/minuto.</span></div>
+   <div class="step"><span class="key">Shift+Esc</span><span>Segurar encoder B: desligar áudio principal, apagar TFT e voltar aos Nixies.</span></div>
+   <p class="menu-help-label">O protótipo simula áudio, recepção e rede; não controla ainda o hardware. Os alarmes e chimes são configuráveis e seus testes abrem telas de disparo.</p>
+  </section>
+ </aside>
+</main>
+<div class="footer"><b>Nota de arquitetura:</b> não há botão físico adicional nesta versão. Encoder A concentra navegação e seleção; encoder B controla volume e retorno. O brilho dos Nixies é ajustado no estado Relógio (0 = apagados; 10 = máximo). No Rádio Web, girar A apenas percorre nomes; pressionar A confirma e inicia a conexão. A tela tem paletas monocromáticas configuráveis, sem glow. A hora pode ser ajustada manualmente mesmo com sincronização automática ligada. Os ajustes são salvos no navegador, quando permitido.</div>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const STORAGE='hybrid-radio-wireframe-v3';
+const DAYS=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const SHORTD=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+const THEMES=[
+ {id:'nixie',name:'Laranja Nixie',desc:'Âmbar quente, visual clássico',vars:{bg:'#050200',bg2:'#120802',panel:'#1d0e04',main:'#ffac4b',bright:'#ffc27d',muted:'#af6a32',selected:'#462307',stroke:'#583015',track:'#372010',fill:'#f09b3b'}},
+ {id:'green',name:'Verde fósforo',desc:'Terminal e equipamentos clássicos',vars:{bg:'#010501',bg2:'#061307',panel:'#0b1c0b',main:'#8df17d',bright:'#beffb3',muted:'#4f9953',selected:'#123b17',stroke:'#29592d',track:'#17341a',fill:'#72d968'}},
+ {id:'blue',name:'Azul gelo',desc:'Azul suave e técnico',vars:{bg:'#010409',bg2:'#07101b',panel:'#0c1c2b',main:'#8bcbff',bright:'#c5e6ff',muted:'#568eae',selected:'#143450',stroke:'#315674',track:'#183148',fill:'#72b2ee'}},
+ {id:'white',name:'Branco clássico',desc:'Escala de cinza com alto contraste',vars:{bg:'#030303',bg2:'#111111',panel:'#1c1c1c',main:'#e6e6e6',bright:'#ffffff',muted:'#9d9d9d',selected:'#343434',stroke:'#555555',track:'#343434',fill:'#d3d3d3'}},
+ {id:'red',name:'Vermelho',desc:'Painel vermelho discreto',vars:{bg:'#080101',bg2:'#180505',panel:'#230a0a',main:'#ff827b',bright:'#ffb2a9',muted:'#b85f59',selected:'#491714',stroke:'#67312c',track:'#3c1512',fill:'#ee716c'}}
+];
+const themeById=id=>THEMES.find(t=>t.id===id)||THEMES[0];
+
+const stations=[
+ {name:'Jazz Instrumental',sub:'Blue Note Hour — transmissão de demonstração',codec:'MP3',bitrate:128},
+ {name:'Clássicos dos Anos 80',sub:'Greatest Hits — transmissão de demonstração',codec:'AAC',bitrate:96},
+ {name:'Rádio Notícias',sub:'Boletim e jornal — transmissão de demonstração',codec:'MP3',bitrate:64},
+ {name:'Música Clássica',sub:'Concerto da tarde — transmissão de demonstração',codec:'AAC',bitrate:192},
+ {name:'Rock & Blues',sub:'Guitarras — transmissão de demonstração',codec:'MP3',bitrate:192}
+];
+const files=[
+ {id:1,name:'Sino clássico'},{id:2,name:'Westminster'},{id:3,name:'Carrilhão curto'},
+ {id:4,name:'Despertador digital'},{id:5,name:'Melodia suave'},{id:6,name:'Toque de meia hora'}
+];
+const fmMemory=[{freq:89.1,name:'FM DEMONSTRAÇÃO'},{freq:92.5,name:'ESTAÇÃO 92.5'},{freq:95.7,name:'ESTAÇÃO 95.7'},{freq:98.9,name:'ESTAÇÃO 98.9'},{freq:103.3,name:'ESTAÇÃO 103.3'}];
+const defaultAlarm=(i)=>({id:i,name:i===1?'Despertar':`Alarme ${i}`,enabled:true,hour:i===1?6:7,minute:i===1?30:0,days:i===1?[1,2,3,4,5]:[0,6],source:'fm',target:89.1,volume:55,duration:10,snooze:5});
+let persisted={};try{persisted=JSON.parse(localStorage.getItem(STORAGE)||'{}')||{}}catch(e){}
+let S={
+ page:'off',stack:[],focus:0,audio:null,lastAudio:persisted.lastAudio||'fm',volume:typeof persisted.volume==='number'?persisted.volume:45,
+ fmFreq:typeof persisted.fmFreq==='number'?persisted.fmFreq:89.1, fmDX:!!persisted.fmDX,fmRDS:persisted.fmRDS!==false,
+ fmBW:persisted.fmBW||'AUTO', fmStep:persisted.fmStep||.1, webStation:clamp(persisted.webStation??0,0,stations.length-1),webCandidate:clamp(persisted.webStation??0,0,stations.length-1),webBrowsing:false,webConnecting:false,webConnectToken:0,
+ alarms:Array.isArray(persisted.alarms)&&persisted.alarms.length?persisted.alarms:[defaultAlarm(1),defaultAlarm(2)],alarmId:1,
+ chime:{enabled:true,interval:60,file:1,volume:40,quiet:true,from:22,to:7,...(persisted.chime||{})},
+ theme:themeById(persisted.theme).id,previewTheme:null,nixieBrightness:clamp(persisted.nixieBrightness??8,0,10),tftIdle:persisted.tftIdle===null?null:clamp(persisted.tftIdle??5,1,30),clockOffset:typeof persisted.clockOffset==='number'?persisted.clockOffset:0,sync:persisted.sync??true,mute:!!persisted.mute,clockEdit:null,screenSleeping:false,
+ buffer:6.3,signal:72,wifi:-54,adjust:null,confirm:null,ring:null,toast:null
+};
+function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function clamp(n,a,b){return Math.min(b,Math.max(a,n))}
+function pad(n){return String(n).padStart(2,'0')}
+function time(a){return pad(a.hour)+':'+pad(a.minute)}
+function clockStr(){let d=new Date(Date.now()+S.clockOffset*60000);return pad(d.getHours())+':'+pad(d.getMinutes())}
+function clockParts(){const d=new Date(Date.now()+S.clockOffset*60000);return {hour:d.getHours(),minute:d.getMinutes()}}
+function clockEditOpen(){const parts=clockParts();S.clockEdit={...parts,field:'hour'};enter('clockAdjust')}
+function commitClockEdit(){const e=S.clockEdit;if(!e)return;const now=new Date();const current=now.getHours()*60+now.getMinutes();const desired=e.hour*60+e.minute;let delta=desired-current;while(delta>720)delta-=1440;while(delta< -720)delta+=1440;S.clockOffset=delta;S.clockEdit=null;save();back();notify('Hora ajustada. Próxima sincronização automática poderá substituí-la.')}
+function clockEditView(){const e=S.clockEdit;return base(`<div class="edit-title clock-edit-title">AJUSTE DO RELÓGIO · ${S.sync?'AUTO / MANUAL':'MANUAL'}</div><div class="clock-time"><span class="${e.field==='hour'?'active':''}">${pad(e.hour)}</span><span class="clock-colon">:</span><span class="${e.field==='minute'?'active':''}">${pad(e.minute)}</span></div><div class="edit-note">B gira: ajusta ${e.field==='hour'?'HORAS':'MINUTOS'}</div><div class="hint-line clock-edit-hint">B pressiona: alterna horas / minutos</div><div class="clock-notice">Sincronização automática ${S.sync?'ATIVA':'DESLIGADA'}</div>`,'B: GIRAR / MUDAR VALOR','B: HORA↔MIN · A: SALVAR')}
+function initClockEditTime(){return clockStr()}
+function setNixies(){const hhmm=clockStr().replace(':','');const power=S.nixieBrightness/10;const glow=power===0?'none':`0 0 ${Math.round(3+power*12)}px rgba(255,135,40,${(.2+.7*power).toFixed(2)})`;$('nixies').innerHTML=hhmm.split('').map((c,i)=>`${i===2?`<div class="colon" style="opacity:${power}">:</div>`:''}<div class="tube" style="color:rgba(255,166,74,${power});text-shadow:${glow};border-color:rgba(118,80,42,${Math.max(.3,power)})">${power===0?'':c}</div>`).join('')}
+function save(){try{localStorage.setItem(STORAGE,JSON.stringify({volume:S.volume,fmFreq:S.fmFreq,fmDX:S.fmDX,fmRDS:S.fmRDS,fmBW:S.fmBW,fmStep:S.fmStep,webStation:S.webStation,alarms:S.alarms,chime:S.chime,nixieBrightness:S.nixieBrightness,tftIdle:S.tftIdle,clockOffset:S.clockOffset,sync:S.sync,mute:S.mute,lastAudio:S.lastAudio,theme:S.theme}))}catch(e){}}
+let idleHandle=null,previewHandle=null;
+function resetInactivity(){clearTimeout(idleHandle);if(S.page!=='off'&&S.page!=='nixieBrightness'&&S.tftIdle!==null&&!S.screenSleeping){idleHandle=setTimeout(()=>{S.screenSleeping=true;render();$('activity').textContent='TFT apagado por inatividade; estado e áudio preservados.'},S.tftIdle*60000)}}
+function wakeIfSleeping(){if(!S.screenSleeping)return false;S.screenSleeping=false;resetInactivity();render();$('activity').textContent='TFT reativado; função anterior preservada.';return true}
+function showNixiePreview(){S.page='nixieBrightness';S.screenSleeping=false;clearTimeout(previewHandle);previewHandle=setTimeout(()=>{if(S.page==='nixieBrightness'){S.page='off';render()}},2700);render()}
+let toastHandle=null;function notify(message){S.toast=message;clearTimeout(toastHandle);toastHandle=setTimeout(()=>{S.toast=null;render()},2400);$('activity').textContent=message;render()}
+function enter(page){S.stack.push({page:S.page,focus:S.focus});S.page=page;S.focus=0;resetInactivity();render()}
+function root(){clearTimeout(previewHandle);S.screenSleeping=false;S.page='root';S.focus=0;S.stack=[];S.adjust=null;resetInactivity();render()}
+function standby(){clearTimeout(previewHandle);clearTimeout(idleHandle);S.screenSleeping=false;S.page='off';S.audio=null;S.stack=[];S.focus=0;S.adjust=null;S.clockEdit=null;S.ring=null;S.toast=null;save();$('activity').textContent='Relógio: TFT apagado, áudio principal desligado. Gire A para brilho dos Nixies.';render()}
+function back(){if(S.page==='themeOptions')S.previewTheme=null;if(S.page==='ring')S.ring=null;if(S.page==='off')return;if(S.page==='nixieBrightness'){standby();return}if(S.page==='clockAdjust'){S.clockEdit=null}if(S.page==='adjust'){S.adjust=null}if(S.stack.length){const v=S.stack.pop();S.page=v.page;S.focus=v.focus}else if(S.page==='root'){standby();return}else{S.page='root';S.focus=0}resetInactivity();render()}
+function source(src){
+ S.audio=src;S.lastAudio=src;
+ if(src==='web'){S.webCandidate=S.webStation;S.webBrowsing=false;S.webConnecting=false;S.webConnectToken++}
+ S.stack=[{page:'root',focus:src==='fm'?0:1}];S.page=src;S.focus=0;S.screenSleeping=false;resetInactivity();save();render();
+ $('activity').textContent=`Fonte ${src==='fm'?'FM':'Rádio Web'} ativada (simulação).`;
+}
+// Separação importante: a seleção visual nunca muda o stream ativo.
+// O stream só é alterado por confirmação (A), evitando reconexões durante a rotação.
+function browseWeb(step){
+ S.webCandidate=(S.webCandidate+step+stations.length)%stations.length;
+ S.webBrowsing=true;
+ render();
+ $('activity').textContent=`Pré-seleção: ${stations[S.webCandidate].name}. Nenhuma conexão foi iniciada. Pressione A para sintonizar.`;
+}
+function cancelWebBrowse(){
+ S.webCandidate=S.webStation;S.webBrowsing=false;
+ render();$('activity').textContent='Pré-seleção cancelada: estação em reprodução mantida.';
+}
+function connectWebStation(index){
+ const target=clamp(index,0,stations.length-1);
+ S.webStation=target;S.webCandidate=target;S.webBrowsing=false;S.webConnecting=true;
+ const token=++S.webConnectToken;
+ S.buffer=0;save();render();
+ $('activity').textContent=`Conectando à estação ${stations[target].name} (simulação).`;
+ setTimeout(()=>{
+  if(S.webConnectToken!==token||S.audio!=='web')return;
+  S.webConnecting=false;S.buffer=3.2;
+  render();$('activity').textContent=`Conectado: ${stations[target].name} (simulação).`;
+ },900);
+}
+
+function testRing(which){S.ring=which;enter('ring')}
+function finishRing(msg){S.ring=null;back();notify(msg)}
+function currentAlarm(){return S.alarms.find(a=>a.id===S.alarmId)||S.alarms[0]}
+function sourceLabel(src){return src==='fm'?'Rádio FM':src==='web'?'Rádio Web':'DFPlayer'}
+function alarmTarget(a){if(a.source==='fm')return Number(a.target).toFixed(1)+' MHz';if(a.source==='web')return (stations[a.target]||stations[0]).name;return (files.find(x=>x.id===a.target)||files[0]).name}
+function daySummary(arr){if(!arr?.length)return 'Nenhum';if(arr.length===7)return 'Todos os dias';if(arr.join(',')==='1,2,3,4,5')return 'Seg–Sex';if(arr.join(',')==='0,6')return 'Fim de semana';return arr.map(d=>SHORTD[d]).join(' · ')}
+const row=(name,desc='',value='',fn=()=>{},disabled=false)=>({name,desc,value,fn,disabled});
+function adjust(label,value,min,max,step,onSave,unit='',digits=0){S.adjust={label,value,min,max,step,onSave,unit,digits};enter('adjust')}
+function confirmation(label,description,yes){S.confirm={label,description,yes};enter('confirm')}
+function menuFor(page){const a=currentAlarm();const c=S.chime;
+ switch(page){
+ case 'root':return [
+  row('Rádio FM','Sintonizador TEF6686',S.audio==='fm'?'EM USO':'ENTRAR',()=>source('fm')),
+  row('Rádio Web','Estações via Wi-Fi',S.audio==='web'?'EM USO':'ENTRAR',()=>source('web')),
+  row('Alarmes','Múltiplos horários e dias',String(S.alarms.length),()=>enter('alarms')),
+  row('Chimes','Sinos e avisos pelo DFPlayer',c.enabled?'ATIVO':'OFF',()=>enter('chime')),
+  row('Configurações','Relógio e tela','›',()=>enter('settings'))];
+ case 'fmMenu':return [
+  row('Modo DX','Comutação de recepção',S.fmDX?'LIGADO':'DESLIG.',()=>{S.fmDX=!S.fmDX;save();render()}),
+  row('RDS','Identificação e RadioText',S.fmRDS?'LIGADO':'DESLIG.',()=>{S.fmRDS=!S.fmRDS;save();render()}),
+  row('Largura de banda','Filtro do sintonizador',S.fmBW,()=>{S.fmBW=({AUTO:'110 kHz','110 kHz':'84 kHz','84 kHz':'AUTO'})[S.fmBW];save();render()}),
+  row('Passo de sintonia','Incremento da frequência',S.fmStep.toFixed(2)+' MHz',()=>{S.fmStep=S.fmStep===.1?.05:.1;save();render()}),
+  row('Scanner FM','Busca simulada de emissoras','BUSCAR',()=>{const next=fmMemory.find(x=>x.freq>S.fmFreq+.01)||fmMemory[0];S.fmFreq=next.freq;S.page='fm';S.stack=[{page:'root',focus:0}];save();notify('Scanner encontrou '+next.freq.toFixed(1)+' MHz (simulação).')}),
+  row('Estações memorizadas','Sintonias de exemplo','›',()=>enter('fmPresets')),
+  row('Memorizar atual','Adicionar frequência à lista','SALVAR',()=>{if(!fmMemory.some(x=>Math.abs(x.freq-S.fmFreq)<.01)){fmMemory.push({freq:S.fmFreq,name:'FM '+S.fmFreq.toFixed(1)});fmMemory.sort((a,b)=>a.freq-b.freq)}notify('Frequência memorizada para esta sessão.')})];
+ case 'fmPresets':return fmMemory.map(x=>row(x.freq.toFixed(1)+' MHz',x.name,Math.abs(S.fmFreq-x.freq)<.01?'●':'',()=>{S.fmFreq=x.freq;S.page='fm';S.stack=[{page:'root',focus:0}];save();render()}));
+ case 'webMenu':return [
+  row('Lista de estações','Navegar sem conectar até confirmar','›',()=>enter('webStations')),
+  row('Qualidade do stream','Codec e taxa fornecida',stations[S.webStation].codec+' '+stations[S.webStation].bitrate+'k',()=>notify('Bitrate é nominal e pode diferir da taxa efetiva recebida.')),
+  row('Reconectar stream','Reconexão apenas quando confirmada','REINICIAR',()=>{back();connectWebStation(S.webStation)}),
+  row('Estado da rede','Intensidade de Wi-Fi',S.wifi+' dBm',()=>notify('A intensidade Wi-Fi é um dado fictício no protótipo.'))];
+ case 'webStations':return stations.map((st,i)=>row(st.name,'Pressione A para conectar',S.webStation===i?'EM USO':'',()=>{
+  S.page='web';S.stack=[{page:'root',focus:1}];connectWebStation(i);
+ }));
+ case 'alarms':return [
+  ...S.alarms.map(a=>row(time(a)+'  '+a.name,daySummary(a.days)+' · '+sourceLabel(a.source),a.enabled?'ATIVO':'OFF',()=>{S.alarmId=a.id;enter('alarmEdit')})),
+  row('+ Criar novo alarme','Adicionar horário independente','CRIAR',()=>{const id=Math.max(0,...S.alarms.map(a=>a.id))+1;S.alarms.push(defaultAlarm(id));S.alarmId=id;save();enter('alarmEdit')})];
+ case 'alarmEdit':return [
+  row('Alarme ativo','Habilitar ou suspender',a.enabled?'SIM':'NÃO',()=>{a.enabled=!a.enabled;save();render()}),
+  row('Hora','Ajustar horas de disparo',pad(a.hour),()=>adjust('Hora do alarme',a.hour,0,23,1,v=>a.hour=v,'H',0)),
+  row('Minutos','Ajustar minutos de disparo',pad(a.minute),()=>adjust('Minutos do alarme',a.minute,0,59,1,v=>a.minute=v,'MIN',0)),
+  row('Dias da semana','Dias em que toca',daySummary(a.days),()=>enter('alarmDays')),
+  row('Fonte','Rádio FM, Web ou DFPlayer',sourceLabel(a.source),()=>enter('alarmSource')),
+  row('Emissora / arquivo','O que será reproduzido',alarmTarget(a),()=>enter('alarmTarget')),
+  row('Volume do alarme','Independente do volume normal',a.volume+'%',()=>adjust('Volume do alarme',a.volume,0,100,5,v=>a.volume=v,'%',0)),
+  row('Duração máxima','Finalização automática',a.duration+' min',()=>adjust('Duração máxima',a.duration,1,60,1,v=>a.duration=v,'MIN',0)),
+  row('Soneca','Intervalo para adiar',a.snooze+' min',()=>adjust('Tempo de soneca',a.snooze,1,30,1,v=>a.snooze=v,'MIN',0)),
+  row('Testar alarme','Exibir a tela de disparo','TESTAR',()=>testRing('alarm')),
+  row('Excluir alarme','Remover esta programação','EXCLUIR',()=>confirmation('Excluir este alarme?','O alarme '+time(a)+' será removido.',()=>{S.alarms=S.alarms.filter(x=>x.id!==a.id);if(!S.alarms.length)S.alarms.push(defaultAlarm(1));S.alarmId=S.alarms[0].id;S.page='alarms';S.focus=0;S.stack=[{page:'root',focus:2}];save()}))];
+ case 'alarmDays':return [
+  ...DAYS.map((d,i)=>row(d,'Pressione A para marcar / desmarcar',a.days.includes(i)?'✓ ATIVO':'—',()=>{a.days=a.days.includes(i)?a.days.filter(x=>x!==i):[...a.days,i].sort((x,y)=>x-y);save();render()})),
+  row('✓ Concluir','Retornar à configuração','VOLTAR',()=>back())];
+ case 'alarmSource':return [['fm','Rádio FM'],['web','Rádio Web'],['df','DFPlayer']].map(([k,title])=>row(title,'Fonte de áudio do alarme',a.source===k?'●':'',()=>{a.source=k;a.target=k==='fm'?S.fmFreq:k==='web'?S.webStation:files[0].id;save();back()}));
+ case 'alarmTarget':return a.source==='fm'?[
+   row('Frequência atual',S.fmFreq.toFixed(1)+' MHz','ESCOLHER',()=>{a.target=S.fmFreq;save();back()}),
+   ...fmMemory.map(f=>row(f.freq.toFixed(1)+' MHz',f.name,Math.abs(a.target-f.freq)<.01?'●':'',()=>{a.target=f.freq;save();back()}))
+  ]:a.source==='web'?stations.map((st,i)=>row(st.name,st.codec+' · '+st.bitrate+' kbps',a.target===i?'●':'',()=>{a.target=i;save();back()})):
+   files.map(f=>row(f.name,'Arquivo '+String(f.id).padStart(4,'0')+'.mp3',a.target===f.id?'●':'',()=>{a.target=f.id;save();back()}));
+ case 'chime':return [
+  row('Chime ativo','Toques automáticos',c.enabled?'SIM':'NÃO',()=>{c.enabled=!c.enabled;save();render()}),
+  row('Periodicidade','15, 30 ou 60 minutos',c.interval+' min',()=>{c.interval=({15:30,30:60,60:15})[c.interval];save();render()}),
+  row('Arquivo DFPlayer','Som que será reproduzido',(files.find(f=>f.id===c.file)||files[0]).name,()=>enter('chimeFiles')),
+  row('Volume do chime','Independente do áudio principal',c.volume+'%',()=>adjust('Volume do chime',c.volume,0,100,5,v=>c.volume=v,'%',0)),
+  row('Silêncio noturno','Evitar toques neste intervalo',c.quiet?'SIM':'NÃO',()=>{c.quiet=!c.quiet;save();render()}),
+  row('Início do silêncio','Hora local',pad(c.from)+':00',()=>adjust('Início do silêncio',c.from,0,23,1,v=>c.from=v,'H',0)),
+  row('Fim do silêncio','Hora local',pad(c.to)+':00',()=>adjust('Fim do silêncio',c.to,0,23,1,v=>c.to=v,'H',0)),
+  row('Testar chime','Simular a reprodução do arquivo','TESTAR',()=>testRing('chime'))];
+ case 'chimeFiles':return files.map(f=>row(f.name,'DFPlayer · '+String(f.id).padStart(4,'0')+'.mp3',S.chime.file===f.id?'●':'',()=>{S.chime.file=f.id;save();back()}));
+ case 'settings':return [
+  row('Relógio','Sincronização e ajuste direto','›',()=>enter('clockSettings')),
+  row('Tela','Repouso e cor do TFT','›',()=>enter('displaySettings'))];
+ case 'clockSettings':return [
+  row('Ajustar hora','Use o encoder B para horas / minutos',clockStr(),()=>clockEditOpen()),
+  row('Sincronização automática','Permite ajuste manual em qualquer modo',S.sync?'ATIVA':'DESLIG.',()=>{S.sync=!S.sync;save();render()})];
+ case 'displaySettings':return [
+  row('Repouso do TFT','Tempo até apagar por inatividade',S.tftIdle===null?'DESLIGADO':S.tftIdle+' min',()=>enter('tftIdleOptions')),
+  row('Cor da interface','Tema monocromático sem glow',themeById(S.theme).name,()=>{enter('themeOptions');S.focus=THEMES.findIndex(t=>t.id===S.theme);S.previewTheme=S.theme;render()})];
+ case 'themeOptions':return THEMES.map(t=>row(t.name,t.desc,S.theme===t.id?'✓ SALVO':'',()=>{S.theme=t.id;S.previewTheme=null;save();back();notify('Cor da interface: '+t.name+'.')}));
+ case 'tftIdleOptions':return [
+  ...[1,2,5,10,15,30,null].map(v=>row(v===null?'Desligado':v+' minuto'+(v===1?'':'s'),v===null?'Nunca apaga por inatividade':'TFT apaga após '+v+' minuto'+(v===1?'':'s')+' sem interação',S.tftIdle===v?'●':'',()=>{S.tftIdle=v;save();resetInactivity();back()}))];
+ default:return [];
+ }}
+const menuPages=new Set(['root','fmMenu','fmPresets','webMenu','webStations','alarms','alarmEdit','alarmDays','alarmSource','alarmTarget','chime','chimeFiles','settings','clockSettings','displaySettings','tftIdleOptions','themeOptions']);
+const TITLES={root:'SELECIONAR FUNÇÃO',fm:'RÁDIO FM',web:'RÁDIO WEB',fmMenu:'OPÇÕES DO FM',fmPresets:'FAVORITOS FM',webMenu:'OPÇÕES WEB',webStations:'ESTAÇÕES WEB',alarms:'ALARMES',alarmEdit:'CONFIGURAR ALARME',alarmDays:'DIAS DA SEMANA',alarmSource:'FONTE DO ALARME',alarmTarget:'ESCOLHER EMISSORA / MP3',chime:'CHIMES',chimeFiles:'ARQUIVOS DO CHIME',settings:'CONFIGURAÇÕES',clockSettings:'RELÓGIO',clockAdjust:'AJUSTAR RELÓGIO',displaySettings:'TELA',tftIdleOptions:'REPOUSO DO TFT',themeOptions:'COR DA INTERFACE',nixieBrightness:'BRILHO DOS NIXIES',adjust:'AJUSTAR VALOR',confirm:'CONFIRMAR',ring:'EVENTO DE ÁUDIO'};
+function spinA(step){
+ if(S.page==='off'||S.page==='nixieBrightness'){
+  S.nixieBrightness=clamp(S.nixieBrightness+step,0,10);save();showNixiePreview();$('activity').textContent='Brilho dos Nixies: '+(S.nixieBrightness===0?'DESLIGADO':S.nixieBrightness+' / 10');return;
+ }
+ if(wakeIfSleeping())return;
+ resetInactivity();
+ if(S.page==='clockAdjust')return;
+ if(S.page==='fm'){const f=clamp(Math.round((S.fmFreq+step*S.fmStep)*100)/100,76,108);S.fmFreq=f;save();render();return}
+ if(S.page==='web'){browseWeb(step);return}
+ if(S.page==='adjust'&&S.adjust){const e=S.adjust;e.value=clamp(Math.round((e.value+step*e.step)*100)/100,e.min,e.max);render();return}
+ if(S.page==='confirm'){S.focus=(S.focus+step+2)%2;render();return}
+ if(S.page==='ring')return;
+ if(menuPages.has(S.page)){const n=menuFor(S.page).length;if(n)S.focus=(S.focus+step+n)%n;if(S.page==='themeOptions')S.previewTheme=THEMES[S.focus].id;render()}
+}
+function pressA(){
+ if(S.page==='off'||S.page==='nixieBrightness'){root();$('activity').textContent='Encoder A: menu principal aberto.';return}
+ if(wakeIfSleeping())return;
+ resetInactivity();
+ if(S.page==='clockAdjust'){commitClockEdit();return}
+ if(S.page==='fm'){enter('fmMenu');return}
+ if(S.page==='web'){if(S.webBrowsing){connectWebStation(S.webCandidate)}else if(!S.webConnecting){enter('webMenu')}return}
+ if(S.page==='adjust'){if(S.adjust){S.adjust.onSave(S.adjust.value);S.adjust=null;save();back()}return}
+ if(S.page==='ring'){finishRing(S.ring==='alarm'?'Alarme encerrado (simulação).':'Chime encerrado (simulação).');return}
+ if(S.page==='confirm'){if(S.focus===1){S.confirm.yes();S.confirm=null;render()}else{S.confirm=null;back()}return}
+ if(menuPages.has(S.page)){const items=menuFor(S.page);if(items[S.focus]&&!items[S.focus].disabled)items[S.focus].fn()}
+}
+function spinB(step){
+ if(S.page==='off'||S.page==='nixieBrightness')return;
+ if(wakeIfSleeping())return;
+ resetInactivity();
+ if(S.page==='clockAdjust'&&S.clockEdit){const e=S.clockEdit;const key=e.field;const base=key==='hour'?24:60;e[key]=(e[key]+step+base)%base;render();return}
+ if(S.audio===null){notify('Volume indisponível: FM e Web estão desligados.');return}
+ S.volume=clamp(S.volume+step*5,0,100);S.mute=false;save();render();$('activity').textContent='Volume principal: '+S.volume+'%.'
+}
+function pressB(){
+ if(S.page==='clockAdjust'&&S.clockEdit){S.clockEdit.field=S.clockEdit.field==='hour'?'minute':'hour';resetInactivity();render();return}
+ if(S.page==='nixieBrightness'){standby();return}
+ if(wakeIfSleeping())return;
+ resetInactivity();if(S.page==='web'&&S.webBrowsing){cancelWebBrowse();return}back()
+}
+function statusTop(){let audio=S.audio==='fm'?'FM':S.audio==='web'?'WEB':'SEM ÁUDIO';return S.audio===null?`${audio} · ${clockStr()}`:`${audio} · ${S.mute?'MUTE':S.volume+'%'} · ${clockStr()}`} 
+function base(inner,foot1='A: GIRAR / SELECIONAR',foot2='B: VOLTAR'){
+ return `<div class="topbar"><span>${escapeHtml(TITLES[S.page]||'RÁDIO')}</span><span class="indicators">${escapeHtml(statusTop())}</span></div><div class="bodyarea">${inner}</div><div class="bottom"><span>${foot1}</span><b>${foot2}</b></div>`
+}
+function listHTML(items){const count=items.length;return `<div class="scrollarea" id="list-scroll">${items.map((r,i)=>`<button class="row-item ${i===S.focus?'selected':''}" data-item="${i}" ${r.disabled?'disabled':''}><span class="row-num">${String(i+1).padStart(2,'0')}</span><span class="row-copy"><div class="row-title">${escapeHtml(r.name)}</div><div class="row-sub">${escapeHtml(r.desc)}</div></span>${r.value?`<span class="row-val ${r.value==='OFF'?'dim':''}">${escapeHtml(r.value)}</span>`:''}<span class="row-arrow">›</span></button>`).join('')||'<div class="hint-line">Nenhum item disponível.</div>'}</div>`}
+function fmView(){const f=S.fmFreq;let station=fmMemory.find(x=>Math.abs(f-x.freq)<.01);let level=station?68:22;return base(`<div class="frequency">${f.toFixed(1)}</div><div class="unit">MHz · ${station?'STEREO':'BUSCANDO'}</div><div class="station-name">${S.fmRDS&&station?escapeHtml(station.name):'— — —'}</div><div class="station-rds">${S.fmRDS?'RDS / RadioText (simulado)':'RDS DESATIVADO'}</div><div class="signal"><span>SINAL ${station?'56':'19'} dBµV</span><div class="bar"><span style="width:${level}%"></span></div></div>`,`DX: ${S.fmDX?'ON':'OFF'} · BW: ${escapeHtml(S.fmBW)}`,'A: OPÇÕES FM')}
+function webView(){
+ const browsing=S.webBrowsing;
+ const waiting=S.webConnecting&&!browsing;
+ const w=stations[browsing?S.webCandidate:S.webStation]||stations[0];
+ const unavailable=browsing||waiting;
+ const status=browsing?'PRÉ-SELEÇÃO · A PARA CONECTAR':waiting?'CONECTANDO À ESTAÇÃO…':'REPRODUZINDO · SIMULAÇÃO';
+ const statusClass=browsing?'web-preview-label':waiting?'web-connect-label':'web-active-label';
+ return base(`<div class="webhead">${escapeHtml(w.name)}</div><div class="nowplaying ${unavailable?'dimmed':''}">${unavailable?'—':escapeHtml(w.sub)}</div><div class="web-state ${statusClass}">${status}</div><div class="stat-row"><div class="stat"><small>CODEC</small><b>${unavailable?'—':escapeHtml(w.codec)}</b></div><div class="stat"><small>BITRATE</small><b>${unavailable?'—':w.bitrate+' kbps'}</b></div><div class="stat"><small>Wi-Fi</small><b>${unavailable?'—':S.wifi+' dBm'}</b></div></div><div class="bufferhead"><span>BUFFER DE ÁUDIO</span><span>${unavailable?'—':S.buffer.toFixed(1).replace('.',',')+' s'}</span></div><div class="bufferbar"><span style="width:${unavailable?0:clamp(S.buffer/10*100,0,100)}%"></span></div>`,browsing?'A: GIRAR · ESCOLHER':'A: GIRAR · PRÉ-SELEÇÃO',browsing?'A: CONECTAR · B: CANCELAR':waiting?'CONECTANDO…':'A: OPÇÕES WEB');
+}
+function render(){setNixies();$('b-press').textContent=S.page==='clockAdjust'?'B · HORA / MIN':'B · VOLTAR';$('audio-state').innerHTML=`ÁUDIO: <b>${S.audio===null?'DESLIGADO':(S.audio==='fm'?'FM':'WEB')+' · '+(S.mute?'MUTE':S.volume+'%')}</b>`;
+ const screen=$('screen');let html='';screen.classList.toggle('off',S.page==='off');screen.style.filter='none';
+ const palette=themeById(S.previewTheme||S.theme);
+ for(const [name,hex] of Object.entries(palette.vars))screen.style.setProperty('--lcd-'+name,hex);
+ if(S.page==='off'||S.screenSleeping){html='<div class="offmask" aria-label="TFT totalmente apagado"></div>'}
+ else if(S.page==='nixieBrightness'){const level=S.nixieBrightness;html=base(`<div class="edit-title">BRILHO DOS NIXIES</div><div class="edit-num">${level===0?'OFF':level+'<span class="edit-denominator"> / 10</span>'}</div><div class="brightness-blocks">${Array.from({length:10},(_,i)=>`<i class="${i<level?'lit':''}"></i>`).join('')}</div><div class="edit-note">O TFT apagará automaticamente</div>`,'A: GIRAR · BRILHO','A: ABRIR MENU')}
+ else if(S.page==='fm'){html=fmView()}
+ else if(S.page==='web'){html=webView()}
+ else if(S.page==='clockAdjust'&&S.clockEdit){html=clockEditView()}
+ else if(menuPages.has(S.page)){
+  let items=menuFor(S.page);S.focus=clamp(S.focus,0,Math.max(0,items.length-1));
+  const sub=S.page==='alarmEdit'?`<span>${time(currentAlarm())}</span>`:null;
+  html=base(listHTML(items),'↶ / ↷: NAVEGAR','A: ENTRAR · B: VOLTAR');
+ }else if(S.page==='adjust'&&S.adjust){const e=S.adjust;const v=e.digits?Number(e.value).toFixed(e.digits):String(e.value);html=base(`<div class="edit-title">${escapeHtml(e.label)}</div><div class="edit-num">${escapeHtml(v)}</div><div class="edit-unit">${escapeHtml(e.unit)}</div><div class="edit-note">Gire A para alterar o valor</div>`,'A: GIRAR · AJUSTAR','A: SALVAR · B: CANCELAR')}
+ else if(S.page==='confirm'){const c=S.confirm;html=base(`<div class="prompt-top">${escapeHtml(c.label)}</div><div class="prompt-body">${escapeHtml(c.description)}</div><div class="pill-options"><span class="p ${S.focus===0?'active':''}">CANCELAR</span><span class="p ${S.focus===1?'active':''}">CONFIRMAR</span></div>`,'A: GIRAR · ESCOLHER','A: CONFIRMAR · B: VOLTAR')}
+ else if(S.page==='ring'){const a=currentAlarm();const isAlarm=S.ring==='alarm';html=base(`<div class="ringpage"><h2>${isAlarm?'◉ ALARME DISPARADO':'♪ CHIME'}</h2><div class="ringtime">${isAlarm?time(a):clockStr()}</div><small>${isAlarm?escapeHtml(sourceLabel(a.source)+' · '+alarmTarget(a)):escapeHtml((files.find(f=>f.id===S.chime.file)||files[0]).name)}</small><div class="ringbuttons"><span>A · PARAR</span><span>B · ${isAlarm?'ADIAR':'VOLTAR'}</span></div></div>`,'TESTE SIMULADO','A: PARAR · B: ADIAR')}
+ else html=base('<div class="hint-line">Tela indisponível</div>');
+ screen.innerHTML=html+(S.toast&&S.page!=='off'&&!S.screenSleeping?`<div class="toast">${escapeHtml(S.toast)}</div>`:'');
+ screen.querySelectorAll('[data-item]').forEach(el=>el.addEventListener('click',()=>{let i=Number(el.dataset.item);S.focus=i;pressA()}));
+ const cur=screen.querySelector('.row-item.selected');if(cur){const scroll=screen.querySelector('#list-scroll');if(scroll){const top=cur.offsetTop;const bottom=top+cur.offsetHeight;if(top<scroll.scrollTop)scroll.scrollTop=top;else if(bottom>scroll.scrollTop+scroll.clientHeight)scroll.scrollTop=bottom-scroll.clientHeight}}
+ updateHelp();resize();
+}
+const HOW={
+ off:['Relógio / TFT apagado','O relógio permanece funcionando pelos Nixies. Ao girar o encoder A, o TFT acende por alguns segundos para informar o brilho ajustado.',['A · Girar|Ajusta brilho dos Nixies de 0 (apagado) até 10.','A · Pressionar|Abre o menu principal.','B · Girar|Sem efeito: áudio desligado.'],'O brilho é independente do tempo de repouso do TFT.'],
+ nixieBrightness:['Brilho dos Nixies','Gire A para escolher um dos 11 níveis: desligado (0), ou 1 a 10.',['A · Girar|Aumenta ou diminui o brilho.','A · Pressionar|Abre o menu principal.','B · Pressionar|Apaga novamente o TFT.'],'Após aproximadamente 3 segundos sem ajuste, o TFT apaga automaticamente.'],
+ root:['Seleção da função','Use um único encoder para percorrer e confirmar a função desejada.',['A · Girar|Percorre FM, Web, Alarmes, Chimes e Configurações.','A · Pressionar|Abre a função destacada.','B · Pressionar|Retorna ao relógio e apaga o TFT.'],'Rádio Web tem acesso próprio, sem passar pelo rádio FM.'],
+ fm:['Rádio FM','Frequência, recepção, RDS e modo DX em destaque.',['A · Girar|Sintoniza a frequência.','A · Pressionar|Abre DX, RDS, scanner e favoritos.','B · Girar|Ajusta volume.','B · Pressionar|Retorna ao menu.'],'A recepção é simulada neste protótipo.'],
+ web:['Rádio Web','Girar apenas destaca outra rádio pelo nome; nenhuma nova conexão é feita até confirmar.',['A · Girar|Percorre os nomes sem trocar o stream.','A · Pressionar|Na pré-seleção, confirma e conecta; fora dela, abre opções Web.','B · Girar|Ajusta volume.','B · Pressionar|Cancela a pré-seleção ou volta ao menu.'],'Enquanto navega, música, codec, bitrate, Wi-Fi e buffer mostram travessões. A estação anterior continua ativa até a confirmação.'],
+ settings:['Configurações','Relógio e Tela: repouso do TFT e cores monocromáticas.',['A · Girar|Escolhe Relógio ou Tela.','A · Pressionar|Entra na configuração.','B · Pressionar|Volta ao menu inicial.'],'O brilho dos Nixies se ajusta diretamente pelo encoder A no repouso.'],
+ clockSettings:['Relógio','Ajuste manual disponível mesmo com sincronização automática ativa.',['A · Girar|Seleciona Ajustar hora ou Sincronização automática.','A · Pressionar|Edita horário ou alterna sincronização.','B · Pressionar|Volta.'],'Quando ocorrer uma sincronização real por NTP/RTC, ela poderá atualizar a hora ajustada manualmente.'],
+ clockAdjust:['Editar a hora','Neste contexto o encoder B controla o relógio, e não o volume.',['B · Girar|Ajusta horas ou minutos.','B · Pressionar|Alterna HORAS ↔ MINUTOS.','A · Pressionar|Confirma e retorna ao menu Relógio.'],'Ajustar é permitido nos modos AUTO e MANUAL. A hora dos Nixies acompanha a edição após salvar.'],
+ displaySettings:['Tela','Defina o repouso do TFT e escolha a cor de todos os textos, indicadores e menus.',['A · Girar|Alterna Repouso e Cor da interface.','A · Pressionar|Abre a configuração.','B · Pressionar|Volta a Configurações.'],'A cor se aplica à tela inteira; não há brilho artificial (glow).'],
+ themeOptions:['Cor da interface','Prévia imediata enquanto gira o encoder A. Todos os elementos da tela passam à cor destacada.',['A · Girar|Visualiza as paletas sem salvar.','A · Pressionar|Confirma e mantém a cor escolhida.','B · Pressionar|Cancela e recupera a cor anterior.'],'Cores disponíveis: Laranja Nixie, Verde fósforo, Azul gelo, Branco clássico e Vermelho. Sem efeito glow.'],
+ tftIdleOptions:['Repouso do TFT','Defina o tempo sem interação até apagar a tela.',['A · Girar|Percorre minutos e Desligado.','A · Pressionar|Salva a escolha.','B · Pressionar|Volta sem mudar.'],'Após o apagamento por inatividade, um clique reativa o TFT, preservando a fonte e a tela anteriores.'],
+ alarms:['Lista de alarmes','Crie alarmes com dias, fonte e volume independentes.',['A · Girar|Percorre os alarmes.','A · Pressionar|Abre para editar.','B · Pressionar|Volta ao menu.'],'Alarmes continuam ativos com TFT apagado.'],
+ alarmEdit:['Editar alarme','Ajuste hora, minutos, dias, fonte, arquivo, volume e duração.',['A · Girar|Escolhe um campo.','A · Pressionar|Abre a edição.','B · Pressionar|Volta.'],'O ajuste de alarmes é independente do ajuste do relógio.'],
+ alarmDays:['Dias da semana','Ative ou desative cada dia.',['A · Girar|Percorre os dias.','A · Pressionar|Marca / desmarca.','B · Pressionar|Volta.'],'Pode selecionar vários dias.'],
+ alarmSource:['Fonte do alarme','Escolha FM, Web ou DFPlayer.',['A · Girar|Percorre fontes.','A · Pressionar|Seleciona.'],'A emissora/arquivo é definido depois.'],
+ alarmTarget:['Emissora ou arquivo','Escolha uma frequência, estação ou arquivo DFPlayer.',['A · Girar|Percorre.','A · Pressionar|Confirma.'],'Arquivos são identificados por catálogo demonstrativo.'],
+ chime:['Chimes','Configurações de toque automático pelo DFPlayer.',['A · Girar|Percorre configurações.','A · Pressionar|Edita.','B · Pressionar|Volta.'],'Pode tocar por cima de FM e Web no hardware com mixer adequado.'],
+ chimeFiles:['Arquivos de chime','Escolha o som desejado.',['A · Girar|Percorre os arquivos.','A · Pressionar|Confirma.'],'Catálogo ilustrativo.'],
+ adjust:['Ajuste de valor','Campos numéricos genéricos usam o encoder A.',['A · Girar|Altera valor.','A · Pressionar|Confirma.','B · Pressionar|Cancela.'],'O horário do relógio é a exceção: usa encoder B conforme definido.'],
+ ring:['Disparo / simulação','Evento tem prioridade sobre o menu.',['A · Pressionar|Encerra.','B · Pressionar|Adia ou volta.'],'Não há reprodução real de som.'],
+ confirm:['Confirmação','Ações destrutivas exigem confirmação.',['A · Girar|Alterna opção.','A · Pressionar|Confirma.','B · Pressionar|Cancela.'],'Inicia sempre na opção Cancelar.']
+};
+function updateHelp(){let page=S.page;let a=S.screenSleeping?['TFT apagado por inatividade','O rádio ou menu continua no mesmo estado, mas o TFT apagou após o período configurado.',['A · Pressionar|Reativa o TFT, sem selecionar nada.','B · Pressionar|Também reativa o TFT.','B · Segurar|Volta ao estado Relógio.'],'O desligamento do TFT não desliga FM/Web, nem os alarmes.']:HOW[page];if(!a&&menuPages.has(page))a=[TITLES[page]||'Menu de configuração','Percorra as opções e confirme com o próprio encoder de navegação.',['A · Girar|Percorre os itens da lista.','A · Pressionar|Seleciona, entra ou altera a opção.','B · Pressionar|Volta um nível na navegação.'],'A opção destacada permanece selecionada quando você retorna do submenu.'];if(!a)a=HOW.root;
+ if(page==='web'&&S.webBrowsing)a=['Rádio Web · pré-seleção',`O stream ativo não foi alterado. Você está apenas olhando a estação: ${stations[S.webCandidate].name}.`,['A · Girar|Muda apenas o nome destacado.','A · Pressionar|Confirma e inicia a conexão.','B · Pressionar|Cancela e mostra a estação ativa.','B · Girar|Continua controlando volume.'],'Dados técnicos ficam em “—” até a confirmação e conexão; não há reconexões ao girar.'];
+ else if(page==='web'&&S.webConnecting)a=['Rádio Web · conectando','Estação confirmada. A conexão está sendo simulada; os campos só serão preenchidos quando estiver conectada.',['A · Girar|Pode procurar outra estação.','B · Girar|Controla volume.'],'Os indicadores permanecem em “—” durante a conexão.'];
+ $('help-title').textContent=a[0];$('help-description').textContent=a[1];$('breadcrumbs').textContent=S.page==='off'?'Início › Repouso':(S.stack.map(s=>TITLES[s.page]||'Relógio').concat(TITLES[S.page]||'')).join(' › ');
+ $('help-actions').innerHTML=a[2].map(t=>{const [key,value]=t.split('|');return `<div class="step"><span class="key">${escapeHtml(key)}</span><span>${escapeHtml(value)}</span></div>`}).join('');$('help-note').textContent=a[3];
+}
+function resize(){const w=$('screen-wrap').clientWidth;$('screen').style.transform='scale('+(w/320)+')'}
+function tour(id){S.screenSleeping=false;resetInactivity();if(id==='off'){standby();return}if(id==='fm'||id==='web'){source(id);return}S.page=id;S.focus=0;S.stack=[{page:'root',focus:id==='alarms'?2:id==='chime'?3:4}];S.adjust=null;resetInactivity();render();$('activity').textContent='Percurso iniciado: '+(TITLES[id]||id)+'.'}
+function hook(){
+ $('a-minus').onclick=()=>spinA(-1);$('a-plus').onclick=()=>spinA(1);$('a-press').onclick=pressA;$('knob-a').onclick=pressA;
+ $('b-minus').onclick=()=>spinB(-1);$('b-plus').onclick=()=>spinB(1);$('b-press').onclick=pressB;$('knob-b').onclick=pressB;$('standby').onclick=standby;
+ for(const [id,fn] of [['knob-a',spinA],['knob-b',spinB]]){$(id).addEventListener('wheel',e=>{e.preventDefault();fn(e.deltaY>0?1:-1)},{passive:false});$(id).addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();id==='knob-a'?pressA():pressB()}})}
+ document.querySelectorAll('[data-tour]').forEach(b=>b.addEventListener('click',()=>tour(b.dataset.tour)));
+ document.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(e.target.tagName))return;const key=e.key;let f;if(key==='ArrowUp'||key==='ArrowLeft')f=()=>spinA(-1);else if(key==='ArrowDown'||key==='ArrowRight')f=()=>spinA(1);else if(key==='Enter')f=pressA;else if(key==='Escape')f=e.shiftKey?standby:pressB;else if(key==='+'||key==='=')f=()=>spinB(1);else if(key==='-')f=()=>spinB(-1);if(f){e.preventDefault();f()}});
+ window.addEventListener('resize',resize);
+}
+function ticker(){setNixies();if(S.screenSleeping)return;if(S.page==='web'&&!S.webConnecting){S.buffer=clamp(S.buffer+(Math.random()-.48)*.45,2.0,9.7);render()}else if(S.page!=='off'){const clock=$('screen').querySelector('.indicators');if(clock)clock.textContent=statusTop()}}
+hook();render();resetInactivity();setInterval(ticker,1800);
+})();
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@
 #include "audio_radio.h"
 #include "configuracao.h"
 #include "relogio.h"
+#include "ui_tft_poc.h"
 
 #include <Wire.h>
 #include <WiFi.h>
@@ -22,6 +23,32 @@ namespace {
     bool disponivel = false;
     SemaphoreHandle_t mutexDisplay = nullptr;
     TaskHandle_t tarefaDisplayHandle = nullptr;
+
+#if RADIO_UI_TFT_POC
+    bool tftPocDisponivel = false;
+    uint32_t revisaoModeloTft = 1;
+    uint32_t revisaoTftProcessada = 0;
+    uint32_t momentoAlteracaoModeloTftMs = 0;
+    StatusAudio ultimoStatusAudioTft = {};
+    bool statusAudioTftDisponivel = false;
+    bool wifiTftConectado = false;
+    int16_t wifiTftRssi = 0;
+
+    void marcarModeloTftAlterado() {
+        revisaoModeloTft++;
+        momentoAlteracaoModeloTftMs = millis();
+    }
+
+    bool statusAudioTftMudou(const StatusAudio& atual) {
+        return
+            !statusAudioTftDisponivel ||
+            atual.bitrate != ultimoStatusAudioTft.bitrate ||
+            atual.bufferMilissegundos != ultimoStatusAudioTft.bufferMilissegundos ||
+            strcmp(atual.radio, ultimoStatusAudioTft.radio) != 0 ||
+            strcmp(atual.titulo, ultimoStatusAudioTft.titulo) != 0 ||
+            strcmp(atual.codec, ultimoStatusAudioTft.codec) != 0;
+    }
+#endif
 
     class BloqueioDisplay {
     public:
@@ -161,6 +188,90 @@ namespace {
     struct tm ultimaDataHoraRelogio = {};
     bool horarioRelogioDisponivel = false;
 
+#if RADIO_UI_TFT_POC
+    void copiarTextoTft(char* destino, size_t tamanho, const String& origem) {
+        strlcpy(destino, origem.c_str(), tamanho);
+    }
+
+    void copiarTextoTft(char* destino, size_t tamanho, const char* origem) {
+        strlcpy(destino, origem != nullptr ? origem : "", tamanho);
+    }
+
+    EstadoUiTftPoc criarEstadoUiTftPoc() {
+        EstadoUiTftPoc estado;
+        estado.revisao = revisaoModeloTft;
+        estado.momentoAlteracaoMs = momentoAlteracaoModeloTftMs;
+        estado.volume = volumeBarraInferior;
+
+        switch (telaAtual) {
+            case TelaDisplay::MENSAGEM:
+                estado.tela = TelaUiTftPoc::MENSAGEM;
+                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "SISTEMA");
+                copiarTextoTft(estado.mensagem, sizeof(estado.mensagem), mensagemAtual);
+                break;
+
+            case TelaDisplay::CONFIGURACAO_WIFI:
+                estado.tela = TelaUiTftPoc::CONFIGURACAO_WIFI;
+                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "CONFIGURACAO WI-FI");
+                copiarTextoTft(estado.mensagem, sizeof(estado.mensagem), "RADIO-WEB  |  192.168.4.1");
+                break;
+
+            case TelaDisplay::RADIO:
+                estado.tela = TelaUiTftPoc::RADIO_WEB;
+                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "RADIO WEB");
+                copiarTextoTft(estado.estacao, sizeof(estado.estacao), nomeRadioAtual);
+                if (statusAudioTftDisponivel) {
+                    copiarTextoTft(estado.faixa, sizeof(estado.faixa), ultimoStatusAudioTft.titulo);
+                    copiarTextoTft(estado.codec, sizeof(estado.codec), ultimoStatusAudioTft.codec);
+                    estado.bitrate = ultimoStatusAudioTft.bitrate;
+                    estado.bufferMs = ultimoStatusAudioTft.bufferMilissegundos;
+                }
+                estado.wifiConectado = wifiTftConectado;
+                estado.wifiRssi = wifiTftRssi;
+                break;
+
+            case TelaDisplay::RADIO_FM:
+                estado.tela = TelaUiTftPoc::RADIO_FM;
+                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "RADIO FM");
+                estado.frequenciaFm10kHz = frequenciaRadioFm10kHz;
+                estado.sinalFmDecimosDbuv = nivelRadioFmDecimosDbuv;
+                estado.sinalFmValido = qualidadeRadioFmValida;
+                if (!nomeEstacaoRadioFm.isEmpty()) {
+                    copiarTextoTft(estado.estacao, sizeof(estado.estacao), nomeEstacaoRadioFm);
+                } else {
+                    copiarTextoTft(estado.estacao, sizeof(estado.estacao), estadoRadioFm);
+                }
+                break;
+
+            case TelaDisplay::RELOGIO:
+                estado.tela = TelaUiTftPoc::RELOGIO;
+                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "RELOGIO");
+                estado.horarioDisponivel = horarioRelogioDisponivel;
+                if (horarioRelogioDisponivel) {
+                    estado.hora = ultimaDataHoraRelogio.tm_hour;
+                    estado.minuto = ultimaDataHoraRelogio.tm_min;
+                }
+                copiarTextoTft(estado.data, sizeof(estado.data), textoDataRelogio);
+                break;
+
+            case TelaDisplay::ALARME:
+                estado.tela = TelaUiTftPoc::ALARME;
+                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "ALARME");
+                snprintf(
+                    estado.mensagem,
+                    sizeof(estado.mensagem),
+                    "%s  |  VOLUME %d/%d",
+                    nomeAlarmeAtual.c_str(),
+                    volumeAlarmeAtual,
+                    VOLUME_MAXIMO
+                );
+                break;
+        }
+
+        return estado;
+    }
+#endif
+
 
 
     void escreverCentralizado(
@@ -267,7 +378,10 @@ namespace {
     }
 
     String montarTextoDiagnostico(
-        const StatusAudio& status
+        const StatusAudio& status,
+        bool wifiConectado,
+        int16_t wifiRssi,
+        const String& wifiBssid
     ) {
         String texto;
         texto.reserve(136);
@@ -292,11 +406,11 @@ namespace {
         texto += " | BUF ";
         texto += formatarBufferParaDiagnostico(status);
 
-        if (WiFi.status() == WL_CONNECTED) {
+        if (wifiConectado) {
             texto += " | RSSI ";
-            texto += String(WiFi.RSSI());
+            texto += String(wifiRssi);
             texto += " dBm | BSSID ";
-            texto += WiFi.BSSIDstr();
+            texto += wifiBssid;
         } else {
             texto += " | Wi-Fi desconectado";
         }
@@ -704,6 +818,11 @@ namespace {
         }
 
         if (forcarAtualizacao || horarioMudou || dataRolou) {
+#if RADIO_UI_TFT_POC
+            if (forcarAtualizacao || horarioMudou) {
+                marcarModeloTftAlterado();
+            }
+#endif
             desenharTelaRelogio();
             return true;
         }
@@ -726,8 +845,32 @@ namespace {
 
         momentoUltimaAtualizacaoDiagnosticoMs = agoraMs;
         StatusAudio status = obterStatusAudio();
+        bool wifiConectadoAgora = WiFi.status() == WL_CONNECTED;
+        int16_t wifiRssiAgora = wifiConectadoAgora ? WiFi.RSSI() : 0;
+        String wifiBssidAgora = wifiConectadoAgora
+            ? WiFi.BSSIDstr()
+            : String();
+#if RADIO_UI_TFT_POC
+        bool dadosTftMudaram =
+            statusAudioTftMudou(status) ||
+            wifiConectadoAgora != wifiTftConectado ||
+            wifiRssiAgora != wifiTftRssi;
+
+        ultimoStatusAudioTft = status;
+        statusAudioTftDisponivel = true;
+        wifiTftConectado = wifiConectadoAgora;
+        wifiTftRssi = wifiRssiAgora;
+        if (dadosTftMudaram) {
+            marcarModeloTftAlterado();
+        }
+#endif
         String novoTextoDiagnostico =
-            montarTextoDiagnostico(status);
+            montarTextoDiagnostico(
+                status,
+                wifiConectadoAgora,
+                wifiRssiAgora,
+                wifiBssidAgora
+            );
         String novoTextoBuffer =
             formatarBufferParaBarraInferior(status);
 
@@ -1106,6 +1249,9 @@ namespace {
     // acordam. Nenhuma chamada do loop fica esperando a transferência I2C.
     void solicitarApresentacao() {
         atualizacaoPendente = true;
+#if RADIO_UI_TFT_POC
+        marcarModeloTftAlterado();
+#endif
 
         if (tarefaDisplayHandle != nullptr) {
             xTaskNotifyGive(tarefaDisplayHandle);
@@ -1199,6 +1345,11 @@ void iniciarDisplay() {
 
         return;
     }
+
+#if RADIO_UI_TFT_POC
+    tftPocDisponivel = iniciarUiTftPoc();
+    momentoAlteracaoModeloTftMs = millis();
+#endif
 
     prepararTela();
     mostrarMensagem("Inicializando");
@@ -1465,6 +1616,10 @@ void processarDisplay() {
     }
 
     bool apresentar = false;
+#if RADIO_UI_TFT_POC
+    bool processarTft = false;
+    EstadoUiTftPoc estadoTft;
+#endif
 
     {
         BloqueioDisplay bloqueio;
@@ -1515,7 +1670,28 @@ void processarDisplay() {
             desenharTelaAtual();
             apresentar = true;
         }
+
+#if RADIO_UI_TFT_POC
+        if (
+            tftPocDisponivel &&
+            revisaoTftProcessada != revisaoModeloTft
+        ) {
+            estadoTft = criarEstadoUiTftPoc();
+            revisaoTftProcessada = revisaoModeloTft;
+            processarTft = true;
+        }
+#endif
     }
+
+#if RADIO_UI_TFT_POC
+    if (processarTft) {
+        // SPI e renderizacao ficam fora do mutex do modelo. Nenhum encoder,
+        // callback ou tarefa de audio espera o TFT terminar a transferencia.
+        // O TFT vem antes do flush integral do OLED para refletir o evento sem
+        // herdar a latencia da transferencia I2C legada.
+        processarUiTftPoc(estadoTft);
+    }
+#endif
 
     if (apresentar) {
         // A transferência integral do framebuffer é a parte lenta. Ela fica

@@ -39,6 +39,25 @@ constexpr int DISPLAY_LARGURA  = 128;
 constexpr int DISPLAY_ALTURA   = 64;
 constexpr int DISPLAY_ENDERECO = 0x3C;
 
+// -----------------------------------------------------
+// TFT ST7789 320x240 — PoC grafica recuperavel
+// -----------------------------------------------------
+// A flag mantem o caminho OLED anterior intacto. Em 0, o modulo TFT nem e
+// compilado. O ST7789 foi identificado no ensaio funcional existente e usa
+// SPI de hardware; a DisplayService e a unica dona deste barramento.
+#define RADIO_UI_TFT_POC 1
+
+#if RADIO_UI_TFT_POC
+constexpr int PIN_TFT_SCK = 10;   // SCL no conector do modulo TFT.
+constexpr int PIN_TFT_MOSI = 9;   // SDA no conector do modulo TFT.
+constexpr int PIN_TFT_CS = 8;
+constexpr int PIN_TFT_DC = 18;
+constexpr int PIN_TFT_RST = 15;
+constexpr int TFT_LARGURA = 320;
+constexpr int TFT_ALTURA = 240;
+constexpr uint32_t FREQUENCIA_SPI_TFT_HZ = 40000000;
+#endif
+
 // Rádio FM TEF6686. Estes parâmetros reproduzem o exemplo funcional e ficam
 // fora do coordenador principal para permitir trocar apenas o firmware do rádio.
 constexpr uint8_t ENDERECO_I2C_TEF6686 = 0x64;

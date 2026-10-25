@@ -10,6 +10,7 @@ O perfil de compilação fixa estas versões:
 | WiFiManager | 2.0.17 |
 | Adafruit GFX Library | 1.12.6 |
 | Adafruit SSD1306 | 2.5.17 |
+| Adafruit ST7735 and ST7789 Library | 1.11.0 |
 | Ai Esp32 Rotary Encoder | 1.7 |
 | DFRobotDFPlayerMini | 1.0.6 |
 
@@ -18,6 +19,11 @@ Essas versões também estão registradas no perfil `esp32s3` de
 Ao compilar com `--profile esp32s3`, o Arduino CLI pode instalar os
 componentes ausentes. Use `scripts/compilar.sh` para um build rotineiro sem
 provisionamento automático.
+
+A PoC do TFT usa o controlador ST7789 com a biblioteca Adafruit 1.11.0. Essa
+foi a mesma familia de controlador e driver encontrada no ensaio funcional
+local `teste_menu_display`; a integracao ao projeto principal fica isolada por
+`RADIO_UI_TFT_POC` e nao substitui o OLED.
 
 A DFRobotDFPlayerMini foi acrescentada nesta etapa e ainda precisa da primeira
 compilação e validação no módulo físico. As demais versões já pertenciam à
