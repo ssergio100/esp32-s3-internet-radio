@@ -16,14 +16,31 @@ namespace {
 
     constexpr uint8_t MASCARA_RELE_SELECIONA_DAC =
         1U << PIN_MCP23017_RELE_8002_SELECIONA_DAC;
+    constexpr uint8_t MASCARA_HABILITA_RADIO_FM =
+        1U << PIN_MCP23017_HABILITA_RADIO_FM;
     constexpr uint8_t MASCARA_ENABLE_N_8002 =
         (1U << PIN_MCP23017_ENABLE_N_8002_DIREITO) |
         (1U << PIN_MCP23017_ENABLE_N_8002_ESQUERDO);
-    constexpr uint8_t MASCARA_SAIDAS_AUDIO =
-        MASCARA_RELE_SELECIONA_DAC | MASCARA_ENABLE_N_8002;
+    constexpr uint8_t MASCARA_SAIDAS_CONTROLADAS =
+        MASCARA_HABILITA_RADIO_FM |
+        MASCARA_RELE_SELECIONA_DAC |
+        MASCARA_ENABLE_N_8002;
 
+    // Tabela elétrica centralizada; ordem física: GPA7,GPA6,GPA5,GPA4.
+    constexpr uint8_t ESTADO_CAMINHO_RADIO_FM = 0x00;
+    constexpr uint8_t ESTADO_RADIO_WEB_ATIVO = MASCARA_RELE_SELECIONA_DAC;
     // Os enables dos NS8002 são ativos em LOW.
     constexpr uint8_t ESTADO_STANDBY = MASCARA_ENABLE_N_8002;
+
+    static_assert(
+        MASCARA_RELE_SELECIONA_DAC == 0x20 &&
+        MASCARA_HABILITA_RADIO_FM == 0x10 &&
+        MASCARA_ENABLE_N_8002 == 0xC0 &&
+        ESTADO_STANDBY == 0xC0 &&
+        (ESTADO_CAMINHO_RADIO_FM | MASCARA_HABILITA_RADIO_FM) == 0x10 &&
+        ESTADO_RADIO_WEB_ATIVO == 0x20,
+        "Estados MCP23017 devem ser FM=0x10, Web=0x20, standby=0xC0."
+    );
 
     bool disponivel = false;
     bool estadoAplicado = false;
@@ -31,12 +48,19 @@ namespace {
     uint8_t ultimoEstado = ESTADO_STANDBY;
 
     static_assert(
+        PIN_MCP23017_HABILITA_RADIO_FM <= 7 &&
         PIN_MCP23017_RELE_8002_SELECIONA_DAC <= 7 &&
         PIN_MCP23017_ENABLE_N_8002_DIREITO <= 7 &&
         PIN_MCP23017_ENABLE_N_8002_ESQUERDO <= 7,
         "Os pinos da porta A do MCP23017 devem estar entre 0 e 7."
     );
     static_assert(
+        PIN_MCP23017_HABILITA_RADIO_FM !=
+            PIN_MCP23017_RELE_8002_SELECIONA_DAC &&
+        PIN_MCP23017_HABILITA_RADIO_FM !=
+            PIN_MCP23017_ENABLE_N_8002_DIREITO &&
+        PIN_MCP23017_HABILITA_RADIO_FM !=
+            PIN_MCP23017_ENABLE_N_8002_ESQUERDO &&
         PIN_MCP23017_RELE_8002_SELECIONA_DAC !=
             PIN_MCP23017_ENABLE_N_8002_DIREITO &&
         PIN_MCP23017_RELE_8002_SELECIONA_DAC !=
@@ -96,9 +120,9 @@ namespace {
         }
 
         const bool correto =
-            (direcao & MASCARA_SAIDAS_AUDIO) == 0 &&
-            (latch & MASCARA_SAIDAS_AUDIO) == valor &&
-            (pinos & MASCARA_SAIDAS_AUDIO) == valor;
+            (direcao & MASCARA_SAIDAS_CONTROLADAS) == 0 &&
+            (latch & MASCARA_SAIDAS_CONTROLADAS) == valor &&
+            (pinos & MASCARA_SAIDAS_CONTROLADAS) == valor;
         if (!correto) {
             Serial.printf(
                 "MCP23017: estado incorreto; IODIRA=0x%02X "
@@ -122,7 +146,27 @@ namespace {
         }
 
         if (estadoAplicado && ultimoEstado == valor) {
-            return verificarSaidas(valor);
+            if (verificarSaidas(valor)) {
+                return true;
+            }
+
+            // O estado lógico em RAM pode continuar correto mesmo que o
+            // MCP23017 tenha reiniciado ou perdido o latch. Nesse caso não
+            // basta diagnosticar: reaplicamos o mesmo valor para recuperar o
+            // relé e os enables sem exigir reset ou corte de alimentação.
+            Serial.println(
+                "MCP23017 audio: estado divergente; reaplicando saidas."
+            );
+        }
+
+        const uint8_t direcaoPortaA =
+            static_cast<uint8_t>(~MASCARA_SAIDAS_CONTROLADAS);
+        if (!escreverRegistro(REG_IODIRA, direcaoPortaA)) {
+            Serial.printf(
+                "MCP23017: falha ao recuperar direcao das saidas (%s).\n",
+                descricao
+            );
+            return false;
         }
 
         if (!escreverRegistro(REG_OLATA, valor)) {
@@ -141,11 +185,12 @@ namespace {
         estadoAplicado = true;
 
         Serial.printf(
-            "MCP23017 audio: %s (GPA7=%u, GPA6=%u, GPA5=%u).\n",
+            "MCP23017: %s (GPA7=%u, GPA6=%u, GPA5=%u, GPA4=%u).\n",
             descricao,
-            (valor >> PIN_MCP23017_RELE_8002_SELECIONA_DAC) & 1U,
-            (valor >> PIN_MCP23017_ENABLE_N_8002_DIREITO) & 1U,
-            (valor >> PIN_MCP23017_ENABLE_N_8002_ESQUERDO) & 1U
+            (valor >> 7U) & 1U,
+            (valor >> 6U) & 1U,
+            (valor >> 5U) & 1U,
+            (valor >> 4U) & 1U
         );
         return true;
     }
@@ -168,16 +213,17 @@ bool iniciarChaveamentoAudio() {
     }
 
     // Prepara o latch no estado de mute antes de os pinos virarem saídas:
-    // GPA7=LOW seleciona FM; GPA6/GPA5=HIGH silenciam os NS8002.
+    // GPA4=LOW desliga o TEF6686, GPA5=LOW seleciona FM e GPA7/GPA6=HIGH
+    // silenciam os NS8002.
     if (!escreverRegistro(REG_OLATA, ESTADO_STANDBY)) {
         Serial.println("MCP23017 indisponivel; saidas de audio sem comando.");
         return false;
     }
 
     const uint8_t direcaoPortaA =
-        static_cast<uint8_t>(~MASCARA_SAIDAS_AUDIO);
+        static_cast<uint8_t>(~MASCARA_SAIDAS_CONTROLADAS);
     if (!escreverRegistro(REG_IODIRA, direcaoPortaA)) {
-        Serial.println("MCP23017: falha ao configurar GPA7/GPA6/GPA5.");
+        Serial.println("MCP23017: falha ao configurar GPA7/GPA6/GPA5/GPA4.");
         return false;
     }
 
@@ -189,9 +235,22 @@ bool iniciarChaveamentoAudio() {
     ultimoEstado = ESTADO_STANDBY;
     estadoAplicado = true;
     Serial.println(
-        "MCP23017 standby: GPA7=LOW, GPA6/GPA5=HIGH (mute)."
+        "MCP23017 standby: GPA7/GPA6=HIGH, GPA5=LOW, GPA4=LOW."
     );
     return true;
+}
+
+bool configurarHabilitacaoRadioFm(bool habilitar) {
+    uint8_t estado = ultimoEstado;
+    if (habilitar) {
+        estado |= MASCARA_HABILITA_RADIO_FM;
+    } else {
+        estado &= static_cast<uint8_t>(~MASCARA_HABILITA_RADIO_FM);
+    }
+    return configurarSaidas(
+        estado,
+        habilitar ? "TEF6686 habilitado" : "TEF6686 desligado"
+    );
 }
 
 void configurarSaidaAudioStandby() {
@@ -203,10 +262,12 @@ void configurarSaidaAudioStandby() {
         }
         return;
     }
-    configurarSaidas(ESTADO_STANDBY, "standby");
+    const uint8_t estado = ESTADO_STANDBY |
+        (ultimoEstado & MASCARA_HABILITA_RADIO_FM);
+    configurarSaidas(estado, "standby");
 }
 
-void configurarSaidaAudioDac(bool mutar) {
+bool configurarSaidaAudioDac(bool mutar) {
     if (dfPlayerComPrioridade) {
         if (DEBUG_CHIME) {
             Serial.printf(
@@ -215,11 +276,11 @@ void configurarSaidaAudioDac(bool mutar) {
                 mutar ? 1U : 0U
             );
         }
-        return;
+        return false;
     }
-    const uint8_t estado = MASCARA_RELE_SELECIONA_DAC |
+    const uint8_t estado = ESTADO_RADIO_WEB_ATIVO |
         (mutar ? MASCARA_ENABLE_N_8002 : 0x00);
-    configurarSaidas(
+    return configurarSaidas(
         estado,
         mutar ? "DAC selecionado; mute" : "DAC selecionado; NS8002 ativos"
     );
@@ -241,8 +302,8 @@ bool configurarSaidaAudioDfPlayer(bool mutar) {
     const bool aplicado = configurarSaidas(
         estado,
         mutar
-            ? "DFPlayer direto; NS8002 em mute; GPA7 preservado"
-            : "DFPlayer direto; NS8002 ativos; GPA7 preservado"
+            ? "DFPlayer direto; NS8002 em mute; GPA5/GPA4 preservados"
+            : "DFPlayer direto; NS8002 ativos; GPA5/GPA4 preservados"
     );
 
     if (!aplicado && !mutar) {
@@ -252,10 +313,10 @@ bool configurarSaidaAudioDfPlayer(bool mutar) {
     if (DEBUG_CHIME) {
         Serial.printf(
             "CHIME DEBUG chaveamento DFPlayer: pedidoMute=%u "
-            "GPA6=%u GPA5=%u confirmado=%u.\n",
+            "GPA7=%u GPA6=%u confirmado=%u.\n",
             mutar ? 1U : 0U,
-            (estado >> PIN_MCP23017_ENABLE_N_8002_DIREITO) & 1U,
             (estado >> PIN_MCP23017_ENABLE_N_8002_ESQUERDO) & 1U,
+            (estado >> PIN_MCP23017_ENABLE_N_8002_DIREITO) & 1U,
             aplicado ? 1U : 0U
         );
     }
@@ -266,7 +327,7 @@ bool configurarSaidaAudioDfPlayer(bool mutar) {
 EstadoSaidaAudio obterEstadoSaidaAudio() {
     EstadoSaidaAudio estado;
     estado.valido = disponivel && estadoAplicado;
-    estado.valorPortaA = ultimoEstado & MASCARA_SAIDAS_AUDIO;
+    estado.valorPortaA = ultimoEstado & MASCARA_SAIDAS_CONTROLADAS;
     return estado;
 }
 
@@ -287,12 +348,12 @@ void restaurarEstadoSaidaAudio(const EstadoSaidaAudio& estado) {
     }
 
     configurarSaidas(
-        estado.valorPortaA & MASCARA_SAIDAS_AUDIO,
+        estado.valorPortaA & MASCARA_SAIDAS_CONTROLADAS,
         "estado anterior ao DFPlayer restaurado"
     );
 }
 
-void configurarSaidaAudioFm(bool mutar) {
+bool configurarSaidaAudioFm(bool mutar) {
     if (dfPlayerComPrioridade) {
         if (DEBUG_CHIME) {
             Serial.printf(
@@ -301,10 +362,12 @@ void configurarSaidaAudioFm(bool mutar) {
                 mutar ? 1U : 0U
             );
         }
-        return;
+        return false;
     }
-    const uint8_t estado = mutar ? MASCARA_ENABLE_N_8002 : 0x00;
-    configurarSaidas(
+    const uint8_t estado = ESTADO_CAMINHO_RADIO_FM |
+        (ultimoEstado & MASCARA_HABILITA_RADIO_FM) |
+        (mutar ? MASCARA_ENABLE_N_8002 : 0x00);
+    return configurarSaidas(
         estado,
         mutar ? "FM selecionado; mute" : "FM selecionado; NS8002 ativos"
     );

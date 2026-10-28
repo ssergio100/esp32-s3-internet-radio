@@ -90,6 +90,7 @@ bool deslocarSomDfPlayer(
 
 // Para a reprodução, desabilita o DAC interno do DFPlayer e restaura exatamente
 // GPA7/GPA6/GPA5 ao estado fotografado antes de habilitar os NS8002.
+// GPA7/GPA6 são os enables; GPA5 é o relé e apenas é preservado/restaurado.
 void pararDfPlayer();
 void definirVolumeDfPlayer(uint8_t volumeEquipamento);
 EstadoDfPlayer obterEstadoDfPlayer();

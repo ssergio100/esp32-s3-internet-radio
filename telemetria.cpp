@@ -179,6 +179,14 @@ namespace {
             static_cast<unsigned long>(tft.latenciaResultadoP95Us),
             static_cast<unsigned long>(tft.amostrasLatenciaResultado)
         );
+
+        Serial.printf(
+            "TFT Alarmes encoder->display ultimo/max/p95: %lu/%lu/%lu us (%lu amostras)\n",
+            static_cast<unsigned long>(tft.latenciaAlarmesUltimaUs),
+            static_cast<unsigned long>(tft.latenciaAlarmesMaximaUs),
+            static_cast<unsigned long>(tft.latenciaAlarmesP95Us),
+            static_cast<unsigned long>(tft.amostrasLatenciaAlarmes)
+        );
     }
 #endif
 

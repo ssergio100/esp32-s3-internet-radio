@@ -15,4 +15,17 @@ void processarRelogio();
 // períodos. Retorna false enquanto nenhuma fonte confiável estiver disponível.
 bool obterDataHoraLocal(struct tm& dataHora);
 
+// Ativa ou suspende o cliente SNTP. O RTC e o relógio do sistema continuam
+// funcionando quando a sincronização automática está desligada.
+void configurarSincronizacaoAutomaticaRelogio(bool ativa);
+bool sincronizacaoAutomaticaRelogioAtiva();
+
+// Indica se o sistema já recebeu ao menos uma sincronização NTP válida desde
+// a inicialização. O estado permanece válido mesmo com o Wi-Fi desligado.
+bool ultimaSincronizacaoNtpValida();
+
+// Ajusta horas e minutos preservando a data local atual. A nova referência é
+// aplicada ao sistema e ao DS3231, que continua armazenando UTC.
+bool ajustarHoraLocalRelogio(uint8_t hora, uint8_t minuto);
+
 #endif

@@ -9,7 +9,6 @@ O perfil de compilação fixa estas versões:
 | ArduinoJson | 7.4.3 |
 | WiFiManager | 2.0.17 |
 | Adafruit GFX Library | 1.12.6 |
-| Adafruit SSD1306 | 2.5.17 |
 | Adafruit ST7735 and ST7789 Library | 1.11.0 |
 | Ai Esp32 Rotary Encoder | 1.7 |
 | DFRobotDFPlayerMini | 1.0.6 |
@@ -23,7 +22,7 @@ provisionamento automático.
 A PoC do TFT usa o controlador ST7789 com a biblioteca Adafruit 1.11.0. Essa
 foi a mesma familia de controlador e driver encontrada no ensaio funcional
 local `teste_menu_display`; a integracao ao projeto principal fica isolada por
-`RADIO_UI_TFT_POC` e nao substitui o OLED.
+`RADIO_UI_TFT_POC`.
 
 A DFRobotDFPlayerMini foi acrescentada nesta etapa e ainda precisa da primeira
 compilação e validação no módulo físico. As demais versões já pertenciam à
@@ -38,8 +37,9 @@ externo.
 O TEF6686 também não acrescenta uma biblioteca externa. O driver validado e o
 patch Lithio V102 p224 ficam versionados em `src/tef6686/`; a aplicação acessa
 somente a camada `radio_fm.cpp`. O MCP23017 faz parte do firmware principal
-apenas para selecionar DAC/FM nas entradas dos NS8002 (`GPA7`) e controlar os
-enables ativos em LOW dos dois amplificadores (`GPA6/GPA5`), usando acesso I2C local sem biblioteca
+para selecionar DAC/FM nas entradas dos NS8002 (`GPA5`), controlar os enables
+ativos em LOW dos dois amplificadores (`GPA7/GPA6`) e habilitar a alimentação
+do TEF6686 em HIGH (`GPA4`), usando acesso I2C local sem biblioteca
 adicional. Os dois encoders continuam ligados diretamente ao ESP32-S3.
 
 Na ArduinoJson 7, use `JsonDocument`, que cresce dinamicamente. As classes
@@ -50,8 +50,8 @@ compatibilidade com versões anteriores; o argumento de capacidade de
 O teste independente do DS3231 foi validado em hardware com RTClib 2.1.4. A
 integração dessa mesma versão ao firmware principal está registrada em
 `sketch.yaml`, mas ainda aguarda compilação e validação no rádio completo. O
-RTC compartilha com o OLED o `Wire` fornecido pelo Arduino core; Adafruit BusIO
-1.17.4 atende às dependências do display e do RTC.
+RTC compartilha com MCP23017 e TEF6686 o `Wire` fornecido pelo Arduino core;
+Adafruit BusIO 1.17.4 atende à dependência da RTClib.
 
 Não atualize uma biblioteca isoladamente em uma versão destinada ao
 hardware. Crie uma nova combinação, compile e execute o teste de

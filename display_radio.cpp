@@ -1,24 +1,16 @@
 #include "display_radio.h"
 #include "audio_radio.h"
+#include "alarmes.h"
 #include "configuracao.h"
 #include "relogio.h"
+#include "relogio_rtc.h"
 #include "ui_tft_poc.h"
+#include "wifi_radio.h"
 
-#include <Wire.h>
 #include <WiFi.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <Fonts/FreeSansBold9pt7b.h>
-
+#include <cstring>
 
 namespace {
-
-    Adafruit_SSD1306 display(
-        DISPLAY_LARGURA,
-        DISPLAY_ALTURA,
-        &Wire,
-        -1
-    );
 
     bool disponivel = false;
     SemaphoreHandle_t mutexDisplay = nullptr;
@@ -33,9 +25,19 @@ namespace {
     bool statusAudioTftDisponivel = false;
     bool wifiTftConectado = false;
     int16_t wifiTftRssi = 0;
+    uint8_t wifiTftCanal = 0;
+    char wifiTftSsid[33] = {};
+    char wifiTftBssid[18] = {};
+    char wifiTftIp[16] = {};
+    bool detalhesRedeWebTft = false;
+    bool horarioTopoWebDisponivel = false;
+    struct tm ultimaDataHoraTopoWeb = {};
+    unsigned long momentoUltimaConsultaTopoWebMs = 0;
     bool horarioTopoFmDisponivel = false;
     struct tm ultimaDataHoraTopoFm = {};
     unsigned long momentoUltimaConsultaTopoFmMs = 0;
+    TemaUiTft temaTftAtual = TemaUiTft::LARANJA;
+    bool tftLigadoAtual = true;
 
     void marcarModeloTftAlterado() {
         revisaoModeloTft++;
@@ -46,6 +48,8 @@ namespace {
         return
             !statusAudioTftDisponivel ||
             atual.bitrate != ultimoStatusAudioTft.bitrate ||
+            atual.bufferBytes != ultimoStatusAudioTft.bufferBytes ||
+            atual.bufferTotalBytes != ultimoStatusAudioTft.bufferTotalBytes ||
             atual.bufferMilissegundos != ultimoStatusAudioTft.bufferMilissegundos ||
             strcmp(atual.radio, ultimoStatusAudioTft.radio) != 0 ||
             strcmp(atual.titulo, ultimoStatusAudioTft.titulo) != 0 ||
@@ -94,8 +98,9 @@ namespace {
         RADIO,
         RADIO_FM,
         RELOGIO,
-
-        ALARME
+        ALARME,
+        CONFIGURACAO_ALARMES,
+        CONFIGURACOES
     };
 
     TelaDisplay telaAtual = TelaDisplay::MENSAGEM;
@@ -103,6 +108,8 @@ namespace {
     String mensagemAtual = "Inicializando";
     String nomeAlarmeAtual;
     int volumeAlarmeAtual = VOLUME_PADRAO;
+    DadosDisplayConfiguracaoAlarmes dadosConfiguracaoAlarmesAtual;
+    DadosDisplayConfiguracoes dadosConfiguracoesAtual;
 
     enum class ModoFaixaCentral {
         ROLAGEM,
@@ -114,12 +121,19 @@ namespace {
         ModoFaixaCentral::ROLAGEM;
 
     String nomeRadioAtual;
+    String nomeRadioWebTftAtual;
+    String estadoRadioWebTftAtual;
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
 
     uint16_t frequenciaRadioFm10kHz = 0;
     int16_t nivelRadioFmDecimosDbuv = 0;
     bool qualidadeRadioFmValida = false;
+    uint16_t larguraBandaRadioFmDecimosKHz = 0;
+    bool larguraBandaRadioFmValida = false;
+    bool pilotoEstereoRadioFm = false;
+    bool pilotoEstereoRadioFmValido = false;
+    bool detalhesTecnicosRadioFm = false;
     String nomeEstacaoRadioFm;
     char radioTextoRadioFm[193] = {};
     String estadoRadioFm;
@@ -130,73 +144,20 @@ namespace {
     uint32_t sequenciaEventoEncoderFm = 0;
     uint32_t momentoEventoEncoderFmUs = 0;
 
-    // Os valores também representam o passo horizontal de um pixel.
-    enum class SentidoRolagem {
-        PARA_ESQUERDA = -1,
-        PARA_DIREITA = 1
-    };
-
-    struct ConfiguracaoFaixaRolante {
-        int posicaoVerticalPx;
-        uint8_t tamanhoTexto;
-        int margemHorizontalPx;
-        int espacoEntreRepeticoesPx;
-        unsigned long intervaloPassoMs;
-        SentidoRolagem sentido;
-    };
-
-    struct EstadoFaixaRolante {
-        bool ativa = false;
-        int posicaoHorizontalPx = 0;
-        uint16_t larguraTextoPx = 0;
-        unsigned long momentoUltimoPassoMs = 0;
-    };
-
-    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_FAIXA_DIAGNOSTICO = {
-        2,                                          // posição vertical, em px
-        1,                                          // tamanho do texto
-        2,                                          // margem horizontal, em px
-        24,                                         // espaço entre cópias, em px
-        INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS,     // velocidade
-        SentidoRolagem::PARA_ESQUERDA                // sentido do movimento
-    };
-
-    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_FAIXA_NOME_RADIO = {
-        22,                                         // posição vertical, em px
-        2,                                          // tamanho do texto
-        2,                                          // margem horizontal, em px
-        24,                                         // espaço entre cópias, em px
-        INTERVALO_PASSO_ROLAGEM_NOME_MS,            // velocidade
-        SentidoRolagem::PARA_ESQUERDA               // sentido do movimento
-    };
-
-    constexpr ConfiguracaoFaixaRolante CONFIGURACAO_DATA_RELOGIO = {
-        55,                                         // rodapé, em px
-        1,                                          // tamanho do texto
-        2,                                          // margem horizontal, em px
-        24,                                         // espaço entre cópias, em px
-        INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS,    // velocidade
-        SentidoRolagem::PARA_ESQUERDA               // sentido do movimento
-    };
-
-
-
-    String textoDiagnostico;
-    String textoBufferBarraInferior;
     bool exibindoVolumeNaBarraInferior = false;
     int volumeBarraInferior = VOLUME_PADRAO;
-    EstadoFaixaRolante estadoFaixaDiagnostico;
-    unsigned long momentoUltimaAtualizacaoDiagnosticoMs = 0;
+    unsigned long momentoUltimaAtualizacaoDadosWebMs = 0;
 
-    EstadoFaixaRolante estadoFaixaNomeRadio;
-
-    String textoDataRelogio;
-    EstadoFaixaRolante estadoFaixaDataRelogio;
     int minutoRelogioExibido = -1;
+    int segundoRelogioExibido = -1;
     int diaRelogioExibido = -1;
     unsigned long momentoUltimaConsultaRelogioMs = 0;
     struct tm ultimaDataHoraRelogio = {};
     bool horarioRelogioDisponivel = false;
+    ProximoAlarme proximoAlarmeRelogio;
+    StatusAlarmes statusAlarmesRelogio;
+    bool rtcRelogioRespondendo = false;
+    bool sincronizacaoNtpRelogioValida = false;
 
 #if RADIO_UI_TFT_POC
     void copiarTextoTft(char* destino, size_t tamanho, const String& origem) {
@@ -234,11 +195,74 @@ namespace {
         return mudou;
     }
 
-    EstadoUiTftPoc criarEstadoUiTftPoc() {
-        EstadoUiTftPoc estado;
+    bool atualizarHorarioTopoWeb() {
+        unsigned long agoraMs = millis();
+        if (
+            agoraMs - momentoUltimaConsultaTopoWebMs < 500 &&
+            momentoUltimaConsultaTopoWebMs != 0
+        ) {
+            return false;
+        }
+
+        momentoUltimaConsultaTopoWebMs = agoraMs;
+        struct tm dataHora = {};
+        bool disponivelAgora = obterDataHoraLocal(dataHora);
+        bool mudou = disponivelAgora != horarioTopoWebDisponivel;
+
+        if (disponivelAgora) {
+            mudou =
+                mudou ||
+                dataHora.tm_hour != ultimaDataHoraTopoWeb.tm_hour ||
+                dataHora.tm_min != ultimaDataHoraTopoWeb.tm_min;
+            ultimaDataHoraTopoWeb = dataHora;
+        }
+
+        horarioTopoWebDisponivel = disponivelAgora;
+        return mudou;
+    }
+
+    void formatarDiaSemanaRelogioTft(
+        const struct tm& dataHora,
+        char* destino,
+        size_t tamanho
+    ) {
+        static constexpr const char* DIAS[] = {
+            "DOMINGO", "SEGUNDA-FEIRA", "TERÇA-FEIRA",
+            "QUARTA-FEIRA", "QUINTA-FEIRA", "SEXTA-FEIRA", "SÁBADO"
+        };
+        strlcpy(destino, DIAS[dataHora.tm_wday], tamanho);
+    }
+
+    void formatarDataRelogioTft(
+        const struct tm& dataHora,
+        char* destino,
+        size_t tamanho
+    ) {
+        static constexpr const char* MESES[] = {
+            "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
+            "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"
+        };
+        snprintf(
+            destino,
+            tamanho,
+            "%02d %s %04d",
+            dataHora.tm_mday,
+            MESES[dataHora.tm_mon],
+            dataHora.tm_year + 1900
+        );
+    }
+
+    void preencherEstadoUiTftPoc(EstadoUiTftPoc& estado) {
+        // Esta estrutura concentra todos os textos e dados das telas. Limpa-la
+        // no armazenamento estatico evita colocar outra copia grande na pilha
+        // da DisplayService.
+        memset(&estado, 0, sizeof(estado));
         estado.revisao = revisaoModeloTft;
         estado.momentoAlteracaoMs = momentoAlteracaoModeloTftMs;
         estado.volume = volumeBarraInferior;
+        estado.volumeSobreposto = exibindoVolumeNaBarraInferior;
+        estado.tema = temaTftAtual;
+        estado.tftLigado = tftLigadoAtual;
 
         switch (telaAtual) {
             case TelaDisplay::MENSAGEM:
@@ -249,26 +273,101 @@ namespace {
 
             case TelaDisplay::CONFIGURACAO_WIFI:
                 estado.tela = TelaUiTftPoc::CONFIGURACAO_WIFI;
-                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "CONFIGURACAO WI-FI");
+                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "CONFIGURAÇÃO WI-FI");
                 copiarTextoTft(estado.mensagem, sizeof(estado.mensagem), "RADIO-WEB  |  192.168.4.1");
                 break;
 
             case TelaDisplay::RADIO:
                 estado.tela = TelaUiTftPoc::RADIO_WEB;
-                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "RADIO WEB");
-                copiarTextoTft(estado.estacao, sizeof(estado.estacao), nomeRadioAtual);
-                if (statusAudioTftDisponivel) {
+                copiarTextoTft(
+                    estado.titulo,
+                    sizeof(estado.titulo),
+                    "RÁDIO WEB"
+                );
+                {
+                    int volumeLimitado = constrain(
+                        volumeBarraInferior,
+                        VOLUME_MINIMO,
+                        VOLUME_MAXIMO
+                    );
+                    int volumePercentual =
+                        (volumeLimitado * 100 + VOLUME_MAXIMO / 2) /
+                        VOLUME_MAXIMO;
+
+                    if (horarioTopoWebDisponivel) {
+                        snprintf(
+                            estado.indicadorTopoDireito,
+                            sizeof(estado.indicadorTopoDireito),
+                            "WEB · %d%% · %02d:%02d",
+                            volumePercentual,
+                            ultimaDataHoraTopoWeb.tm_hour,
+                            ultimaDataHoraTopoWeb.tm_min
+                        );
+                    } else {
+                        snprintf(
+                            estado.indicadorTopoDireito,
+                            sizeof(estado.indicadorTopoDireito),
+                            "WEB · %d%% · --:--",
+                            volumePercentual
+                        );
+                    }
+                }
+                copiarTextoTft(
+                    estado.estacao,
+                    sizeof(estado.estacao),
+                    nomeRadioWebTftAtual
+                );
+                copiarTextoTft(
+                    estado.estadoWeb,
+                    sizeof(estado.estadoWeb),
+                    estadoRadioWebTftAtual
+                );
+                estado.dadosWebValidos =
+                    modoFaixaCentral == ModoFaixaCentral::ROLAGEM &&
+                    statusAudioTftDisponivel &&
+                    (
+                        ultimoStatusAudioTft.estado == EstadoAudio::TOCANDO ||
+                        ultimoStatusAudioTft.estado == EstadoAudio::DEGRADADO
+                    );
+                estado.selecaoWeb =
+                    modoFaixaCentral == ModoFaixaCentral::SELECAO;
+                estado.detalhesRedeWeb = detalhesRedeWebTft;
+                if (estado.dadosWebValidos) {
                     copiarTextoTft(estado.faixa, sizeof(estado.faixa), ultimoStatusAudioTft.titulo);
                     copiarTextoTft(estado.codec, sizeof(estado.codec), ultimoStatusAudioTft.codec);
                     estado.bitrate = ultimoStatusAudioTft.bitrate;
+                    estado.bufferBytes = ultimoStatusAudioTft.bufferBytes;
+                    estado.bufferTotalBytes =
+                        ultimoStatusAudioTft.bufferTotalBytes;
                     estado.bufferMs = ultimoStatusAudioTft.bufferMilissegundos;
                 }
                 estado.wifiConectado = wifiTftConectado;
                 estado.wifiRssi = wifiTftRssi;
+                estado.wifiCanal = wifiTftCanal;
+                copiarTextoTft(
+                    estado.wifiSsid,
+                    sizeof(estado.wifiSsid),
+                    wifiTftSsid
+                );
+                copiarTextoTft(
+                    estado.wifiBssid,
+                    sizeof(estado.wifiBssid),
+                    wifiTftBssid
+                );
+                copiarTextoTft(
+                    estado.wifiIp,
+                    sizeof(estado.wifiIp),
+                    wifiTftIp
+                );
                 break;
 
             case TelaDisplay::RADIO_FM:
                 estado.tela = TelaUiTftPoc::RADIO_FM;
+                copiarTextoTft(
+                    estado.titulo,
+                    sizeof(estado.titulo),
+                    "RÁDIO FM"
+                );
                 {
                     int volumeLimitado = constrain(
                         volumeBarraInferior,
@@ -281,8 +380,8 @@ namespace {
 
                     if (horarioTopoFmDisponivel) {
                         snprintf(
-                            estado.titulo,
-                            sizeof(estado.titulo),
+                            estado.indicadorTopoDireito,
+                            sizeof(estado.indicadorTopoDireito),
                             "FM · %d%% · %02d:%02d",
                             volumePercentual,
                             ultimaDataHoraTopoFm.tm_hour,
@@ -290,8 +389,8 @@ namespace {
                         );
                     } else {
                         snprintf(
-                            estado.titulo,
-                            sizeof(estado.titulo),
+                            estado.indicadorTopoDireito,
+                            sizeof(estado.indicadorTopoDireito),
                             "FM · %d%% · --:--",
                             volumePercentual
                         );
@@ -300,6 +399,12 @@ namespace {
                 estado.frequenciaFm10kHz = frequenciaRadioFm10kHz;
                 estado.sinalFmDecimosDbuv = nivelRadioFmDecimosDbuv;
                 estado.sinalFmValido = qualidadeRadioFmValida;
+                estado.larguraBandaFmDecimosKHz =
+                    larguraBandaRadioFmDecimosKHz;
+                estado.larguraBandaFmValida = larguraBandaRadioFmValida;
+                estado.pilotoEstereoFm = pilotoEstereoRadioFm;
+                estado.pilotoEstereoFmValido = pilotoEstereoRadioFmValido;
+                estado.detalhesTecnicosFm = detalhesTecnicosRadioFm;
                 estado.psFmValido = nomeEstacaoRadioFmValido;
                 estado.radioTextoFmValido = radioTextoRadioFmValido;
                 estado.fmBuscando = radioFmBuscando;
@@ -313,13 +418,60 @@ namespace {
 
             case TelaDisplay::RELOGIO:
                 estado.tela = TelaUiTftPoc::RELOGIO;
-                copiarTextoTft(estado.titulo, sizeof(estado.titulo), "RELOGIO");
                 estado.horarioDisponivel = horarioRelogioDisponivel;
                 if (horarioRelogioDisponivel) {
                     estado.hora = ultimaDataHoraRelogio.tm_hour;
                     estado.minuto = ultimaDataHoraRelogio.tm_min;
+                    estado.segundo = ultimaDataHoraRelogio.tm_sec;
+                    formatarDiaSemanaRelogioTft(
+                        ultimaDataHoraRelogio,
+                        estado.titulo,
+                        sizeof(estado.titulo)
+                    );
+                    formatarDataRelogioTft(
+                        ultimaDataHoraRelogio,
+                        estado.data,
+                        sizeof(estado.data)
+                    );
+                } else {
+                    copiarTextoTft(
+                        estado.titulo,
+                        sizeof(estado.titulo),
+                        "HORÁRIO INDISPONÍVEL"
+                    );
                 }
-                copiarTextoTft(estado.data, sizeof(estado.data), textoDataRelogio);
+                estado.proximoAlarmeDisponivel =
+                    proximoAlarmeRelogio.disponivel;
+                if (proximoAlarmeRelogio.disponivel) {
+                    snprintf(
+                        estado.proximoAlarmeHorario,
+                        sizeof(estado.proximoAlarmeHorario),
+                        "%02u:%02u",
+                        proximoAlarmeRelogio.hora,
+                        proximoAlarmeRelogio.minuto
+                    );
+                    const char* recorrencia =
+                        strcmp(proximoAlarmeRelogio.recorrencia, "SEG-SEX") == 0
+                            ? "SEG - SEX"
+                            : proximoAlarmeRelogio.recorrencia;
+                    copiarTextoTft(
+                        estado.proximoAlarmeRecorrencia,
+                        sizeof(estado.proximoAlarmeRecorrencia),
+                        recorrencia
+                    );
+                    copiarTextoTft(
+                        estado.proximoAlarmeFonte,
+                        sizeof(estado.proximoAlarmeFonte),
+                        proximoAlarmeRelogio.fonte
+                    );
+                }
+                estado.rtcRespondendo = rtcRelogioRespondendo;
+                estado.sincronizacaoNtpValida =
+                    sincronizacaoNtpRelogioValida;
+                estado.quantidadeAlarmes = static_cast<uint8_t>(min(
+                    statusAlarmesRelogio.quantidade,
+                    static_cast<size_t>(UINT8_MAX)
+                ));
                 break;
 
             case TelaDisplay::ALARME:
@@ -334,1007 +486,304 @@ namespace {
                     VOLUME_MAXIMO
                 );
                 break;
-        }
 
-        return estado;
-    }
-#endif
-
-
-
-    void escreverCentralizado(
-        const String& texto,
-        int posicaoY,
-        uint8_t tamanhoTexto
-    ) {
-        display.setTextSize(tamanhoTexto);
-
-        int16_t x1;
-        int16_t y1;
-        uint16_t largura;
-        uint16_t altura;
-
-        display.getTextBounds(
-            texto,
-            0,
-            posicaoY,
-            &x1,
-            &y1,
-            &largura,
-            &altura
-        );
-
-        int posicaoX =
-            (DISPLAY_LARGURA - largura) / 2;
-
-        if (posicaoX < 0) {
-            posicaoX = 0;
-        }
-
-        display.setCursor(
-            posicaoX,
-            posicaoY
-        );
-
-        display.print(texto);
-    }
-
-    void prepararTela() {
-        display.clearDisplay();
-        display.setFont();
-        display.setTextColor(SSD1306_WHITE);
-        display.setTextWrap(false);
-    }
-
-    String formatarBufferParaDiagnostico(
-        const StatusAudio& status
-    ) {
-        if (status.bitrate == 0) {
-            return "--";
-        }
-
-        uint32_t decimosDeSegundo =
-            (status.bufferMilissegundos + 50) / 100;
-
-        return
-            String(decimosDeSegundo / 10) +
-            "." +
-            String(decimosDeSegundo % 10) +
-            " s";
-    }
-
-    String formatarBufferParaBarraInferior(
-        const StatusAudio& status
-    ) {
-        if (status.bitrate == 0) {
-            return "B--";
-        }
-
-        uint32_t decimosDeSegundo =
-            (status.bufferMilissegundos + 50) / 100;
-
-        return
-            "B" +
-            String(decimosDeSegundo / 10) +
-            "." +
-            String(decimosDeSegundo % 10) +
-            "s";
-    }
-
-    String formatarDataHoraParaDiagnostico() {
-        struct tm dataHora = {};
-
-        if (!obterDataHoraLocal(dataHora)) {
-            return "--/--/---- --:--:--";
-        }
-
-        char textoDataHora[20];
-
-        snprintf(
-            textoDataHora,
-            sizeof(textoDataHora),
-            "%02d/%02d/%04d %02d:%02d:%02d",
-            dataHora.tm_mday,
-            dataHora.tm_mon + 1,
-            dataHora.tm_year + 1900,
-            dataHora.tm_hour,
-            dataHora.tm_min,
-            dataHora.tm_sec
-        );
-
-        return String(textoDataHora);
-    }
-
-    String montarTextoDiagnostico(
-        const StatusAudio& status,
-        bool wifiConectado,
-        int16_t wifiRssi,
-        const String& wifiBssid
-    ) {
-        String texto;
-        texto.reserve(136);
-
-        texto += formatarDataHoraParaDiagnostico();
-        texto += " | ";
-
-        texto += (
-            status.codec[0] != '\0'
-                ? status.codec
-                : "--"
-        );
-        texto += " | ";
-
-        if (status.bitrate > 0) {
-            texto += String((status.bitrate + 500) / 1000);
-            texto += " kbps";
-        } else {
-            texto += "-- kbps";
-        }
-
-        texto += " | BUF ";
-        texto += formatarBufferParaDiagnostico(status);
-
-        if (wifiConectado) {
-            texto += " | RSSI ";
-            texto += String(wifiRssi);
-            texto += " dBm | BSSID ";
-            texto += wifiBssid;
-        } else {
-            texto += " | Wi-Fi desconectado";
-        }
-
-        return texto;
-    }
-
-    // Use esta função quando o texto de uma faixa mudar. O texto já deve
-    // estar pronto: esta função não conhece rádio, áudio nem Wi-Fi.
-    // Passe reiniciarPosicao=true ao trocar completamente o conteúdo.
-    void configurarFaixaRolante(
-        const String& texto,
-        const ConfiguracaoFaixaRolante& configuracao,
-        EstadoFaixaRolante& estado,
-        bool reiniciarPosicao
-    ) {
-        display.setTextSize(configuracao.tamanhoTexto);
-
-        int16_t x1;
-        int16_t y1;
-        uint16_t altura;
-
-        display.getTextBounds(
-            texto,
-            0,
-            0,
-            &x1,
-            &y1,
-            &estado.larguraTextoPx,
-            &altura
-        );
-
-        if (
-            estado.larguraTextoPx <=
-            DISPLAY_LARGURA -
-                2 * configuracao.margemHorizontalPx
-        ) {
-            estado.posicaoHorizontalPx =
-                (DISPLAY_LARGURA - estado.larguraTextoPx) / 2;
-            estado.ativa = false;
-        } else {
-            estado.ativa = true;
-
-            if (reiniciarPosicao) {
-                estado.posicaoHorizontalPx =
-                    configuracao.margemHorizontalPx;
-            }
-
-            int larguraCicloRolagemPx =
-                estado.larguraTextoPx +
-                configuracao.espacoEntreRepeticoesPx;
-
-            int passoHorizontalPx =
-                static_cast<int>(configuracao.sentido);
-
-            while (
-                (
-                    estado.posicaoHorizontalPx -
-                    configuracao.margemHorizontalPx
-                ) * passoHorizontalPx >= larguraCicloRolagemPx
-            ) {
-                estado.posicaoHorizontalPx -=
-                    passoHorizontalPx * larguraCicloRolagemPx;
-            }
-        }
-
-        if (reiniciarPosicao) {
-            estado.momentoUltimoPassoMs = millis();
-        }
-    }
-
-    // Desenha o texto e, quando necessário, uma segunda cópia fora da tela.
-    // Essa cópia entra logo após a primeira e torna a rolagem contínua.
-    void desenharFaixaRolante(
-        const String& texto,
-        const ConfiguracaoFaixaRolante& configuracao,
-        const EstadoFaixaRolante& estado
-    ) {
-        display.setTextSize(configuracao.tamanhoTexto);
-        display.setCursor(
-            estado.posicaoHorizontalPx,
-            configuracao.posicaoVerticalPx
-        );
-        display.print(texto);
-
-        if (!estado.ativa) {
-            return;
-        }
-
-        int larguraCicloRolagemPx =
-            estado.larguraTextoPx +
-            configuracao.espacoEntreRepeticoesPx;
-
-        int passoHorizontalPx =
-            static_cast<int>(configuracao.sentido);
-
-        display.setCursor(
-            estado.posicaoHorizontalPx -
-                passoHorizontalPx * larguraCicloRolagemPx,
-            configuracao.posicaoVerticalPx
-        );
-        display.print(texto);
-    }
-
-    // Avança somente um pixel por quadro apresentado. Se uma atualização
-    // atrasar, o instante anterior é descartado em vez de acumular passos e
-    // produzir um salto visível quando a tarefa voltar a executar.
-    bool avancarFaixaRolante(
-        const ConfiguracaoFaixaRolante& configuracao,
-        EstadoFaixaRolante& estado,
-        unsigned long agoraMs
-    ) {
-        if (!estado.ativa) {
-            return false;
-        }
-
-        unsigned long intervaloPassoMs =
-            max(
-                configuracao.intervaloPassoMs,
-                1UL
-            );
-        unsigned long tempoDecorridoMs =
-            agoraMs - estado.momentoUltimoPassoMs;
-        if (tempoDecorridoMs < intervaloPassoMs) {
-            return false;
-        }
-
-        estado.momentoUltimoPassoMs = agoraMs;
-
-        int larguraCicloRolagemPx =
-            estado.larguraTextoPx +
-            configuracao.espacoEntreRepeticoesPx;
-
-        int passoHorizontalPx =
-            static_cast<int>(configuracao.sentido);
-
-        estado.posicaoHorizontalPx +=
-            passoHorizontalPx;
-
-        if (
-            (
-                estado.posicaoHorizontalPx -
-                configuracao.margemHorizontalPx
-            ) * passoHorizontalPx >= larguraCicloRolagemPx
-        ) {
-            estado.posicaoHorizontalPx -=
-                passoHorizontalPx * larguraCicloRolagemPx;
-        }
-
-        return true;
-    }
-
-    String formatarDataRelogio(
-        const struct tm& dataHora
-    ) {
-        static const char* DIAS_SEMANA[] = {
-            "domingo",
-            "segunda",
-            "terca",
-            "quarta",
-            "quinta",
-            "sexta",
-            "sabado"
-        };
-
-        static const char* MESES[] = {
-            "janeiro",
-            "fevereiro",
-            "marco",
-            "abril",
-            "maio",
-            "junho",
-            "julho",
-            "agosto",
-            "setembro",
-            "outubro",
-            "novembro",
-            "dezembro"
-        };
-
-        return
-            String(DIAS_SEMANA[dataHora.tm_wday]) +
-            ", " +
-            String(dataHora.tm_mday) +
-            " de " +
-            MESES[dataHora.tm_mon] +
-            " de " +
-            String(dataHora.tm_year + 1900);
-    }
-
-    void desenharDigitoFlip(
-        char digito,
-        int posicaoX
-    ) {
-        constexpr int POSICAO_Y = 1;
-        constexpr int LARGURA = 24;
-        constexpr int ALTURA = 44;
-
-        display.drawRoundRect(
-            posicaoX,
-            POSICAO_Y,
-            LARGURA,
-            ALTURA,
-            2,
-            SSD1306_WHITE
-        );
-
-        display.setFont(&FreeSansBold9pt7b);
-        display.setTextSize(2);
-
-        String texto(digito);
-        int16_t x1;
-        int16_t y1;
-        uint16_t largura;
-        uint16_t altura;
-
-        display.getTextBounds(
-            texto,
-            0,
-            0,
-            &x1,
-            &y1,
-            &largura,
-            &altura
-        );
-
-        int cursorX =
-            posicaoX +
-            (LARGURA - largura) / 2 -
-            x1;
-        int linhaBase =
-            POSICAO_Y +
-            (ALTURA - altura) / 2 -
-            y1;
-
-        display.setCursor(cursorX, linhaBase);
-        display.print(texto);
-
-        // O corte no glifo reproduz a divisão horizontal da placa flip.
-        int posicaoDivisaoY = POSICAO_Y + ALTURA / 2;
-        display.drawFastHLine(
-            posicaoX + 1,
-            posicaoDivisaoY,
-            LARGURA - 2,
-            SSD1306_BLACK
-        );
-        display.drawPixel(
-            posicaoX,
-            posicaoDivisaoY,
-            SSD1306_WHITE
-        );
-        display.drawPixel(
-            posicaoX + LARGURA - 1,
-            posicaoDivisaoY,
-            SSD1306_WHITE
-        );
-
-        display.setFont();
-        display.setTextSize(1);
-    }
-
-    void desenharTelaRelogio() {
-        prepararTela();
-
-        char horario[] = "--:--";
-
-        if (horarioRelogioDisponivel) {
-            snprintf(
-                horario,
-                sizeof(horario),
-                "%02d:%02d",
-                ultimaDataHoraRelogio.tm_hour,
-                ultimaDataHoraRelogio.tm_min
-            );
-        }
-
-        desenharDigitoFlip(horario[0], 9);
-        desenharDigitoFlip(horario[1], 35);
-
-        display.fillCircle(64, 15, 2, SSD1306_WHITE);
-        display.fillCircle(64, 31, 2, SSD1306_WHITE);
-
-        desenharDigitoFlip(horario[3], 69);
-        desenharDigitoFlip(horario[4], 95);
-
-        if (exibindoVolumeNaBarraInferior) {
-            constexpr int BARRA_X = 2;
-            constexpr int BARRA_Y = 50;
-            constexpr int BARRA_LARGURA = 78;
-            constexpr int BARRA_ALTURA = 10;
-
-            display.drawRect(
-                BARRA_X,
-                BARRA_Y,
-                BARRA_LARGURA,
-                BARRA_ALTURA,
-                SSD1306_WHITE
-            );
-
-            int larguraPreenchida = map(
-                volumeBarraInferior,
-                VOLUME_MINIMO,
-                VOLUME_MAXIMO,
-                0,
-                BARRA_LARGURA - 4
-            );
-
-            if (larguraPreenchida > 0) {
-                display.fillRect(
-                    BARRA_X + 2,
-                    BARRA_Y + 2,
-                    larguraPreenchida,
-                    BARRA_ALTURA - 4,
-                    SSD1306_WHITE
+            case TelaDisplay::CONFIGURACAO_ALARMES:
+                estado.tela = TelaUiTftPoc::CONFIGURACAO_ALARMES;
+                copiarTextoTft(
+                    estado.titulo,
+                    sizeof(estado.titulo),
+                    dadosConfiguracaoAlarmesAtual.vista ==
+                            VistaConfiguracaoAlarmes::LISTA
+                        ? "ALARMES"
+                        : "ALARME"
                 );
-            }
+                copiarTextoTft(
+                    estado.indicadorTopoDireito,
+                    sizeof(estado.indicadorTopoDireito),
+                    dadosConfiguracaoAlarmesAtual.indicadorTopoDireito
+                );
+                estado.vistaAlarmes = static_cast<VistaAlarmesUiTft>(
+                    dadosConfiguracaoAlarmesAtual.vista
+                );
+                estado.quantidadeItensAlarmes = min(
+                    dadosConfiguracaoAlarmesAtual.quantidadeItens,
+                    static_cast<uint8_t>(MAXIMO_ITENS_ALARMES_UI_TFT)
+                );
+                estado.itemAlarmeSelecionado = min(
+                    dadosConfiguracaoAlarmesAtual.itemSelecionado,
+                    estado.quantidadeItensAlarmes > 0
+                        ? static_cast<uint8_t>(
+                            estado.quantidadeItensAlarmes - 1
+                        )
+                        : static_cast<uint8_t>(0)
+                );
+                for (
+                    uint8_t indice = 0;
+                    indice < estado.quantidadeItensAlarmes;
+                    indice++
+                ) {
+                    copiarTextoTft(
+                        estado.itensAlarmes[indice].titulo,
+                        sizeof(estado.itensAlarmes[indice].titulo),
+                        dadosConfiguracaoAlarmesAtual.itens[indice].titulo
+                    );
+                    copiarTextoTft(
+                        estado.itensAlarmes[indice].subtitulo,
+                        sizeof(estado.itensAlarmes[indice].subtitulo),
+                        dadosConfiguracaoAlarmesAtual.itens[indice].subtitulo
+                    );
+                    copiarTextoTft(
+                        estado.itensAlarmes[indice].valor,
+                        sizeof(estado.itensAlarmes[indice].valor),
+                        dadosConfiguracaoAlarmesAtual.itens[indice].valor
+                    );
+                }
+                copiarTextoTft(
+                    estado.horarioResumoAlarme,
+                    sizeof(estado.horarioResumoAlarme),
+                    dadosConfiguracaoAlarmesAtual.horarioResumo
+                );
+                copiarTextoTft(
+                    estado.resumoAlarme,
+                    sizeof(estado.resumoAlarme),
+                    dadosConfiguracaoAlarmesAtual.resumo
+                );
+                copiarTextoTft(
+                    estado.estadoResumoAlarme,
+                    sizeof(estado.estadoResumoAlarme),
+                    dadosConfiguracaoAlarmesAtual.estadoResumo
+                );
+                copiarTextoTft(
+                    estado.rotuloCampoAlarme,
+                    sizeof(estado.rotuloCampoAlarme),
+                    dadosConfiguracaoAlarmesAtual.rotuloCampo
+                );
+                copiarTextoTft(
+                    estado.valorCampoAlarme,
+                    sizeof(estado.valorCampoAlarme),
+                    dadosConfiguracaoAlarmesAtual.valorCampo
+                );
+                copiarTextoTft(
+                    estado.ajudaCampoAlarme,
+                    sizeof(estado.ajudaCampoAlarme),
+                    dadosConfiguracaoAlarmesAtual.ajudaCampo
+                );
+                estado.campoAtualAlarme =
+                    dadosConfiguracaoAlarmesAtual.campoAtual;
+                estado.quantidadeCamposAlarme =
+                    dadosConfiguracaoAlarmesAtual.quantidadeCampos;
+                estado.mascaraDiasAlarme =
+                    dadosConfiguracaoAlarmesAtual.mascaraDias;
+                estado.diaSelecionadoAlarme =
+                    dadosConfiguracaoAlarmesAtual.diaSelecionado;
+                estado.confirmarExclusaoAlarme =
+                    dadosConfiguracaoAlarmesAtual.confirmarExclusao;
+                estado.erroPersistenciaAlarme =
+                    dadosConfiguracaoAlarmesAtual.erroPersistencia;
+                estado.sequenciaEventoEncoderAlarme =
+                    dadosConfiguracaoAlarmesAtual.sequenciaEventoEncoder;
+                estado.momentoEventoEncoderAlarmeUs =
+                    dadosConfiguracaoAlarmesAtual.momentoEventoEncoderUs;
+                break;
 
-            display.setTextSize(1);
-            display.setCursor(86, 51);
-            display.printf(
-                "%d/%d",
-                volumeBarraInferior,
-                VOLUME_MAXIMO
-            );
-        } else {
-            display.drawFastHLine(
-                2,
-                49,
-                DISPLAY_LARGURA - 4,
-                SSD1306_WHITE
-            );
-
-            desenharFaixaRolante(
-                textoDataRelogio,
-                CONFIGURACAO_DATA_RELOGIO,
-                estadoFaixaDataRelogio
-            );
+            case TelaDisplay::CONFIGURACOES:
+                estado.tela = TelaUiTftPoc::CONFIGURACOES;
+                copiarTextoTft(
+                    estado.titulo,
+                    sizeof(estado.titulo),
+                    dadosConfiguracoesAtual.titulo
+                );
+                copiarTextoTft(
+                    estado.indicadorTopoDireito,
+                    sizeof(estado.indicadorTopoDireito),
+                    dadosConfiguracoesAtual.indicadorTopoDireito
+                );
+                estado.configuracoesEmLista =
+                    dadosConfiguracoesAtual.vista ==
+                    VistaConfiguracoes::LISTA;
+                estado.quantidadeItensConfiguracoes = min(
+                    dadosConfiguracoesAtual.quantidadeItens,
+                    static_cast<uint8_t>(MAXIMO_ITENS_ALARMES_UI_TFT)
+                );
+                estado.itemConfiguracaoSelecionado = min(
+                    dadosConfiguracoesAtual.itemSelecionado,
+                    estado.quantidadeItensConfiguracoes > 0
+                        ? static_cast<uint8_t>(
+                            estado.quantidadeItensConfiguracoes - 1
+                        )
+                        : static_cast<uint8_t>(0)
+                );
+                for (
+                    uint8_t indice = 0;
+                    indice < estado.quantidadeItensConfiguracoes;
+                    indice++
+                ) {
+                    copiarTextoTft(
+                        estado.itensConfiguracoes[indice].titulo,
+                        sizeof(estado.itensConfiguracoes[indice].titulo),
+                        dadosConfiguracoesAtual.itens[indice].titulo
+                    );
+                    copiarTextoTft(
+                        estado.itensConfiguracoes[indice].subtitulo,
+                        sizeof(estado.itensConfiguracoes[indice].subtitulo),
+                        dadosConfiguracoesAtual.itens[indice].subtitulo
+                    );
+                    copiarTextoTft(
+                        estado.itensConfiguracoes[indice].valor,
+                        sizeof(estado.itensConfiguracoes[indice].valor),
+                        dadosConfiguracoesAtual.itens[indice].valor
+                    );
+                }
+                copiarTextoTft(
+                    estado.rotuloConfiguracao,
+                    sizeof(estado.rotuloConfiguracao),
+                    dadosConfiguracoesAtual.rotulo
+                );
+                copiarTextoTft(
+                    estado.valorConfiguracao,
+                    sizeof(estado.valorConfiguracao),
+                    dadosConfiguracoesAtual.valor
+                );
+                copiarTextoTft(
+                    estado.ajudaConfiguracao,
+                    sizeof(estado.ajudaConfiguracao),
+                    dadosConfiguracoesAtual.ajuda
+                );
+                break;
         }
+
     }
+#endif
 
-    bool atualizarTelaRelogio(
-        bool forcarAtualizacao
-    ) {
-        unsigned long agoraMs = millis();
-        bool dataRolou = avancarFaixaRolante(
-            CONFIGURACAO_DATA_RELOGIO,
-            estadoFaixaDataRelogio,
-            agoraMs
-        );
-        bool deveConsultarHorario =
-            forcarAtualizacao ||
-            agoraMs - momentoUltimaConsultaRelogioMs >= 500;
-        bool horarioMudou = false;
 
-        if (deveConsultarHorario) {
-            struct tm dataHora = {};
-            bool disponivelAgora =
-                obterDataHoraLocal(dataHora);
 
-            momentoUltimaConsultaRelogioMs = agoraMs;
-
-            if (!disponivelAgora) {
-                horarioMudou = horarioRelogioDisponivel;
-                horarioRelogioDisponivel = false;
-
-                if (textoDataRelogio != "horario indisponivel") {
-                    textoDataRelogio = "horario indisponivel";
-                    configurarFaixaRolante(
-                        textoDataRelogio,
-                        CONFIGURACAO_DATA_RELOGIO,
-                        estadoFaixaDataRelogio,
-                        true
-                    );
-                    horarioMudou = true;
-                }
-            } else {
-                bool disponibilidadeMudou =
-                    !horarioRelogioDisponivel;
-                bool minutoMudou =
-                    dataHora.tm_min != minutoRelogioExibido;
-                bool diaMudou =
-                    dataHora.tm_yday != diaRelogioExibido;
-
-                ultimaDataHoraRelogio = dataHora;
-                horarioRelogioDisponivel = true;
-
-                if (diaMudou || textoDataRelogio.isEmpty()) {
-                    textoDataRelogio =
-                        formatarDataRelogio(dataHora);
-                    configurarFaixaRolante(
-                        textoDataRelogio,
-                        CONFIGURACAO_DATA_RELOGIO,
-                        estadoFaixaDataRelogio,
-                        true
-                    );
-                }
-
-                minutoRelogioExibido = dataHora.tm_min;
-                diaRelogioExibido = dataHora.tm_yday;
-                horarioMudou =
-                    disponibilidadeMudou ||
-                    minutoMudou ||
-                    diaMudou;
-            }
+    bool atualizarTelaRelogio(bool forcarAtualizacao) {
+        const unsigned long agoraMs = millis();
+        if (
+            !forcarAtualizacao &&
+            agoraMs - momentoUltimaConsultaRelogioMs < 500
+        ) {
+            return false;
         }
 
-        if (forcarAtualizacao || horarioMudou || dataRolou) {
-#if RADIO_UI_TFT_POC
-            if (forcarAtualizacao || horarioMudou) {
-                marcarModeloTftAlterado();
-            }
-#endif
-            desenharTelaRelogio();
+        struct tm dataHora = {};
+        const bool disponivelAgora = obterDataHoraLocal(dataHora);
+        momentoUltimaConsultaRelogioMs = agoraMs;
+
+        bool horarioMudou =
+            disponivelAgora != horarioRelogioDisponivel;
+        if (disponivelAgora) {
+            horarioMudou =
+                horarioMudou ||
+                dataHora.tm_min != minutoRelogioExibido ||
+                dataHora.tm_sec != segundoRelogioExibido ||
+                dataHora.tm_yday != diaRelogioExibido;
+            ultimaDataHoraRelogio = dataHora;
+            minutoRelogioExibido = dataHora.tm_min;
+            segundoRelogioExibido = dataHora.tm_sec;
+            diaRelogioExibido = dataHora.tm_yday;
+        }
+        horarioRelogioDisponivel = disponivelAgora;
+
+        ProximoAlarme proximoAgora;
+        obterProximoAlarme(proximoAgora);
+        const bool proximoMudou =
+            proximoAgora.disponivel != proximoAlarmeRelogio.disponivel ||
+            proximoAgora.hora != proximoAlarmeRelogio.hora ||
+            proximoAgora.minuto != proximoAlarmeRelogio.minuto ||
+            strcmp(proximoAgora.recorrencia, proximoAlarmeRelogio.recorrencia) != 0 ||
+            strcmp(proximoAgora.fonte, proximoAlarmeRelogio.fonte) != 0;
+        if (proximoMudou) {
+            proximoAlarmeRelogio = proximoAgora;
+        }
+
+        const StatusAlarmes statusAgora = obterStatusAlarmes();
+        const bool statusMudou =
+            statusAgora.quantidade != statusAlarmesRelogio.quantidade ||
+            statusAgora.quantidadeAtivos !=
+                statusAlarmesRelogio.quantidadeAtivos;
+        if (statusMudou) {
+            statusAlarmesRelogio = statusAgora;
+        }
+
+        const bool rtcAgora = relogioRtcDisponivel();
+        const bool rtcMudou = rtcAgora != rtcRelogioRespondendo;
+        rtcRelogioRespondendo = rtcAgora;
+
+        const bool ntpAgora = ultimaSincronizacaoNtpValida();
+        const bool ntpMudou = ntpAgora != sincronizacaoNtpRelogioValida;
+        sincronizacaoNtpRelogioValida = ntpAgora;
+
+        if (
+            forcarAtualizacao || horarioMudou || proximoMudou ||
+            statusMudou || rtcMudou || ntpMudou
+        ) {
+            marcarModeloTftAlterado();
             return true;
         }
-
         return false;
     }
 
-    bool atualizarTextoDiagnostico(
-        bool forcarAtualizacao = false
-    ) {
-        unsigned long agoraMs = millis();
-
+    bool atualizarDadosRadioWeb(bool forcarAtualizacao = false) {
+        constexpr unsigned long INTERVALO_ATUALIZACAO_MS = 1000;
+        const unsigned long agoraMs = millis();
         if (
             !forcarAtualizacao &&
-            agoraMs - momentoUltimaAtualizacaoDiagnosticoMs <
-                INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS
+            agoraMs - momentoUltimaAtualizacaoDadosWebMs <
+                INTERVALO_ATUALIZACAO_MS
         ) {
             return false;
         }
+        momentoUltimaAtualizacaoDadosWebMs = agoraMs;
 
-        momentoUltimaAtualizacaoDiagnosticoMs = agoraMs;
-        StatusAudio status = obterStatusAudio();
-        bool wifiConectadoAgora = WiFi.status() == WL_CONNECTED;
-        int16_t wifiRssiAgora = wifiConectadoAgora ? WiFi.RSSI() : 0;
-        String wifiBssidAgora = wifiConectadoAgora
-            ? WiFi.BSSIDstr()
+        const StatusAudio status = obterStatusAudio();
+        const bool conectado = WiFi.status() == WL_CONNECTED;
+        const int16_t rssi = conectado ? WiFi.RSSI() : 0;
+        const uint8_t canal = conectado
+            ? static_cast<uint8_t>(WiFi.channel())
+            : 0;
+        const String ssid = conectado ? WiFi.SSID() : String();
+        const String bssid = conectado ? WiFi.BSSIDstr() : String();
+        const String ip = conectado
+            ? WiFi.localIP().toString()
             : String();
-#if RADIO_UI_TFT_POC
-        bool dadosTftMudaram =
+
+        const bool mudou =
             statusAudioTftMudou(status) ||
-            wifiConectadoAgora != wifiTftConectado ||
-            wifiRssiAgora != wifiTftRssi;
+            conectado != wifiTftConectado ||
+            rssi != wifiTftRssi ||
+            canal != wifiTftCanal ||
+            strcmp(ssid.c_str(), wifiTftSsid) != 0 ||
+            strcmp(bssid.c_str(), wifiTftBssid) != 0 ||
+            strcmp(ip.c_str(), wifiTftIp) != 0;
 
         ultimoStatusAudioTft = status;
         statusAudioTftDisponivel = true;
-        wifiTftConectado = wifiConectadoAgora;
-        wifiTftRssi = wifiRssiAgora;
-        if (dadosTftMudaram) {
+        wifiTftConectado = conectado;
+        wifiTftRssi = rssi;
+        wifiTftCanal = canal;
+        strlcpy(wifiTftSsid, ssid.c_str(), sizeof(wifiTftSsid));
+        strlcpy(wifiTftBssid, bssid.c_str(), sizeof(wifiTftBssid));
+        strlcpy(wifiTftIp, ip.c_str(), sizeof(wifiTftIp));
+
+        if (mudou) {
             marcarModeloTftAlterado();
         }
-#endif
-        String novoTextoDiagnostico =
-            montarTextoDiagnostico(
-                status,
-                wifiConectadoAgora,
-                wifiRssiAgora,
-                wifiBssidAgora
-            );
-        String novoTextoBuffer =
-            formatarBufferParaBarraInferior(status);
-
-        bool barraInferiorMudou =
-            novoTextoBuffer != textoBufferBarraInferior;
-
-        textoBufferBarraInferior = novoTextoBuffer;
-
-        if (novoTextoDiagnostico == textoDiagnostico) {
-            return barraInferiorMudou;
-        }
-
-        textoDiagnostico = novoTextoDiagnostico;
-        configurarFaixaRolante(
-            textoDiagnostico,
-            CONFIGURACAO_FAIXA_DIAGNOSTICO,
-            estadoFaixaDiagnostico,
-            false
-        );
-
-        return true;
+        return mudou;
     }
 
-    void desenharBarraInferior() {
-        constexpr int topoBarraPx = 44;
-        constexpr int alturaBarraPx =
-            DISPLAY_ALTURA - topoBarraPx;
-        constexpr int margemHorizontalPx = 2;
-
-        String textoDireita = exibindoVolumeNaBarraInferior
-            ? String(volumeBarraInferior) +
-                "/" + String(VOLUME_MAXIMO)
-            : String(indiceRadioAtual + 1) +
-                "/" + String(quantidadeRadiosAtual);
-
-        display.fillRect(
-            0,
-            topoBarraPx,
-            DISPLAY_LARGURA,
-            alturaBarraPx,
-            SSD1306_WHITE
-        );
-        display.setFont(&FreeSansBold9pt7b);
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_BLACK);
-
-        int16_t x1;
-        int16_t y1;
-        uint16_t largura;
-        uint16_t altura;
-
-        if (exibindoVolumeNaBarraInferior) {
-            constexpr int barraX = 2;
-            constexpr int barraY = 49;
-            constexpr int barraLargura = 70;
-            constexpr int barraAltura = 10;
-
-            display.drawRect(
-                barraX,
-                barraY,
-                barraLargura,
-                barraAltura,
-                SSD1306_BLACK
-            );
-
-            int larguraPreenchida = map(
-                volumeBarraInferior,
-                VOLUME_MINIMO,
-                VOLUME_MAXIMO,
-                0,
-                barraLargura - 4
-            );
-
-            if (larguraPreenchida > 0) {
-                display.fillRect(
-                    barraX + 2,
-                    barraY + 2,
-                    larguraPreenchida,
-                    barraAltura - 4,
-                    SSD1306_BLACK
-                );
-            }
-        } else {
-            display.getTextBounds(
-                textoBufferBarraInferior,
-                0,
-                0,
-                &x1,
-                &y1,
-                &largura,
-                &altura
-            );
-            int linhaBaseBufferPx =
-                topoBarraPx +
-                (alturaBarraPx - altura) / 2 -
-                y1;
-            display.setCursor(
-                margemHorizontalPx - x1,
-                linhaBaseBufferPx
-            );
-            display.print(textoBufferBarraInferior);
-        }
-
-        display.getTextBounds(
-            textoDireita,
-            0,
-            0,
-            &x1,
-            &y1,
-            &largura,
-            &altura
-        );
-        int linhaBaseTextoPx =
-            topoBarraPx +
-            (alturaBarraPx - altura) / 2 -
-            y1;
-        display.setCursor(
-            DISPLAY_LARGURA - margemHorizontalPx - largura - x1,
-            linhaBaseTextoPx
-        );
-        display.print(textoDireita);
-
-        display.setFont();
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-    }
-
-    void desenharSelecaoNaFaixaCentral() {
-        display.setTextSize(2);
-
-        int16_t x1;
-        int16_t y1;
-        uint16_t largura;
-        uint16_t altura;
-
-        display.getTextBounds(
-            nomeRadioAtual,
-            0,
-            0,
-            &x1,
-            &y1,
-            &largura,
-            &altura
-        );
-
-        if (largura <= DISPLAY_LARGURA - 4) {
-            escreverCentralizado(
-                nomeRadioAtual,
-                22,
-                2
-            );
-        } else {
-            escreverCentralizado(
-                nomeRadioAtual,
-                27,
-                1
-            );
-        }
-    }
-
-    void desenharTelaRadio() {
-        prepararTela();
-
-        desenharFaixaRolante(
-            textoDiagnostico,
-            CONFIGURACAO_FAIXA_DIAGNOSTICO,
-            estadoFaixaDiagnostico
-        );
-
-        if (modoFaixaCentral == ModoFaixaCentral::SELECAO) {
-            desenharSelecaoNaFaixaCentral();
-        } else if (modoFaixaCentral == ModoFaixaCentral::ESTADO) {
-            escreverCentralizado(
-                nomeRadioAtual,
-                27,
-                1
-            );
-        } else {
-            desenharFaixaRolante(
-                nomeRadioAtual,
-                CONFIGURACAO_FAIXA_NOME_RADIO,
-                estadoFaixaNomeRadio
-            );
-        }
-
-        desenharBarraInferior();
-
-    }
-
-    void desenharBarraVolumeRadioFm() {
-        constexpr int BARRA_X = 2;
-        constexpr int BARRA_Y = 51;
-        constexpr int BARRA_LARGURA = 78;
-        constexpr int BARRA_ALTURA = 10;
-
-        display.drawRect(
-            BARRA_X,
-            BARRA_Y,
-            BARRA_LARGURA,
-            BARRA_ALTURA,
-            SSD1306_WHITE
-        );
-
-        int larguraPreenchida = map(
-            volumeBarraInferior,
-            VOLUME_MINIMO,
-            VOLUME_MAXIMO,
-            0,
-            BARRA_LARGURA - 4
-        );
-
-        if (larguraPreenchida > 0) {
-            display.fillRect(
-                BARRA_X + 2,
-                BARRA_Y + 2,
-                larguraPreenchida,
-                BARRA_ALTURA - 4,
-                SSD1306_WHITE
-            );
-        }
-
-        display.setCursor(86, 52);
-        display.printf(
-            "%d/%d",
-            volumeBarraInferior,
-            VOLUME_MAXIMO
-        );
-    }
-
-    String formatarNivelRadioFm() {
-        if (!qualidadeRadioFmValida) {
-            return "SINAL --";
-        }
-
-        int16_t nivel = nivelRadioFmDecimosDbuv;
-        bool negativo = nivel < 0;
-        uint16_t absoluto = static_cast<uint16_t>(
-            negativo ? -static_cast<int32_t>(nivel) : nivel
-        );
-
-        return
-            String("SINAL ") +
-            (negativo ? "-" : "") +
-            String(absoluto / 10) +
-            "." +
-            String(absoluto % 10) +
-            " dBuV";
-    }
-
-    void desenharTelaRadioFm() {
-        prepararTela();
-        escreverCentralizado("RADIO FM", 0, 1);
-
-        char frequencia[12];
-
-        if (frequenciaRadioFm10kHz > 0) {
-            snprintf(
-                frequencia,
-                sizeof(frequencia),
-                "%u.%02u",
-                frequenciaRadioFm10kHz / 100,
-                frequenciaRadioFm10kHz % 100
-            );
-        } else {
-            snprintf(frequencia, sizeof(frequencia), "--.--");
-        }
-
-        escreverCentralizado(frequencia, 13, 2);
-        escreverCentralizado("MHz", 31, 1);
-
-        String textoCentral = !estadoRadioFm.isEmpty()
-            ? estadoRadioFm
-            : nomeEstacaoRadioFm;
-
-        if (textoCentral.isEmpty()) {
-            textoCentral = "FM";
-        }
-
-        if (textoCentral.length() > 20) {
-            textoCentral = textoCentral.substring(0, 17) + "...";
-        }
-
-        escreverCentralizado(textoCentral, 40, 1);
-
-        if (exibindoVolumeNaBarraInferior) {
-            desenharBarraVolumeRadioFm();
-        } else {
-            display.drawFastHLine(
-                2,
-                49,
-                DISPLAY_LARGURA - 4,
-                SSD1306_WHITE
-            );
-            escreverCentralizado(formatarNivelRadioFm(), 54, 1);
-        }
-    }
-
-    void desenharTelaMensagem() {
-        prepararTela();
-        escreverCentralizado(mensagemAtual, 28, 1);
-    }
-
-    void desenharTelaAlarme() {
-        prepararTela();
-        escreverCentralizado("ALARME", 2, 2);
-
-        String nomeExibido = nomeAlarmeAtual;
-
-        if (nomeExibido.length() > 19) {
-            nomeExibido = nomeExibido.substring(0, 16) + "...";
-        }
-
-        escreverCentralizado(nomeExibido, 27, 1);
-        display.fillRect(
-            0,
-            40,
-            DISPLAY_LARGURA,
-            DISPLAY_ALTURA - 40,
-            SSD1306_WHITE
-        );
-        display.setTextColor(SSD1306_BLACK);
-        escreverCentralizado(
-            "VOLUME " + String(volumeAlarmeAtual) + "/" +
-                String(VOLUME_MAXIMO),
-            42,
-            1
-        );
-        escreverCentralizado("CLIQUE PARA PARAR", 53, 1);
-        display.setTextColor(SSD1306_WHITE);
-    }
-
-    void desenharTelaConfiguracaoWifi() {
-        prepararTela();
-        display.setTextSize(1);
-        display.setCursor(9, 0);
-        display.println("CONECTE-SE A REDE");
-        display.setTextSize(2);
-        display.setCursor(10, 12);
-        display.println("RADIO-WEB");
-        display.setTextSize(1);
-        display.setCursor(12, 34);
-        display.println("ABRA NO NAVEGADOR");
-        display.setCursor(31, 50);
-        display.println("192.168.4.1");
-    }
-
-    void desenharTelaAtual() {
-        switch (telaAtual) {
-            case TelaDisplay::MENSAGEM:
-                desenharTelaMensagem();
-                break;
-
-            case TelaDisplay::CONFIGURACAO_WIFI:
-                desenharTelaConfiguracaoWifi();
-                break;
-
-            case TelaDisplay::RADIO:
-                desenharTelaRadio();
-                break;
-
-            case TelaDisplay::RADIO_FM:
-                desenharTelaRadioFm();
-                break;
-
-            case TelaDisplay::RELOGIO:
-                desenharTelaRelogio();
-                break;
-
-            case TelaDisplay::ALARME:
-                desenharTelaAlarme();
-                break;
-        }
-    }
-
-    // Depois que a tarefa existe, as APIs apenas atualizam o modelo e a
-    // acordam. Nenhuma chamada do loop fica esperando a transferência I2C.
     void solicitarApresentacao() {
         atualizacaoPendente = true;
-#if RADIO_UI_TFT_POC
         marcarModeloTftAlterado();
-#endif
-
         if (tarefaDisplayHandle != nullptr) {
             xTaskNotifyGive(tarefaDisplayHandle);
-            return;
         }
-
-        // Caminho usado somente durante o setup ou se a tarefa não puder ser
-        // criada. Nesse caso não há outro escritor do framebuffer.
-        desenharTelaAtual();
-        display.display();
-        atualizacaoPendente = false;
     }
 
     void mostrarTextoEstaticoNaFaixaCentral(
         const String& texto,
+        const char* nomeRadioTft,
+        const char* estadoRadioTft,
         int indiceAtual,
         int quantidadeRadios,
         ModoFaixaCentral modo
@@ -1344,28 +793,14 @@ namespace {
         }
 
         nomeRadioAtual = texto;
+        nomeRadioWebTftAtual = nomeRadioTft != nullptr ? nomeRadioTft : "";
+        estadoRadioWebTftAtual =
+            estadoRadioTft != nullptr ? estadoRadioTft : "";
         indiceRadioAtual = indiceAtual;
         quantidadeRadiosAtual = quantidadeRadios;
-
-        bool entrandoNaTelaRadio =
-            telaAtual != TelaDisplay::RADIO;
-
         telaAtual = TelaDisplay::RADIO;
         exibindoVolumeNaBarraInferior = false;
         modoFaixaCentral = modo;
-
-        if (
-            entrandoNaTelaRadio ||
-            estadoFaixaDiagnostico.larguraTextoPx == 0
-        ) {
-            configurarFaixaRolante(
-                textoDiagnostico,
-                CONFIGURACAO_FAIXA_DIAGNOSTICO,
-                estadoFaixaDiagnostico,
-                true
-            );
-        }
-
         solicitarApresentacao();
     }
 
@@ -1388,38 +823,25 @@ namespace {
 
 void iniciarDisplay() {
     mutexDisplay = xSemaphoreCreateMutex();
-
     if (mutexDisplay == nullptr) {
         Serial.println(
-            "Falha ao criar a protecao do display; usando o loop principal."
+            "Falha ao criar a protecao do TFT; usando o loop principal."
         );
-    }
-
-    Wire.begin(
-        PIN_BARRAMENTO_I2C_SDA,
-        PIN_BARRAMENTO_I2C_SCL,
-        FREQUENCIA_BARRAMENTO_I2C_HZ
-    );
-
-    disponivel = display.begin(
-        SSD1306_SWITCHCAPVCC,
-        DISPLAY_ENDERECO
-    );
-
-    if (!disponivel) {
-        Serial.println(
-            "Falha ao inicializar o display OLED."
-        );
-
-        return;
     }
 
 #if RADIO_UI_TFT_POC
     tftPocDisponivel = iniciarUiTftPoc();
+    disponivel = tftPocDisponivel;
     momentoAlteracaoModeloTftMs = millis();
+#else
+    disponivel = false;
 #endif
 
-    prepararTela();
+    if (!disponivel) {
+        Serial.println("Falha ao inicializar o display TFT.");
+        return;
+    }
+
     mostrarMensagem("Inicializando");
 
     if (mutexDisplay == nullptr) {
@@ -1439,13 +861,12 @@ void iniciarDisplay() {
 
     if (criada != pdPASS) {
         tarefaDisplayHandle = nullptr;
-
         Serial.println(
-            "Falha ao criar o servico do display; usando o loop principal."
+            "Falha ao criar o servico do TFT; usando o loop principal."
         );
     } else {
         Serial.printf(
-            "Servico do display iniciado no nucleo %d, intervalo %lu ms.\n",
+            "Servico do TFT iniciado no nucleo %d, intervalo %lu ms.\n",
             ARDUINO_RUNNING_CORE,
             static_cast<unsigned long>(
                 INTERVALO_SERVICO_DISPLAY_MS
@@ -1479,59 +900,18 @@ void mostrarNomeRadio(
     int quantidadeRadios
 ) {
     BloqueioDisplay bloqueio;
-
-    if (!bloqueio.foiAdquirido()) {
+    if (!bloqueio.foiAdquirido() || !disponivel) {
         return;
     }
-
-    if (!disponivel) {
-        return;
-    }
-
-    bool radioMudou =
-        nomeRadioAtual != nome ||
-        indiceRadioAtual != indiceAtual;
 
     nomeRadioAtual = nome;
+    nomeRadioWebTftAtual = nome;
+    estadoRadioWebTftAtual = "REPRODUZINDO";
     indiceRadioAtual = indiceAtual;
     quantidadeRadiosAtual = quantidadeRadios;
-
-    bool entrandoNaTelaRadio =
-        telaAtual != TelaDisplay::RADIO;
-    bool faixaCentralEstavaEstatica =
-        modoFaixaCentral != ModoFaixaCentral::ROLAGEM;
-
     telaAtual = TelaDisplay::RADIO;
     exibindoVolumeNaBarraInferior = false;
     modoFaixaCentral = ModoFaixaCentral::ROLAGEM;
-
-    if (
-        entrandoNaTelaRadio ||
-        estadoFaixaDiagnostico.larguraTextoPx == 0
-    ) {
-        configurarFaixaRolante(
-            textoDiagnostico,
-            CONFIGURACAO_FAIXA_DIAGNOSTICO,
-            estadoFaixaDiagnostico,
-            true
-        );
-    }
-
-    if (
-        radioMudou ||
-        faixaCentralEstavaEstatica ||
-        estadoFaixaNomeRadio.larguraTextoPx == 0
-    ) {
-        configurarFaixaRolante(
-            nomeRadioAtual,
-            CONFIGURACAO_FAIXA_NOME_RADIO,
-            estadoFaixaNomeRadio,
-            true
-        );
-    } else {
-        estadoFaixaNomeRadio.momentoUltimoPassoMs = millis();
-    }
-
     solicitarApresentacao();
 }
 
@@ -1548,6 +928,8 @@ void mostrarSelecaoRadio(
 
     mostrarTextoEstaticoNaFaixaCentral(
         nome,
+        nome.c_str(),
+        "PRÉ-SELEÇÃO · B PARA CONECTAR",
         indiceSelecionado,
         quantidadeRadios,
         ModoFaixaCentral::SELECAO
@@ -1556,6 +938,7 @@ void mostrarSelecaoRadio(
 
 void mostrarEstadoRadio(
     const String& estado,
+    const char* nomeRadio,
     int indiceAtual,
     int quantidadeRadios
 ) {
@@ -1567,10 +950,34 @@ void mostrarEstadoRadio(
 
     mostrarTextoEstaticoNaFaixaCentral(
         estado,
+        nomeRadio,
+        estado.c_str(),
         indiceAtual,
         quantidadeRadios,
         ModoFaixaCentral::ESTADO
     );
+}
+
+void configurarDetalhesRadioWeb(bool exibir) {
+#if RADIO_UI_TFT_POC
+    BloqueioDisplay bloqueio;
+
+    if (
+        !bloqueio.foiAdquirido() ||
+        !disponivel ||
+        detalhesRedeWebTft == exibir
+    ) {
+        return;
+    }
+
+    detalhesRedeWebTft = exibir;
+    marcarModeloTftAlterado();
+    if (tarefaDisplayHandle != nullptr) {
+        xTaskNotifyGive(tarefaDisplayHandle);
+    }
+#else
+    (void)exibir;
+#endif
 }
 
 void mostrarRadioFm(const DadosDisplayRadioFm& dados) {
@@ -1596,6 +1003,11 @@ void mostrarRadioFm(const DadosDisplayRadioFm& dados) {
     buscaRadioFmConcluida = dados.buscaConcluida;
     qualidadeRadioFmValida = dados.qualidadeValida;
     nivelRadioFmDecimosDbuv = dados.nivelDecimosDbuv;
+    larguraBandaRadioFmValida = dados.larguraBandaValida;
+    larguraBandaRadioFmDecimosKHz = dados.larguraBandaDecimosKHz;
+    pilotoEstereoRadioFm = dados.pilotoEstereo;
+    pilotoEstereoRadioFmValido = dados.pilotoEstereoValido;
+    detalhesTecnicosRadioFm = dados.detalhesTecnicos;
     sequenciaEventoEncoderFm = dados.sequenciaEventoEncoder;
     momentoEventoEncoderFmUs = dados.momentoEventoEncoderUs;
     telaAtual = TelaDisplay::RADIO_FM;
@@ -1617,18 +1029,85 @@ void mostrarVolume(
     }
 
     volumeBarraInferior = volume;
-    exibindoVolumeNaBarraInferior = true;
-
-    if (
+    const bool mostrarSobreposicao =
         telaAtual == TelaDisplay::RADIO ||
-        telaAtual == TelaDisplay::RADIO_FM ||
-        telaAtual == TelaDisplay::RELOGIO
-    ) {
+        telaAtual == TelaDisplay::RADIO_FM;
+    exibindoVolumeNaBarraInferior = mostrarSobreposicao;
+
+    if (mostrarSobreposicao) {
         solicitarApresentacao();
     }
 }
 
+void mostrarConfiguracaoAlarmes(
+    const DadosDisplayConfiguracaoAlarmes& dados
+) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido() || !disponivel) {
+        return;
+    }
+
+    dadosConfiguracaoAlarmesAtual = dados;
+    telaAtual = TelaDisplay::CONFIGURACAO_ALARMES;
+    exibindoVolumeNaBarraInferior = false;
+    solicitarApresentacao();
+}
+
+void mostrarConfiguracoes(const DadosDisplayConfiguracoes& dados) {
+    BloqueioDisplay bloqueio;
+
+    if (!bloqueio.foiAdquirido() || !disponivel) {
+        return;
+    }
+
+    dadosConfiguracoesAtual = dados;
+    telaAtual = TelaDisplay::CONFIGURACOES;
+    exibindoVolumeNaBarraInferior = false;
+    solicitarApresentacao();
+}
+
+void configurarTemaInterfaceTft(TemaUiTft tema) {
+#if RADIO_UI_TFT_POC
+    BloqueioDisplay bloqueio;
+    if (!bloqueio.foiAdquirido() || temaTftAtual == tema) {
+        return;
+    }
+    temaTftAtual = tema;
+    marcarModeloTftAlterado();
+    if (tarefaDisplayHandle != nullptr) {
+        xTaskNotifyGive(tarefaDisplayHandle);
+    }
+#else
+    (void)tema;
+#endif
+}
+
+void configurarTftLigado(bool ligado) {
+#if RADIO_UI_TFT_POC
+    BloqueioDisplay bloqueio;
+    if (!bloqueio.foiAdquirido() || tftLigadoAtual == ligado) {
+        return;
+    }
+    tftLigadoAtual = ligado;
+    marcarModeloTftAlterado();
+    if (tarefaDisplayHandle != nullptr) {
+        xTaskNotifyGive(tarefaDisplayHandle);
+    }
+#else
+    (void)ligado;
+#endif
+}
+
 void mostrarTelaRelogio() {
+    ProximoAlarme proximo;
+    obterProximoAlarme(proximo);
+    StatusAlarmes statusAlarmes = obterStatusAlarmes();
+    // Usa o estado já conhecido pelo driver; não cria uma consulta I2C
+    // adicional durante a transição da interface.
+    bool rtcRespondendo = relogioRtcDisponivel();
+    bool ntpValido = ultimaSincronizacaoNtpValida();
+
     BloqueioDisplay bloqueio;
 
     if (!bloqueio.foiAdquirido()) {
@@ -1641,9 +1120,14 @@ void mostrarTelaRelogio() {
 
     telaAtual = TelaDisplay::RELOGIO;
     minutoRelogioExibido = -1;
+    segundoRelogioExibido = -1;
     diaRelogioExibido = -1;
     momentoUltimaConsultaRelogioMs = 0;
     horarioRelogioDisponivel = false;
+    proximoAlarmeRelogio = proximo;
+    statusAlarmesRelogio = statusAlarmes;
+    rtcRelogioRespondendo = rtcRespondendo;
+    sincronizacaoNtpRelogioValida = ntpValido;
     exibindoVolumeNaBarraInferior = false;
     solicitarApresentacao();
 }
@@ -1690,70 +1174,31 @@ void processarDisplay() {
         return;
     }
 
-    bool apresentar = false;
 #if RADIO_UI_TFT_POC
     bool processarTft = false;
-    EstadoUiTftPoc estadoTft;
+    static EstadoUiTftPoc estadoTft;
 #endif
 
     {
         BloqueioDisplay bloqueio;
-
         if (!bloqueio.foiAdquirido() || !disponivel) {
             return;
         }
 
-        bool forcarAtualizacao = atualizacaoPendente;
+        const bool forcarAtualizacao = atualizacaoPendente;
         atualizacaoPendente = false;
 
         if (telaAtual == TelaDisplay::RELOGIO) {
-            apresentar = atualizarTelaRelogio(forcarAtualizacao);
+            atualizarTelaRelogio(forcarAtualizacao);
         } else if (telaAtual == TelaDisplay::RADIO) {
-            unsigned long agoraMs = millis();
-            bool precisaRedesenhar = forcarAtualizacao;
-
-            if (atualizarTextoDiagnostico()) {
-                precisaRedesenhar = true;
+            if (atualizarHorarioTopoWeb()) {
+                marcarModeloTftAlterado();
             }
-
-            if (
-                avancarFaixaRolante(
-                    CONFIGURACAO_FAIXA_DIAGNOSTICO,
-                    estadoFaixaDiagnostico,
-                    agoraMs
-                )
-            ) {
-                precisaRedesenhar = true;
-            }
-
-            if (
-                modoFaixaCentral == ModoFaixaCentral::ROLAGEM &&
-                avancarFaixaRolante(
-                    CONFIGURACAO_FAIXA_NOME_RADIO,
-                    estadoFaixaNomeRadio,
-                    agoraMs
-                )
-            ) {
-                precisaRedesenhar = true;
-            }
-
-            if (precisaRedesenhar) {
-                desenharTelaRadio();
-                apresentar = true;
-            }
+            atualizarDadosRadioWeb(forcarAtualizacao);
         } else if (telaAtual == TelaDisplay::RADIO_FM) {
-#if RADIO_UI_TFT_POC
             if (atualizarHorarioTopoFm()) {
                 marcarModeloTftAlterado();
             }
-#endif
-            if (forcarAtualizacao) {
-                desenharTelaRadioFm();
-                apresentar = true;
-            }
-        } else if (forcarAtualizacao) {
-            desenharTelaAtual();
-            apresentar = true;
         }
 
 #if RADIO_UI_TFT_POC
@@ -1761,7 +1206,7 @@ void processarDisplay() {
             tftPocDisponivel &&
             revisaoTftProcessada != revisaoModeloTft
         ) {
-            estadoTft = criarEstadoUiTftPoc();
+            preencherEstadoUiTftPoc(estadoTft);
             revisaoTftProcessada = revisaoModeloTft;
             processarTft = true;
         }
@@ -1770,17 +1215,8 @@ void processarDisplay() {
 
 #if RADIO_UI_TFT_POC
     if (processarTft) {
-        // SPI e renderizacao ficam fora do mutex do modelo. Nenhum encoder,
-        // callback ou tarefa de audio espera o TFT terminar a transferencia.
-        // O TFT vem antes do flush integral do OLED para refletir o evento sem
-        // herdar a latencia da transferencia I2C legada.
+        // SPI e renderizacao permanecem fora do mutex do modelo.
         processarUiTftPoc(estadoTft);
     }
 #endif
-
-    if (apresentar) {
-        // A transferência integral do framebuffer é a parte lenta. Ela fica
-        // fora do mutex do modelo para os encoders nunca aguardarem o I2C.
-        display.display();
-    }
 }

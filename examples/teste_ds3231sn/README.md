@@ -35,8 +35,8 @@ correta.
 | `SDA` | `GPIO17` |
 | `SCL` | `GPIO18` |
 
-O RTC compartilha o I²C com o OLED: o DS3231SN responde em `0x68` e o OLED
-em `0x3C`. O sketch detecta ambos, mas não escreve no display. Alimente o
+O DS3231SN responde em `0x68`. O sketch lista os dispositivos encontrados no
+barramento. Alimente o
 módulo em 3,3 V para que os pull-ups de SDA e SCL não levem 5 V ao ESP32-S3.
 
 Confira o tipo de bateria e o circuito do módulo antes de instalá-la. Módulos

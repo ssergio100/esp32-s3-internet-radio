@@ -8,6 +8,9 @@ struct ConfiguracaoChime {
     uint8_t som = 1;
     uint8_t volume = 1;
     uint8_t intervaloMinutos = 60;
+    bool silencioNoturno = false;
+    uint8_t inicioSilencioHora = 22;
+    uint8_t fimSilencioHora = 7;
 };
 
 // Carrega a configuração global mantida no mesmo documento dos alarmes.

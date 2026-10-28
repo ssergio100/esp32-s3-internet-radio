@@ -16,6 +16,11 @@ struct StatusRadioFm {
     uint16_t frequencia10kHz = 0;
     int16_t nivelDecimosDbuv = 0;
     bool qualidadeValida = false;
+    // Valor real da leitura de qualidade do TEF6686, em 0,1 kHz.
+    uint16_t larguraBandaDecimosKHz = 0;
+    bool larguraBandaValida = false;
+    bool pilotoEstereo = false;
+    bool pilotoEstereoValido = false;
     char nomeEstacao[25] = {};
     char radioTexto[193] = {};
     bool nomeEstacaoValido = false;
@@ -26,8 +31,9 @@ struct StatusRadioFm {
     uint32_t revisao = 0;
 };
 
-// Inicializa somente o receptor TEF6686. Display, encoders, Wi-Fi e o restante
-// do equipamento permanecem sob responsabilidade do programa principal.
+// Eleva GPA4, inicializa somente o receptor TEF6686 e preserva a frequência
+// anterior em RAM. Display, encoders, Wi-Fi e o restante permanecem sob
+// responsabilidade do programa principal.
 bool iniciarRadioFm(int volumeInterface);
 
 bool ativarRadioFm(int volumeInterface);

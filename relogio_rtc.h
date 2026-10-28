@@ -3,7 +3,7 @@
 
 #include <time.h>
 
-// Inicializa o DS3231 no barramento I2C já iniciado pelo display.
+// Inicializa o DS3231 no barramento I2C compartilhado do equipamento.
 // A ausência do componente não impede o restante do rádio de funcionar.
 bool iniciarRelogioRtc();
 

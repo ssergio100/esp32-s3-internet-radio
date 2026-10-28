@@ -55,8 +55,15 @@ bool copiarDadosAlarme(
     JsonVariantConst arquivo = origem["arquivo"];
     JsonVariantConst radioId = origem["radioId"];
     JsonVariantConst radioFm = origem["radioFm"];
+    JsonVariantConst ultimaEstacaoWeb =
+        origem["usarUltimaEstacaoWeb"];
+    JsonVariantConst somDfPlayer = origem["somDfPlayer"];
+    JsonVariantConst duracaoMinutos = origem["duracaoMinutos"];
     bool usaRadioFm =
         radioFm.is<bool>() && radioFm.as<bool>();
+    bool usaUltimaEstacaoWeb =
+        ultimaEstacaoWeb.is<bool>() &&
+        ultimaEstacaoWeb.as<bool>();
     bool possuiDias = origem["dias"].is<JsonArrayConst>();
     bool possuiData = origem["data"].is<const char*>();
 
@@ -76,7 +83,36 @@ bool copiarDadosAlarme(
             !radioFm.isNull() &&
             (!radioFm.is<bool>() || !usaRadioFm)
         ) ||
-        (usaRadioFm && !radioId.isNull()) ||
+        (
+            !ultimaEstacaoWeb.isNull() &&
+            (
+                !ultimaEstacaoWeb.is<bool>() ||
+                !usaUltimaEstacaoWeb
+            )
+        ) ||
+        (
+            !somDfPlayer.isNull() &&
+            (
+                !somDfPlayer.is<int>() ||
+                somDfPlayer.as<int>() < 1 ||
+                somDfPlayer.as<int>() > 255
+            )
+        ) ||
+        (
+            !duracaoMinutos.isNull() &&
+            (
+                !duracaoMinutos.is<int>() ||
+                duracaoMinutos.as<int>() < 1 ||
+                duracaoMinutos.as<int>() >
+                    DURACAO_MAXIMA_CONFIGURAVEL_ALARME_MINUTOS
+            )
+        ) ||
+        (
+            static_cast<uint8_t>(usaRadioFm) +
+            static_cast<uint8_t>(radioId.is<uint32_t>()) +
+            static_cast<uint8_t>(usaUltimaEstacaoWeb) +
+            static_cast<uint8_t>(somDfPlayer.is<int>()) > 1
+        ) ||
         (
             !origem["ativo"].isNull() &&
             !origem["ativo"].is<bool>()
@@ -110,6 +146,18 @@ bool copiarDadosAlarme(
 
     if (usaRadioFm) {
         destino["radioFm"] = true;
+    }
+
+    if (usaUltimaEstacaoWeb) {
+        destino["usarUltimaEstacaoWeb"] = true;
+    }
+
+    if (somDfPlayer.is<int>()) {
+        destino["somDfPlayer"] = somDfPlayer;
+    }
+
+    if (duracaoMinutos.is<int>()) {
+        destino["duracaoMinutos"] = duracaoMinutos;
     }
 
     return true;
