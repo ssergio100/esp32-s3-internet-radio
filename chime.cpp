@@ -19,6 +19,9 @@ ConfiguracaoChime configuracaoPadrao() {
     configuracao.som = 1;
     configuracao.volume = VOLUME_PADRAO;
     configuracao.intervaloMinutos = 60;
+    configuracao.silencioNoturno = false;
+    configuracao.inicioSilencioHora = 22;
+    configuracao.fimSilencioHora = 7;
     return configuracao;
 }
 
@@ -28,7 +31,34 @@ bool configuracaoValida(const ConfiguracaoChime& configuracao) {
         configuracao.volume >= 1 &&
         configuracao.volume <= VOLUME_MAXIMO &&
         configuracao.intervaloMinutos >= 1 &&
-        configuracao.intervaloMinutos <= 60;
+        configuracao.intervaloMinutos <= 60 &&
+        configuracao.inicioSilencioHora <= 23 &&
+        configuracao.fimSilencioHora <= 23;
+}
+
+bool horarioEmSilencioNoturno(
+    const ConfiguracaoChime& configuracao,
+    uint8_t hora
+) {
+    if (
+        !configuracao.silencioNoturno ||
+        configuracao.inicioSilencioHora == configuracao.fimSilencioHora
+    ) {
+        return false;
+    }
+
+    if (
+        configuracao.inicioSilencioHora <
+        configuracao.fimSilencioHora
+    ) {
+        return
+            hora >= configuracao.inicioSilencioHora &&
+            hora < configuracao.fimSilencioHora;
+    }
+
+    return
+        hora >= configuracao.inicioSilencioHora ||
+        hora < configuracao.fimSilencioHora;
 }
 
 }
@@ -59,6 +89,15 @@ void carregarConfiguracaoChime() {
         static_cast<uint8_t>(chime["volume"] | VOLUME_PADRAO);
     configuracaoAtual.intervaloMinutos =
         static_cast<uint8_t>(chime["intervaloMinutos"] | 60);
+    configuracaoAtual.silencioNoturno =
+        chime["silencioNoturno"] | false;
+    configuracaoAtual.inicioSilencioHora =
+        static_cast<uint8_t>(chime["inicioSilencioHora"] | 22);
+    configuracaoAtual.fimSilencioHora =
+        static_cast<uint8_t>(chime["fimSilencioHora"] | 7);
+    if (!configuracaoValida(configuracaoAtual)) {
+        configuracaoAtual = configuracaoPadrao();
+    }
     ultimaJanelaDisparada = UINT64_MAX;
 
     Serial.printf(
@@ -91,6 +130,9 @@ bool salvarConfiguracaoChime(const ConfiguracaoChime& configuracao) {
     chime["som"] = configuracao.som;
     chime["volume"] = configuracao.volume;
     chime["intervaloMinutos"] = configuracao.intervaloMinutos;
+    chime["silencioNoturno"] = configuracao.silencioNoturno;
+    chime["inicioSilencioHora"] = configuracao.inicioSilencioHora;
+    chime["fimSilencioHora"] = configuracao.fimSilencioHora;
 
     if (!salvarDocumentoAlarmes(documento)) {
         return false;
@@ -149,12 +191,16 @@ bool verificarDisparoChime(ConfiguracaoChime& configuracao) {
 
     const bool janelaElegivel =
         minutoDoDia % configuracaoAtual.intervaloMinutos == 0;
+    const bool emSilencio = horarioEmSilencioNoturno(
+        configuracaoAtual,
+        static_cast<uint8_t>(dataHora.tm_hour)
+    );
 
     if (DEBUG_CHIME && chaveMinuto != ultimoMinutoDiagnosticado) {
         ultimoMinutoDiagnosticado = chaveMinuto;
         Serial.printf(
             "CHIME DEBUG agendador: %04d-%02d-%02d %02d:%02d:%02d "
-            "ativo=1 intervalo=%u minutoDia=%u elegivel=%u.\n",
+            "ativo=1 intervalo=%u minutoDia=%u elegivel=%u silencio=%u.\n",
             dataHora.tm_year + 1900,
             dataHora.tm_mon + 1,
             dataHora.tm_mday,
@@ -163,11 +209,12 @@ bool verificarDisparoChime(ConfiguracaoChime& configuracao) {
             dataHora.tm_sec,
             static_cast<unsigned>(configuracaoAtual.intervaloMinutos),
             static_cast<unsigned>(minutoDoDia),
-            janelaElegivel ? 1U : 0U
+            janelaElegivel ? 1U : 0U,
+            emSilencio ? 1U : 0U
         );
     }
 
-    if (!janelaElegivel) {
+    if (!janelaElegivel || emSilencio) {
         return false;
     }
 

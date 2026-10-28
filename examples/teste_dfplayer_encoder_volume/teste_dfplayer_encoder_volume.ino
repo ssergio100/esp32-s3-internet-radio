@@ -20,7 +20,7 @@ constexpr int PIN_I2C_SCL = 17;
 constexpr uint32_t FREQUENCIA_I2C_HZ = 100000;
 constexpr uint8_t ENDERECO_MCP23017 = 0x20;
 constexpr uint8_t PIN_MCP_ENABLE_N_8002_DIREITO = 6;
-constexpr uint8_t PIN_MCP_ENABLE_N_8002_ESQUERDO = 5;
+constexpr uint8_t PIN_MCP_ENABLE_N_8002_ESQUERDO = 7;
 
 constexpr uint8_t REG_MCP_IODIRA = 0x00;
 constexpr uint8_t REG_MCP_IOCON_BANK1 = 0x05;
@@ -117,7 +117,7 @@ bool verificarEnable8002(bool mutar) {
 
     Serial.printf(
         "MCP23017 lido: IODIRA=0x%02X OLATA=0x%02X GPIOA=0x%02X; "
-        "GPA6/GPA5=%s.\n",
+        "GPA7/GPA6=%s.\n",
         direcao,
         latch,
         pinos,
@@ -158,7 +158,7 @@ bool iniciarEnable8002() {
 
     // Garante BANK=0 mesmo se o MCP23017 permaneceu alimentado durante um
     // reset do ESP32. Em BANK=1, 0x14 não é OLATA e a escrita parecia ter
-    // funcionado sem alterar GPA6/GPA5.
+    // funcionado sem alterar GPA7/GPA6.
     if (
         !escreverMcp23017(REG_MCP_IOCON_BANK1, 0x00) ||
         !escreverMcp23017(REG_MCP_IOCON_BANK0, 0x00)
@@ -166,7 +166,7 @@ bool iniciarEnable8002() {
         return false;
     }
 
-    // Lê e preserva toda a porta A, principalmente GPA7 do relé. Somente os
+    // Lê e preserva toda a porta A, principalmente GPA5 do relé. Somente os
     // bits dos enables dos NS8002 serão modificados por este teste.
     if (!lerMcp23017(REG_MCP_OLATA, estadoPortaA)) {
         return false;
@@ -193,7 +193,7 @@ bool iniciarEnable8002() {
         return false;
     }
     Serial.println(
-        "MCP23017 pronto: GPA6/GPA5=HIGH; GPA7 preservado."
+        "MCP23017 pronto: GPA7/GPA6=HIGH; GPA5 preservado."
     );
     return true;
 }
@@ -211,7 +211,7 @@ bool ativar8002ParaDfPlayer() {
     dfPlayer.enableDAC();
 
     // DAC_L/DAC_R chegam diretamente aos amplificadores. Só os dois enables
-    // ativos em LOW são alterados; GPA7 permanece exatamente como estava.
+    // ativos em LOW são alterados; GPA5 permanece exatamente como estava.
     if (!configurarEnable8002(false)) {
         dfPlayer.disableDAC();
         return false;
@@ -220,7 +220,7 @@ bool ativar8002ParaDfPlayer() {
     saidaDfPlayerAtiva = true;
 
     Serial.println(
-        "Saida DFPlayer ativa: GPA6/GPA5=LOW; GPA7 preservado."
+        "Saida DFPlayer ativa: GPA7/GPA6=LOW; GPA5 preservado."
     );
     return true;
 }

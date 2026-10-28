@@ -25,6 +25,8 @@ struct AlarmeCarregado {
     uint32_t id = 0;
     uint32_t radioId = 0;
     bool radioFm = false;
+    bool radioWebUltimaEstacao = false;
+    uint8_t somDfPlayer = 0;
     bool ativo = false;
     bool execucaoUnica = false;
     uint8_t hora = 0;
@@ -34,6 +36,7 @@ struct AlarmeCarregado {
     uint8_t mes = 0;
     uint8_t dia = 0;
     uint8_t volume = 0;
+    uint8_t duracaoMinutos = DURACAO_MAXIMA_ALARME_MINUTOS;
     String nome;
 };
 
@@ -336,6 +339,11 @@ void carregarAlarmes() {
         alarme.volume = item["volume"] | 1;
         alarme.radioId = item["radioId"] | 0;
         alarme.radioFm = item["radioFm"] | false;
+        alarme.radioWebUltimaEstacao =
+            item["usarUltimaEstacaoWeb"] | false;
+        alarme.somDfPlayer = item["somDfPlayer"] | 0;
+        alarme.duracaoMinutos = item["duracaoMinutos"] |
+            DURACAO_MAXIMA_ALARME_MINUTOS;
 
         interpretarHorario(
             item["horario"].as<const char*>(),
@@ -360,8 +368,6 @@ void carregarAlarmes() {
                     static_cast<uint8_t>(1U << indice);
             }
         }
-
-        // arquivo não suportado (removido suporte a Player SD)
 
         quantidadeAlarmes++;
     }
@@ -438,8 +444,16 @@ bool verificarDisparoAlarme(DisparoAlarme& disparo) {
     disparo.id = escolhido.id;
     disparo.radioId = escolhido.radioId;
     disparo.radioFm = escolhido.radioFm;
+    disparo.radioWebUltimaEstacao =
+        escolhido.radioWebUltimaEstacao ||
+        (
+            !escolhido.radioFm &&
+            escolhido.radioId != 0
+        );
+    disparo.somDfPlayer = escolhido.somDfPlayer;
     disparo.nome = escolhido.nome;
     disparo.volume = escolhido.volume;
+    disparo.duracaoMinutos = escolhido.duracaoMinutos;
 
     return true;
 }
@@ -456,4 +470,347 @@ StatusAlarmes obterStatusAlarmes() {
     }
 
     return status;
+}
+
+bool obterProximoAlarme(ProximoAlarme& proximo) {
+    proximo = ProximoAlarme{};
+    struct tm agoraLocal = {};
+    if (!obterDataHoraLocal(agoraLocal)) {
+        return false;
+    }
+
+    time_t instanteAtual = mktime(&agoraLocal);
+    time_t melhorInstante = 0;
+    const AlarmeCarregado* melhor = nullptr;
+    struct tm melhorDataLocal = {};
+
+    for (size_t indice = 0; indice < quantidadeAlarmes; indice++) {
+        const AlarmeCarregado& alarme = alarmes[indice];
+        if (!alarme.ativo) {
+            continue;
+        }
+
+        time_t instanteCandidato = 0;
+        struct tm candidato = agoraLocal;
+        candidato.tm_sec = 0;
+        candidato.tm_isdst = -1;
+        candidato.tm_hour = alarme.hora;
+        candidato.tm_min = alarme.minuto;
+
+        if (alarme.execucaoUnica) {
+            candidato.tm_year = alarme.ano - 1900;
+            candidato.tm_mon = alarme.mes - 1;
+            candidato.tm_mday = alarme.dia;
+            instanteCandidato = mktime(&candidato);
+            if (instanteCandidato <= instanteAtual) {
+                continue;
+            }
+        } else {
+            instanteCandidato = 0;
+            for (uint8_t deslocamentoDia = 0; deslocamentoDia < 8; deslocamentoDia++) {
+                struct tm ocorrencia = candidato;
+                ocorrencia.tm_mday += deslocamentoDia;
+                time_t instante = mktime(&ocorrencia);
+                if (
+                    instante > instanteAtual &&
+                    (alarme.diasSemana & (1U << ocorrencia.tm_wday)) != 0
+                ) {
+                    instanteCandidato = instante;
+                    candidato = ocorrencia;
+                    break;
+                }
+            }
+            if (instanteCandidato == 0) {
+                continue;
+            }
+        }
+
+        if (
+            melhor == nullptr ||
+            instanteCandidato < melhorInstante
+        ) {
+            melhor = &alarme;
+            melhorInstante = instanteCandidato;
+            melhorDataLocal = candidato;
+        }
+    }
+
+    if (melhor == nullptr) {
+        return false;
+    }
+
+    proximo.disponivel = true;
+    proximo.hora = melhor->hora;
+    proximo.minuto = melhor->minuto;
+
+    if (melhor->execucaoUnica) {
+        snprintf(
+            proximo.recorrencia,
+            sizeof(proximo.recorrencia),
+            "%02u/%02u",
+            melhor->dia,
+            melhor->mes
+        );
+    } else if (melhor->diasSemana == 0b00111110) {
+        strlcpy(proximo.recorrencia, "SEG-SEX", sizeof(proximo.recorrencia));
+    } else if (melhor->diasSemana == 0b01000001) {
+        strlcpy(proximo.recorrencia, "FIM SEM.", sizeof(proximo.recorrencia));
+    } else if (melhor->diasSemana == 0b01111111) {
+        strlcpy(proximo.recorrencia, "TODOS", sizeof(proximo.recorrencia));
+    } else {
+        static constexpr const char* DIAS[] = {
+            "DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"
+        };
+        strlcpy(
+            proximo.recorrencia,
+            DIAS[melhorDataLocal.tm_wday],
+            sizeof(proximo.recorrencia)
+        );
+    }
+
+    if (melhor->radioFm) {
+        strlcpy(proximo.fonte, "RÁDIO FM", sizeof(proximo.fonte));
+    } else if (
+        melhor->radioWebUltimaEstacao ||
+        melhor->radioId != 0
+    ) {
+        strlcpy(proximo.fonte, "RÁDIO WEB", sizeof(proximo.fonte));
+    } else if (melhor->somDfPlayer != 0) {
+        strlcpy(proximo.fonte, "DFPLAYER", sizeof(proximo.fonte));
+    } else {
+        strlcpy(proximo.fonte, "SOM PADRÃO", sizeof(proximo.fonte));
+    }
+    return true;
+}
+
+namespace {
+
+FonteAlarmeConfiguravel obterFonteConfiguravel(
+    const AlarmeCarregado& alarme
+) {
+    if (alarme.radioFm) {
+        return FonteAlarmeConfiguravel::RADIO_FM;
+    }
+    if (alarme.radioWebUltimaEstacao || alarme.radioId != 0) {
+        return FonteAlarmeConfiguravel::RADIO_WEB;
+    }
+    if (alarme.somDfPlayer != 0) {
+        return FonteAlarmeConfiguravel::DFPLAYER;
+    }
+    return FonteAlarmeConfiguravel::SOM_PADRAO;
+}
+
+void copiarConfiguracao(
+    const AlarmeCarregado& origem,
+    ConfiguracaoAlarme& destino
+) {
+    destino = ConfiguracaoAlarme{};
+    destino.id = origem.id;
+    strlcpy(destino.nome, origem.nome.c_str(), sizeof(destino.nome));
+    destino.ativo = origem.ativo;
+    destino.execucaoUnica = origem.execucaoUnica;
+    destino.hora = origem.hora;
+    destino.minuto = origem.minuto;
+    destino.diasSemana = origem.diasSemana;
+    destino.ano = origem.ano;
+    destino.mes = origem.mes;
+    destino.dia = origem.dia;
+    destino.fonte = obterFonteConfiguravel(origem);
+    destino.radioId = origem.radioId;
+    destino.usarUltimaEstacaoWeb =
+        origem.radioWebUltimaEstacao;
+    destino.somDfPlayer = origem.somDfPlayer == 0
+        ? 1
+        : origem.somDfPlayer;
+    destino.volume = origem.volume;
+    destino.duracaoMinutos = origem.duracaoMinutos;
+}
+
+void escreverDiasSemana(JsonArray dias, uint8_t mascara) {
+    static constexpr const char* NOMES[] = {
+        "dom", "seg", "ter", "qua", "qui", "sex", "sab"
+    };
+    for (uint8_t indice = 0; indice < 7; indice++) {
+        if ((mascara & (1U << indice)) != 0) {
+            dias.add(NOMES[indice]);
+        }
+    }
+}
+
+void escreverConfiguracao(
+    JsonObject destino,
+    const ConfiguracaoAlarme& configuracao
+) {
+    destino["id"] = configuracao.id;
+    destino["nome"] = configuracao.nome;
+    destino["ativo"] = configuracao.ativo;
+
+    char horario[6];
+    snprintf(
+        horario,
+        sizeof(horario),
+        "%02u:%02u",
+        configuracao.hora,
+        configuracao.minuto
+    );
+    destino["horario"] = horario;
+    destino["volume"] = configuracao.volume;
+    destino["duracaoMinutos"] = configuracao.duracaoMinutos;
+
+    if (configuracao.execucaoUnica) {
+        char data[11];
+        snprintf(
+            data,
+            sizeof(data),
+            "%04u-%02u-%02u",
+            configuracao.ano,
+            configuracao.mes,
+            configuracao.dia
+        );
+        destino["data"] = data;
+    } else {
+        escreverDiasSemana(
+            destino["dias"].to<JsonArray>(),
+            configuracao.diasSemana
+        );
+    }
+
+    switch (configuracao.fonte) {
+        case FonteAlarmeConfiguravel::RADIO_FM:
+            destino["radioFm"] = true;
+            break;
+        case FonteAlarmeConfiguravel::RADIO_WEB:
+            if (configuracao.usarUltimaEstacaoWeb) {
+                destino["usarUltimaEstacaoWeb"] = true;
+            } else if (configuracao.radioId != 0) {
+                destino["radioId"] = configuracao.radioId;
+            }
+            break;
+        case FonteAlarmeConfiguravel::DFPLAYER:
+            destino["somDfPlayer"] = configuracao.somDfPlayer;
+            break;
+        case FonteAlarmeConfiguravel::SOM_PADRAO:
+            break;
+    }
+}
+
+}
+
+size_t listarConfiguracoesAlarmes(
+    ConfiguracaoAlarme* destino,
+    size_t capacidade
+) {
+    if (destino == nullptr || capacidade == 0) {
+        return 0;
+    }
+
+    size_t quantidade = min(quantidadeAlarmes, capacidade);
+    for (size_t indice = 0; indice < quantidade; indice++) {
+        copiarConfiguracao(alarmes[indice], destino[indice]);
+    }
+    return quantidade;
+}
+
+bool criarConfiguracaoAlarme(ConfiguracaoAlarme& configuracao) {
+    if (quantidadeAlarmes >= QUANTIDADE_MAXIMA_ALARMES) {
+        return false;
+    }
+
+    uint32_t maiorId = 0;
+    for (size_t indice = 0; indice < quantidadeAlarmes; indice++) {
+        maiorId = max(maiorId, alarmes[indice].id);
+    }
+    if (maiorId == UINT32_MAX) {
+        return false;
+    }
+
+    configuracao = ConfiguracaoAlarme{};
+    configuracao.id = maiorId + 1;
+    configuracao.volume = VOLUME_PADRAO;
+    configuracao.duracaoMinutos =
+        DURACAO_MAXIMA_ALARME_MINUTOS;
+    strlcpy(
+        configuracao.nome,
+        "Alarme",
+        sizeof(configuracao.nome)
+    );
+    return true;
+}
+
+bool salvarConfiguracaoAlarme(
+    const ConfiguracaoAlarme& configuracao
+) {
+    if (
+        configuracao.id == 0 ||
+        configuracao.nome[0] == '\0' ||
+        configuracao.hora > 23 ||
+        configuracao.minuto > 59 ||
+        configuracao.volume < 1 ||
+        configuracao.volume > VOLUME_MAXIMO ||
+        configuracao.duracaoMinutos < 1 ||
+        configuracao.duracaoMinutos >
+            DURACAO_MAXIMA_CONFIGURAVEL_ALARME_MINUTOS ||
+        (!configuracao.execucaoUnica && configuracao.diasSemana == 0)
+    ) {
+        return false;
+    }
+
+    JsonDocument documento;
+    if (!carregarDocumentoAlarmesParaEdicao(documento)) {
+        return false;
+    }
+
+    JsonArray lista = documento["alarmes"].as<JsonArray>();
+    JsonObject destino;
+    for (JsonObject item : lista) {
+        if ((item["id"] | 0U) == configuracao.id) {
+            destino = item;
+            break;
+        }
+    }
+
+    if (destino.isNull()) {
+        if (lista.size() >= QUANTIDADE_MAXIMA_ALARMES) {
+            return false;
+        }
+        destino = lista.add<JsonObject>();
+    } else {
+        destino.clear();
+    }
+
+    escreverConfiguracao(destino, configuracao);
+    if (!salvarDocumentoAlarmes(documento)) {
+        return false;
+    }
+
+    carregarAlarmes();
+    return true;
+}
+
+bool excluirConfiguracaoAlarme(uint32_t id) {
+    if (id == 0) {
+        return false;
+    }
+
+    JsonDocument documento;
+    if (!carregarDocumentoAlarmesParaEdicao(documento)) {
+        return false;
+    }
+
+    JsonArray lista = documento["alarmes"].as<JsonArray>();
+    bool encontrou = false;
+    for (size_t indice = 0; indice < lista.size(); indice++) {
+        if ((lista[indice]["id"] | 0U) == id) {
+            lista.remove(indice);
+            encontrou = true;
+            break;
+        }
+    }
+
+    if (!encontrou || !salvarDocumentoAlarmes(documento)) {
+        return false;
+    }
+
+    carregarAlarmes();
+    return true;
 }

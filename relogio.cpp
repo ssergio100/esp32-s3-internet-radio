@@ -17,13 +17,40 @@ constexpr uint32_t TEMPO_LIMITE_CONSULTA_RELOGIO_MS = 10;
 constexpr time_t PRIMEIRO_INSTANTE_ACEITO_UTC = 1704067200; // 2024-01-01
 
 std::atomic<bool> sincronizacaoNtpPendente{false};
+std::atomic<bool> sincronizacaoAutomaticaAtiva{true};
+std::atomic<bool> sincronizacaoNtpValida{false};
+
+void registrarSincronizacaoNtp(struct timeval*);
+
+void iniciarClienteNtp() {
+    sntp_set_time_sync_notification_cb(
+        registrarSincronizacaoNtp
+    );
+    sntp_set_sync_interval(
+        INTERVALO_SINCRONIZACAO_NTP_MS
+    );
+
+    long deslocamentoUtcSegundos =
+        FUSO_HORARIO_UTC_HORAS * SEGUNDOS_POR_HORA;
+    long ajusteHorarioVeraoSegundos =
+        AJUSTE_HORARIO_VERAO_HORAS * SEGUNDOS_POR_HORA;
+
+    configTime(
+        deslocamentoUtcSegundos,
+        ajusteHorarioVeraoSegundos,
+        SERVIDOR_NTP_PRIMARIO,
+        SERVIDOR_NTP_SECUNDARIO
+    );
+}
 
 void registrarSincronizacaoNtp(struct timeval*) {
     // O callback pertence à tarefa de rede. O acesso ao I2C fica para o loop.
-    sincronizacaoNtpPendente.store(
-        true,
-        std::memory_order_release
-    );
+    if (sincronizacaoAutomaticaAtiva.load(std::memory_order_acquire)) {
+        sincronizacaoNtpPendente.store(
+            true,
+            std::memory_order_release
+        );
+    }
 }
 
 bool horarioSistemaConfiavel(time_t& instanteUtc) {
@@ -102,29 +129,14 @@ void atualizarRtcDepoisDaSincronizacaoNtp(time_t instanteNtpUtc) {
 void iniciarRelogio() {
     iniciarRelogioRtc();
     carregarHorarioSistemaPeloRtc();
-
-    sntp_set_time_sync_notification_cb(
-        registrarSincronizacaoNtp
-    );
-    sntp_set_sync_interval(
-        INTERVALO_SINCRONIZACAO_NTP_MS
-    );
-
-    long deslocamentoUtcSegundos =
-        FUSO_HORARIO_UTC_HORAS * SEGUNDOS_POR_HORA;
-
-    long ajusteHorarioVeraoSegundos =
-        AJUSTE_HORARIO_VERAO_HORAS * SEGUNDOS_POR_HORA;
-
-    configTime(
-        deslocamentoUtcSegundos,
-        ajusteHorarioVeraoSegundos,
-        SERVIDOR_NTP_PRIMARIO,
-        SERVIDOR_NTP_SECUNDARIO
-    );
+    iniciarClienteNtp();
 }
 
 void processarRelogio() {
+    if (!sincronizacaoAutomaticaAtiva.load(std::memory_order_acquire)) {
+        sincronizacaoNtpPendente.store(false, std::memory_order_release);
+        return;
+    }
     if (!sincronizacaoNtpPendente.exchange(
         false,
         std::memory_order_acq_rel
@@ -139,6 +151,7 @@ void processarRelogio() {
         return;
     }
 
+    sincronizacaoNtpValida.store(true, std::memory_order_release);
     atualizarRtcDepoisDaSincronizacaoNtp(instanteNtpUtc);
 }
 
@@ -147,4 +160,65 @@ bool obterDataHoraLocal(struct tm& dataHora) {
         &dataHora,
         TEMPO_LIMITE_CONSULTA_RELOGIO_MS
     );
+}
+
+void configurarSincronizacaoAutomaticaRelogio(bool ativa) {
+    bool anterior = sincronizacaoAutomaticaAtiva.exchange(
+        ativa,
+        std::memory_order_acq_rel
+    );
+    if (anterior == ativa) {
+        return;
+    }
+
+    sincronizacaoNtpPendente.store(false, std::memory_order_release);
+    if (ativa) {
+        iniciarClienteNtp();
+        Serial.println("Sincronização automática do relógio ativada.");
+    } else {
+        esp_sntp_stop();
+        Serial.println("Sincronização automática do relógio desativada.");
+    }
+}
+
+bool sincronizacaoAutomaticaRelogioAtiva() {
+    return sincronizacaoAutomaticaAtiva.load(std::memory_order_acquire);
+}
+
+bool ultimaSincronizacaoNtpValida() {
+    return sincronizacaoNtpValida.load(std::memory_order_acquire);
+}
+
+bool ajustarHoraLocalRelogio(uint8_t hora, uint8_t minuto) {
+    if (hora > 23 || minuto > 59) {
+        return false;
+    }
+
+    struct tm dataHoraLocal = {};
+    if (!obterDataHoraLocal(dataHoraLocal)) {
+        return false;
+    }
+
+    dataHoraLocal.tm_hour = hora;
+    dataHoraLocal.tm_min = minuto;
+    dataHoraLocal.tm_sec = 0;
+    dataHoraLocal.tm_isdst = -1;
+
+    // configTime() já instalou o fuso no ambiente TZ; mktime converte a
+    // data/hora local editada para o instante UTC correspondente.
+    time_t instanteUtc = mktime(&dataHoraLocal);
+    if (instanteUtc < PRIMEIRO_INSTANTE_ACEITO_UTC) {
+        return false;
+    }
+    struct timeval horarioSistema = {};
+    horarioSistema.tv_sec = instanteUtc;
+    if (settimeofday(&horarioSistema, nullptr) != 0) {
+        return false;
+    }
+
+    if (relogioRtcDisponivel() && !ajustarHorarioUtcRelogioRtc(instanteUtc)) {
+        Serial.println("Hora manual aplicada ao sistema, mas não ao RTC.");
+    }
+    sincronizacaoNtpPendente.store(false, std::memory_order_release);
+    return true;
 }

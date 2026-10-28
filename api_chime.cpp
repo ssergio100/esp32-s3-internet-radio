@@ -37,6 +37,9 @@ void enviarConfiguracao(WebServer& servidor) {
     documento["som"] = configuracao.som;
     documento["volume"] = configuracao.volume;
     documento["intervaloMinutos"] = configuracao.intervaloMinutos;
+    documento["silencioNoturno"] = configuracao.silencioNoturno;
+    documento["inicioSilencioHora"] = configuracao.inicioSilencioHora;
+    documento["fimSilencioHora"] = configuracao.fimSilencioHora;
     documento["executando"] =
         estado.uso == UsoDfPlayer::CHIME &&
         (
@@ -74,11 +77,24 @@ void atualizarConfiguracaoChime(WebServer& servidor) {
     JsonVariantConst som = origem["som"];
     JsonVariantConst volume = origem["volume"];
     JsonVariantConst intervalo = origem["intervaloMinutos"];
+    JsonVariantConst silencioNoturno = origem["silencioNoturno"];
+    JsonVariantConst inicioSilencio = origem["inicioSilencioHora"];
+    JsonVariantConst fimSilencio = origem["fimSilencioHora"];
+    ConfiguracaoChime configuracaoAtual = obterConfiguracaoChime();
     int numeroSom = som | -1;
     int nivelVolume = volume | -1;
     int intervaloMinutos = intervalo.isNull()
-        ? obterConfiguracaoChime().intervaloMinutos
+        ? configuracaoAtual.intervaloMinutos
         : intervalo.as<int>();
+    bool silencioAtivo = silencioNoturno.isNull()
+        ? configuracaoAtual.silencioNoturno
+        : silencioNoturno.as<bool>();
+    int inicioSilencioHora = inicioSilencio.isNull()
+        ? configuracaoAtual.inicioSilencioHora
+        : inicioSilencio.as<int>();
+    int fimSilencioHora = fimSilencio.isNull()
+        ? configuracaoAtual.fimSilencioHora
+        : fimSilencio.as<int>();
 
     if (
         !ativo.is<bool>() ||
@@ -89,7 +105,21 @@ void atualizarConfiguracaoChime(WebServer& servidor) {
             !intervalo.isNull() &&
             !intervalo.is<int>()
         ) ||
-        intervaloMinutos < 1 || intervaloMinutos > 60
+        intervaloMinutos < 1 || intervaloMinutos > 60 ||
+        (
+            !silencioNoturno.isNull() &&
+            !silencioNoturno.is<bool>()
+        ) ||
+        (
+            !inicioSilencio.isNull() &&
+            !inicioSilencio.is<int>()
+        ) ||
+        inicioSilencioHora < 0 || inicioSilencioHora > 23 ||
+        (
+            !fimSilencio.isNull() &&
+            !fimSilencio.is<int>()
+        ) ||
+        fimSilencioHora < 0 || fimSilencioHora > 23
     ) {
         responderErroChime(servidor, 400, "Configuração de chime inválida");
         return;
@@ -126,6 +156,11 @@ void atualizarConfiguracaoChime(WebServer& servidor) {
     configuracao.volume = static_cast<uint8_t>(nivelVolume);
     configuracao.intervaloMinutos =
         static_cast<uint8_t>(intervaloMinutos);
+    configuracao.silencioNoturno = silencioAtivo;
+    configuracao.inicioSilencioHora =
+        static_cast<uint8_t>(inicioSilencioHora);
+    configuracao.fimSilencioHora =
+        static_cast<uint8_t>(fimSilencioHora);
 
     if (!salvarConfiguracaoChime(configuracao)) {
         responderErroChime(servidor, 500, "Falha ao salvar o chime");

@@ -3,6 +3,7 @@
 #include <limits.h>
 #include <Wire.h>
 
+#include "chaveamento_audio.h"
 #include "configuracao.h"
 #include "src/tef6686/RadioTef6686.h"
 
@@ -16,7 +17,19 @@ namespace {
     int8_t direcaoBuscaAtual = 0;
     unsigned long ultimaLeituraQualidadeMs = 0;
     unsigned long ultimaLeituraRdsMs = 0;
-    unsigned long ultimaPublicacaoQualidadeMs = 0;
+    unsigned long ultimaLeituraPilotoEstereoMs = 0;
+    constexpr unsigned long INTERVALO_MEDIA_SINAL_MS = 2000;
+    constexpr unsigned long INTERVALO_PILOTO_ESTEREO_MS = 1000;
+    constexpr unsigned long TEMPO_ESTABILIZACAO_ALIMENTACAO_FM_MS = 20;
+    int32_t somaAmostrasSinal = 0;
+    uint16_t quantidadeAmostrasSinal = 0;
+    unsigned long inicioJanelaMediaSinalMs = 0;
+
+    void reiniciarMediaSinal() {
+        somaAmostrasSinal = 0;
+        quantidadeAmostrasSinal = 0;
+        inicioJanelaMediaSinalMs = 0;
+    }
 
     void incrementarRevisao() {
         ++status.revisao;
@@ -42,11 +55,26 @@ namespace {
         bool mudou =
             status.qualidadeValida ||
             status.nivelDecimosDbuv != 0 ||
-            status.nomeEstacao[0] != '\0';
+            status.larguraBandaValida ||
+            status.larguraBandaDecimosKHz != 0 ||
+            status.pilotoEstereoValido ||
+            status.pilotoEstereo ||
+            status.nomeEstacaoValido ||
+            status.radioTextoValido ||
+            status.nomeEstacao[0] != '\0' ||
+            status.radioTexto[0] != '\0';
 
         status.qualidadeValida = false;
         status.nivelDecimosDbuv = 0;
+        status.larguraBandaValida = false;
+        status.larguraBandaDecimosKHz = 0;
+        status.pilotoEstereo = false;
+        status.pilotoEstereoValido = false;
         status.nomeEstacao[0] = '\0';
+        status.radioTexto[0] = '\0';
+        status.nomeEstacaoValido = false;
+        status.radioTextoValido = false;
+        reiniciarMediaSinal();
 
         if (mudou) {
             incrementarRevisao();
@@ -188,7 +216,16 @@ namespace {
 
         status.frequencia10kHz = frequencia;
         status.nomeEstacao[0] = '\0';
+        status.radioTexto[0] = '\0';
+        status.nomeEstacaoValido = false;
+        status.radioTextoValido = false;
         status.qualidadeValida = false;
+        status.nivelDecimosDbuv = 0;
+        status.larguraBandaValida = false;
+        status.larguraBandaDecimosKHz = 0;
+        status.pilotoEstereo = false;
+        status.pilotoEstereoValido = false;
+        reiniciarMediaSinal();
         incrementarRevisao();
         return true;
     }
@@ -222,25 +259,39 @@ namespace {
             return false;
         }
 
-        int diferenca =
-            qualidade.nivelDecimosDbuv - status.nivelDecimosDbuv;
-        if (diferenca < 0) {
-            diferenca = -diferenca;
+        if (quantidadeAmostrasSinal == 0) {
+            inicioJanelaMediaSinalMs = agoraMs;
         }
 
-        bool publicar =
-            !status.qualidadeValida ||
-            diferenca >= 10 ||
-            agoraMs - ultimaPublicacaoQualidadeMs >= 500;
+        somaAmostrasSinal += qualidade.nivelDecimosDbuv;
+        ++quantidadeAmostrasSinal;
 
-        status.qualidadeValida = true;
-        status.nivelDecimosDbuv = qualidade.nivelDecimosDbuv;
-
-        if (!publicar) {
+        if (
+            agoraMs - inicioJanelaMediaSinalMs <
+            INTERVALO_MEDIA_SINAL_MS
+        ) {
             return false;
         }
 
-        ultimaPublicacaoQualidadeMs = agoraMs;
+        int32_t media = somaAmostrasSinal /
+            static_cast<int32_t>(quantidadeAmostrasSinal);
+        reiniciarMediaSinal();
+
+        bool mudou =
+            !status.qualidadeValida ||
+            status.nivelDecimosDbuv != media ||
+            !status.larguraBandaValida ||
+            status.larguraBandaDecimosKHz != qualidade.larguraBanda;
+
+        status.qualidadeValida = true;
+        status.nivelDecimosDbuv = static_cast<int16_t>(media);
+        status.larguraBandaValida = true;
+        status.larguraBandaDecimosKHz = qualidade.larguraBanda;
+
+        if (!mudou) {
+            return false;
+        }
+
         incrementarRevisao();
         return true;
     }
@@ -265,8 +316,14 @@ namespace {
         }
 
         const char* nome = rds.psValido ? rds.ps : "";
+        const char* texto = rds.textoValido ? rds.texto : "";
+        bool mudou =
+            status.nomeEstacaoValido != rds.psValido ||
+            status.radioTextoValido != rds.textoValido ||
+            strcmp(status.nomeEstacao, nome) != 0 ||
+            strcmp(status.radioTexto, texto) != 0;
 
-        if (strcmp(status.nomeEstacao, nome) == 0) {
+        if (!mudou) {
             return false;
         }
 
@@ -275,18 +332,82 @@ namespace {
             sizeof(status.nomeEstacao),
             nome
         );
+        copiarTexto(
+            status.radioTexto,
+            sizeof(status.radioTexto),
+            texto
+        );
+        status.nomeEstacaoValido = rds.psValido;
+        status.radioTextoValido = rds.textoValido;
         incrementarRevisao();
         return true;
+    }
+
+    bool processarPilotoEstereo() {
+        unsigned long agoraMs = millis();
+
+        if (
+            agoraMs - ultimaLeituraPilotoEstereoMs <
+            INTERVALO_PILOTO_ESTEREO_MS
+        ) {
+            return false;
+        }
+
+        ultimaLeituraPilotoEstereoMs = agoraMs;
+
+        bool presente = false;
+        tef6686::Erro erro = radio.lerPilotoEstereo(presente);
+
+        if (erro != tef6686::Erro::Nenhum) {
+            bool mudou = status.pilotoEstereoValido || status.pilotoEstereo;
+            status.pilotoEstereo = false;
+            status.pilotoEstereoValido = false;
+            if (mudou) {
+                incrementarRevisao();
+            }
+            return mudou;
+        }
+
+        bool mudou =
+            !status.pilotoEstereoValido ||
+            status.pilotoEstereo != presente;
+        status.pilotoEstereo = presente;
+        status.pilotoEstereoValido = true;
+
+        if (mudou) {
+            incrementarRevisao();
+        }
+        return mudou;
     }
 
 }
 
 bool iniciarRadioFm(int volumeInterface) {
+    const uint16_t frequenciaInicial = status.frequencia10kHz != 0
+        ? status.frequencia10kHz
+        : FREQUENCIA_INICIAL_RADIO_FM_10KHZ;
+
     status = StatusRadioFm{};
+    status.frequencia10kHz = frequenciaInicial;
     buscasPendentes = 0;
     direcaoBuscaAtual = 0;
+    reiniciarMediaSinal();
     inicializado = false;
     ativo = false;
+
+    // GPA4 é a alimentação/habilitação ativa em HIGH do TEF6686. O módulo
+    // precisa estar energizado antes da primeira tentativa de comunicação.
+    if (!configurarHabilitacaoRadioFm(true)) {
+        copiarTexto(
+            status.ultimoErro,
+            sizeof(status.ultimoErro),
+            "alimentacao: falha no MCP23017"
+        );
+        incrementarRevisao();
+        Serial.println("Radio FM: GPA4=HIGH nao foi confirmado.");
+        return false;
+    }
+    delay(TEMPO_ESTABILIZACAO_ALIMENTACAO_FM_MS);
 
     tef6686::Configuracao configuracao;
     configuracao.enderecoI2C = ENDERECO_I2C_TEF6686;
@@ -296,6 +417,7 @@ bool iniciarRadioFm(int volumeInterface) {
     tef6686::Erro erro = radio.begin(Wire, configuracao);
 
     if (erro != tef6686::Erro::Nenhum) {
+        configurarHabilitacaoRadioFm(false);
         publicarErro(
             "inicializacao",
             erro,
@@ -308,10 +430,12 @@ bool iniciarRadioFm(int volumeInterface) {
 
     erro = radio.sintonizar(
         tef6686::Banda::FM,
-        FREQUENCIA_INICIAL_RADIO_FM_10KHZ
+        frequenciaInicial
     );
 
     if (erro != tef6686::Erro::Nenhum) {
+        inicializado = false;
+        configurarHabilitacaoRadioFm(false);
         publicarErro("sintonia inicial", erro);
         return false;
     }
@@ -325,6 +449,8 @@ bool iniciarRadioFm(int volumeInterface) {
     }
 
     if (erro != tef6686::Erro::Nenhum) {
+        inicializado = false;
+        configurarHabilitacaoRadioFm(false);
         publicarErro("repouso inicial", erro);
         return false;
     }
@@ -355,6 +481,8 @@ bool ativarRadioFm(int volumeInterface) {
     tef6686::Erro erro = radio.definirRepouso(false);
 
     if (erro != tef6686::Erro::Nenhum) {
+        inicializado = false;
+        configurarHabilitacaoRadioFm(false);
         publicarErro("ativacao", erro);
         return false;
     }
@@ -364,14 +492,14 @@ bool ativarRadioFm(int volumeInterface) {
     atualizarFrequenciaPublicada();
 
     if (!aplicarVolume(volumeInterface)) {
-        ativo = false;
-        radio.definirRepouso(true);
+        desativarRadioFm();
         return false;
     }
 
     ultimaLeituraQualidadeMs = 0;
     ultimaLeituraRdsMs = 0;
-    ultimaPublicacaoQualidadeMs = 0;
+    ultimaLeituraPilotoEstereoMs = 0;
+    reiniciarMediaSinal();
     publicarEstado(EstadoRadioFm::ATIVO);
     return true;
 }
@@ -382,6 +510,7 @@ void desativarRadioFm() {
 
     if (!inicializado) {
         ativo = false;
+        configurarHabilitacaoRadioFm(false);
         return;
     }
 
@@ -391,13 +520,30 @@ void desativarRadioFm() {
 
     tef6686::Erro erro = radio.definirRepouso(true);
     ativo = false;
+    inicializado = false;
+
+    const bool alimentacaoDesligada =
+        configurarHabilitacaoRadioFm(false);
 
     if (erro != tef6686::Erro::Nenhum) {
         publicarErro("repouso", erro);
         return;
     }
 
+    if (!alimentacaoDesligada) {
+        copiarTexto(
+            status.ultimoErro,
+            sizeof(status.ultimoErro),
+            "alimentacao: falha ao colocar GPA4 em LOW"
+        );
+        incrementarRevisao();
+        Serial.println("Radio FM: GPA4=LOW nao foi confirmado.");
+        return;
+    }
+
     limparDadosEstacao();
+    status.sequenciaEventoEncoder = 0;
+    status.momentoEventoEncoderUs = 0;
     limparErro();
     publicarEstado(EstadoRadioFm::REPOUSO);
 }
@@ -425,9 +571,18 @@ void ajustarVolumeRadioFm(int volumeInterface) {
     }
 }
 
-void navegarRadioFm(long deslocamento) {
+void navegarRadioFm(
+    long deslocamento,
+    uint32_t momentoEventoEncoderUs,
+    uint32_t sequenciaEventoEncoder
+) {
     if (!inicializado || !ativo || deslocamento == 0) {
         return;
+    }
+
+    if (sequenciaEventoEncoder != 0) {
+        status.sequenciaEventoEncoder = sequenciaEventoEncoder;
+        status.momentoEventoEncoderUs = momentoEventoEncoderUs;
     }
 
     somarBuscasPendentes(deslocamento);
@@ -490,6 +645,7 @@ bool processarRadioFm() {
 
     processarQualidade();
     processarRds();
+    processarPilotoEstereo();
     return status.revisao != revisaoAnterior;
 }
 

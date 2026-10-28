@@ -234,6 +234,7 @@ void atualizarRadioStatus(
     statusAudio.titulo[0] = '\0';
     statusAudio.bitrate = 0;
     statusAudio.bufferBytes = 0;
+    statusAudio.bufferTotalBytes = 0;
     statusAudio.bufferMilissegundos = 0;
     statusAudio.codec[0] = '\0';
 

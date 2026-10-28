@@ -153,6 +153,8 @@ public:
     Erro qualidadeDisponivel(bool& disponivel);
     Erro lerQualidade(Qualidade& qualidade);
     bool qualidadeCoerente(const Qualidade& qualidade) const;
+    // Get_Signal_Status (FM, comando 133): bit 15 indica piloto estereo.
+    Erro lerPilotoEstereo(bool& presente);
 
     // FM: 0=automatico ou 56/64/72/84/97/114/133/151/168/184/
     // 200/217/236/254/287/311 kHz. MW/SW: 3/4/6/8 kHz.

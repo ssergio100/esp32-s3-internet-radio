@@ -25,5 +25,7 @@ extern const FonteAa FONTE_AA_PEQUENA;
 extern const FonteAa FONTE_AA_NORMAL;
 extern const FonteAa FONTE_AA_DESTAQUE;
 extern const FonteAa FONTE_AA_FREQUENCIA;
+extern const FonteAa FONTE_AA_RELOGIO;
+extern const FonteAa FONTE_AA_VALOR;
 
 #endif

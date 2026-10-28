@@ -16,6 +16,14 @@ SIZES = {
     "normal": (16, range(32, 256)),
     "destaque": (24, range(32, 256)),
     "frequencia": (56, [32, 45, 46, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58]),
+    "relogio": (96, [32, 45, 46, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58]),
+    "valor": (40, range(32, 256)),
+}
+
+# O ':' da fonte Noto Sans fica alinhado à região baixa do texto. Na fonte
+# grande do relógio, centraliza os dois pontos no corpo dos algarismos.
+VERTICAL_ADJUSTMENTS = {
+    ("relogio", 58): -9,
 }
 
 
@@ -71,6 +79,7 @@ def main():
         glyphs = []
         for codepoint in codepoints:
             left, top, width, height, advance, packed = glyph(font, codepoint)
+            top += VERTICAL_ADJUSTMENTS.get((name, codepoint), 0)
             offset = len(bitmap)
             bitmap.extend(packed)
             glyphs.append((codepoint, offset, width, height, advance, left, top))

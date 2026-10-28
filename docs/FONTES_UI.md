@@ -9,6 +9,11 @@ firmware nem e distribuido neste repositorio.
 - Licenca: SIL Open Font License 1.1
 - Origem: pacote `fonts-noto-core` da distribuicao usada na geracao
 
+Tamanhos embutidos: 12 px (pequena), 16 px (normal), 24 px
+(destaque), 40 px (valor), 56 px (frequência) e 96 px (relógio). As fontes
+de frequência e relógio contêm somente os caracteres numéricos usados pelo
+firmware; a fonte de valor mantém o conjunto Latin-1 completo para os ajustes.
+
 Para reproduzir o asset:
 
 ```text

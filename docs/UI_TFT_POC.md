@@ -2,7 +2,7 @@
 
 ## Escopo desta etapa
 
-A PoC apresenta no ST7789 os dados que o firmware ja produz para o OLED:
+A interface apresenta no ST7789 os dados do modelo compartilhado:
 Radio Web, Radio FM, volume, relogio, mensagens, configuracao Wi-Fi e alarme.
 Ela nao cria menus, nao consulta o TEF6686, o RTC ou o decoder e nao altera a
 selecao das fontes de audio.
@@ -19,17 +19,17 @@ produtores existentes (FM / Web / volume / RTC)
                      |
                      v
           DisplayService (unico escritor)
-              |                 |
-              v                 v
-             OLED       backend TFT ST7789
-                              |
-                    campos persistentes/diff
-                              |
-                     SPI somente se mudou
+                     |
+                     v
+              backend TFT ST7789
+                     |
+           campos persistentes/diff
+                     |
+            SPI somente se mudou
 ```
 
-O snapshot e montado sob o mutex ja existente. A transferencia OLED e o
-desenho TFT acontecem depois que o mutex e liberado. Encoder, ISR e tarefa de
+O snapshot e montado sob o mutex ja existente. O desenho TFT acontece depois
+que o mutex e liberado. Encoder, ISR e tarefa de
 streaming nunca desenham no TFT. O backend compara com o ultimo snapshot e
 limpa/redesenha apenas o retangulo cujo valor mudou.
 
@@ -50,7 +50,7 @@ O firmware anterior e recuperado definindo `RADIO_UI_TFT_POC` como `0` em
 1. Iniciar em Relogio e confirmar hora/data, sem cintilacao ou caracteres
    residuais.
 2. Alternar entre Relogio, Radio FM e Radio Web pelos encoders; confirmar que
-   nenhum passo se perde e que o OLED continua coerente.
+   nenhum passo se perde e que o TFT continua coerente.
 3. Em FM, variar sintonia e conferir frequencia, RDS e sinal. Campos que o
    driver nao fornece devem permanecer `-`.
 4. Em Web, reproduzir continuamente por pelo menos 30 minutos, girar volume e

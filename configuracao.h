@@ -19,32 +19,39 @@ constexpr int PIN_PCM5102A_BCK  = 21;
 constexpr int PIN_PCM5102A_LRCK = 45;  // Rotulado LCK no módulo.
 constexpr int PIN_PCM5102A_DIN  = 47;
 
-// Barramento I2C compartilhado pelo display OLED, RTC DS3231 e TEF6686.
+// Barramento I2C compartilhado pelo RTC DS3231, MCP23017 e TEF6686.
 // Estes pinos mantêm o barramento fora do grupo reservado às válvulas Nixie.
 constexpr int PIN_BARRAMENTO_I2C_SDA = 16;
 constexpr int PIN_BARRAMENTO_I2C_SCL = 17;
 constexpr uint32_t FREQUENCIA_BARRAMENTO_I2C_HZ = 100000;
 
-// Chaveamento da saída de áudio pelo MCP23017. A0, A1 e A2 do endereço do
-// expansor devem estar ligados ao GND para selecionar 0x20. GPA7 seleciona,
-// por relé, DAC ou FM nas entradas dos NS8002. GPA6/GPA5 são enables ativos
-// em LOW: LOW habilita e HIGH silencia. O DFPlayer chega diretamente aos
-// NS8002 e altera somente GPA6/GPA5, sem comandar GPA7. Não são GPIOs do ESP32.
+// Contrato físico da porta A do MCP23017. A0, A1 e A2 do endereço do expansor
+// devem estar ligados ao GND para selecionar 0x20. Estes números são GPAx do
+// MCP23017, não GPIOs do ESP32:
+//   GPA7/GPA6 = enables ativos em LOW dos NS8002;
+//   GPA5      = relé seletor: LOW para FM, HIGH para Rádio Web/DAC;
+//   GPA4      = habilitação ativa em HIGH da alimentação do TEF6686.
+// Estados esperados (GPA7, GPA6, GPA5, GPA4): standby=(1,1,0,0),
+// FM=(0,0,0,1), Web=(0,0,1,0). O DFPlayer/chime força GPA7/GPA6 a LOW e
+// preserva GPA5/GPA4.
 constexpr uint8_t ENDERECO_I2C_MCP23017 = 0x20;
-constexpr uint8_t PIN_MCP23017_RELE_8002_SELECIONA_DAC = 7;
+constexpr uint8_t PIN_MCP23017_HABILITA_RADIO_FM = 4;
+constexpr uint8_t PIN_MCP23017_RELE_8002_SELECIONA_DAC = 5;
 constexpr uint8_t PIN_MCP23017_ENABLE_N_8002_DIREITO = 6;
-constexpr uint8_t PIN_MCP23017_ENABLE_N_8002_ESQUERDO = 5;
-
-constexpr int DISPLAY_LARGURA  = 128;
-constexpr int DISPLAY_ALTURA   = 64;
-constexpr int DISPLAY_ENDERECO = 0x3C;
+constexpr uint8_t PIN_MCP23017_ENABLE_N_8002_ESQUERDO = 7;
+static_assert(
+    PIN_MCP23017_HABILITA_RADIO_FM == 4 &&
+    PIN_MCP23017_RELE_8002_SELECIONA_DAC == 5 &&
+    PIN_MCP23017_ENABLE_N_8002_DIREITO == 6 &&
+    PIN_MCP23017_ENABLE_N_8002_ESQUERDO == 7,
+    "Contrato fisico MCP23017: GPA4=FM, GPA5=rele, GPA6/GPA7=NS8002."
+);
 
 // -----------------------------------------------------
 // TFT ST7789 320x240 — PoC grafica recuperavel
 // -----------------------------------------------------
-// A flag mantem o caminho OLED anterior intacto. Em 0, o modulo TFT nem e
-// compilado. O ST7789 foi identificado no ensaio funcional existente e usa
-// SPI de hardware; a DisplayService e a unica dona deste barramento.
+// O ST7789 usa SPI de hardware; a DisplayService e a unica dona deste
+// barramento.
 #define RADIO_UI_TFT_POC 1
 
 #if RADIO_UI_TFT_POC
@@ -76,8 +83,11 @@ struct ConfiguracaoEncoder {
 };
 
 // O primeiro encoder ajusta o volume durante a reprodução. Seu botão abre a
-// seleção de fonte; nessa tela, o giro percorre Relógio, Rádio FM e Rádio Web e
-// o clique confirma. Quatro transições por detente foram confirmadas.
+// seleção de função; nessa tela, o giro percorre Relógio, Rádio FM, Rádio Web
+// e Alarmes, nessa ordem, e o clique confirma. Este é o encoder A: dentro de
+// Alarmes, o giro navega por itens/campos e o clique entra ou confirma.
+// Nenhuma gravação ocorre durante o giro.
+// Quatro transições por detente foram confirmadas.
 constexpr ConfiguracaoEncoder ENCODER_VOLUME  = {
     2,  // DT
     1,  // CLK
@@ -87,6 +97,8 @@ constexpr ConfiguracaoEncoder ENCODER_VOLUME  = {
 };
 
 // O segundo encoder percorre a lista de rádios e seu botão confirma a estação.
+// Este é o encoder B: dentro de Alarmes, o giro altera o valor do campo e o
+// botão tem a função principal de voltar.
 // A calibração de quatro transições deve ser confirmada no hardware instalado.
 constexpr ConfiguracaoEncoder ENCODER_NAVEGACAO = {
     41,   // DT
@@ -159,8 +171,8 @@ constexpr int VOLUME_PADRAO = 10;
 // depois desse desligamento, sem bloquear o loop nem a leitura dos encoders.
 constexpr uint32_t TEMPO_POWER_DOWN_PCM5102A_MS = 1100;
 
-// Frequências maiores encurtam os bloqueios de leitura que disputam CPU com o
-// OLED. Reduza somente se o cartão instalado ficar instável.
+// Frequências maiores encurtam os bloqueios de leitura do cartão.
+// Reduza somente se o cartão instalado ficar instável.
 constexpr uint32_t FREQUENCIA_CARTAO_PLAYER_HZ = 4000000;
 
 // Quando ativa, o fim de uma música inicia a próxima e, depois da última,
@@ -179,8 +191,8 @@ constexpr uint32_t TEMPO_LIMITE_CONEXAO_RADIO_ALARME_MS = 20000;
 // Intensidade de cada canal do LED, de 0 (apagado) a 255 (máximo).
 #define BRILHO_LED_RGB 50
 
-// Tempo durante o qual a barra inferior mostra o volume após um ajuste.
-constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 2000;
+// Tempo durante o qual a janela de volume permanece visível após um ajuste.
+constexpr unsigned long TEMPO_BARRA_VOLUME_MS = 1000;
 constexpr unsigned long TEMPO_INATIVIDADE_SELECAO_MS = 10000;
 
 // Duração máxima aceita como clique curto nos dois encoders. Uma pressão mais
@@ -191,28 +203,8 @@ constexpr unsigned long TEMPO_MAXIMO_CLIQUE_CURTO_ENCODER_MS = 2000;
 // Diminua o valor para piscar mais rápido; aumente para piscar mais devagar.
 constexpr unsigned long INTERVALO_PISCA_LED_CONEXAO_WIFI_MS = 100;
 
-// O nome avança um pixel a cada passo.
-// Diminua o intervalo para acelerar a rolagem; aumente para desacelerar.
-constexpr unsigned long INTERVALO_PASSO_ROLAGEM_NOME_MS = 40;
-
-// O Player atualiza o OLED com menos frequência para reservar CPU à leitura
-// local. Diminua para acelerar a rolagem; aumente para aliviar ainda mais o CPU.
-constexpr unsigned long INTERVALO_PASSO_ROLAGEM_PLAYER_MS = 80;
-
-// A faixa superior mostra codec, bitrate, buffer e dados passivos do Wi-Fi.
-// O primeiro intervalo controla a velocidade da rolagem para a direita.
-// O segundo controla a frequência de renovação dos valores exibidos.
-constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DIAGNOSTICO_MS = 40;
-constexpr unsigned long INTERVALO_ATUALIZACAO_DIAGNOSTICO_DISPLAY_MS = 1000;
-
-// A data completa no rodapé do relógio avança um pixel a cada passo.
-constexpr unsigned long INTERVALO_PASSO_ROLAGEM_DATA_RELOGIO_MS = 80;
-
-// A tarefa do display acorda quatro vezes dentro do menor intervalo de
-// rolagem. Isso desacopla a animação do servidor web sem aumentar a prioridade
-// sobre o loop da interface ou sobre o decodificador de áudio.
-constexpr uint32_t INTERVALO_SERVICO_DISPLAY_MS =
-    INTERVALO_PASSO_ROLAGEM_NOME_MS / 4;
+// A tarefa atualiza o modelo sem bloquear encoders, streaming ou áudio.
+constexpr uint32_t INTERVALO_SERVICO_DISPLAY_MS = 10;
 static_assert(
     INTERVALO_SERVICO_DISPLAY_MS > 0,
     "O intervalo do servico do display deve ser positivo."

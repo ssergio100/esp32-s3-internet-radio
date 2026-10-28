@@ -11,26 +11,29 @@ transição para `RADIO_FM` só termina depois que `AudioService` confirma:
 - canal I2S desabilitado e removido;
 - `BCK`, `LRCK` e `DIN` configurados como saída em nível baixo.
 
-Essa confirmação é síncrona e tem prazo limitado. Falha ou timeout bloqueiam a
-ativação do TEF6686; o equipamento volta ao estado de relógio e publica o erro
-no display. Confirmado o desligamento, o Wi-Fi é desligado e começa uma espera
-não bloqueante de 1,1 segundo antes de ativar o receptor FM. O `loop()`, o OLED
-e os encoders continuam ativos; passos de sintonia recebidos nesse intervalo
-são acumulados e executados quando o TEF6686 acorda.
+Antes dessa sequência, `GPA4` já é confirmado em HIGH para alimentar o TEF6686
+e tornar seu I2C disponível. A confirmação do desligamento do áudio digital é
+síncrona e tem prazo limitado; falha ou timeout baixam `GPA4`, bloqueiam a
+inicialização do receptor e publicam o erro no display. Confirmado o
+desligamento, o Wi-Fi é desligado e começa uma espera não bloqueante de 1,1
+segundo. O `loop()`, o TFT e os encoders continuam ativos; passos de sintonia
+recebidos nesse intervalo são acumulados. Depois da espera, o driver inicializa
+o TEF6686 e somente então `GPA7/GPA6` são confirmados em LOW, habilitando os
+dois NS8002.
 
 O PCM5102A detecta a ausência de clocks e entra em power-down automático. Nesse
 estado ele desliga DAC, driver de linha, charge pump e circuitos internos de
 polarização, conforme a seção *Power Down* do
 [datasheet da Texas Instruments](https://www.ti.com/lit/ds/symlink/pcm5102a.pdf).
-Isso é o desligamento máximo possível somente por firmware na montagem atual:
-a alimentação do módulo permanece presente porque não existe load switch,
-regulador com `EN` nem GPIO ligado ao trilho de alimentação.
+Isso é o desligamento máximo possível do PCM5102A somente por firmware na
+montagem atual. Separadamente, a alimentação do TEF6686 é comandada por `GPA4`
+do MCP23017: HIGH habilita o receptor FM e LOW o desliga.
 
 O MCP23017 não liga nem desliga o DAC. Ele roteia as entradas dos amplificadores
-NS8002: `GPA7` controla o relé que seleciona DAC ou TEF6686, enquanto `GPA6` e
-`GPA5` são enables ativos em LOW dos amplificadores direito e esquerdo. Os três bits são
-atualizados juntos pelo registrador `OLATA`. Falhas nessa escrita geram
-diagnóstico serial, mas não comandam nem bloqueiam a máquina de estados.
+NS8002: `GPA5` controla o relé que seleciona DAC ou TEF6686, enquanto `GPA7` e
+`GPA6` são enables ativos em LOW dos dois amplificadores e `GPA4` habilita o
+TEF6686 em HIGH. Os quatro bits são atualizados juntos pelo registrador `OLATA`.
+Uma falha ao confirmar `GPA4=HIGH` bloqueia a inicialização do Rádio FM.
 
 ## Responsabilidades
 
@@ -55,8 +58,8 @@ Web, `AudioService` conserva prioridade 3 e intervalo de 1 ms para alimentar a
 rede continuamente. No Player, ela usa prioridade 1 e aguarda 3 ms entre ciclos
 para espaçar as leituras do microSD. O decoder interno permanece no núcleo 1 em
 prioridade 2 e, portanto, pode preemptar o `loop()` da interface quando precisar
-alimentar o I2S. O SPI do cartão opera por padrão a 4 MHz e a rolagem do nome
-redesenha o OLED a cada 80 ms.
+alimentar o I2S. O SPI do cartão opera por padrão a 4 MHz; o TFT redesenha
+somente os campos alterados.
 Ao entrar em Relógio ou Rádio FM, um comando encerra o stream e destrói a
 instância `Audio`; com isso, a própria biblioteca encerra sua tarefa interna e
 remove o canal I2S. `AudioService` então aguarda uma notificação sem consumir
@@ -119,29 +122,34 @@ display ou do serviço de áudio.
 
 `chaveamento_audio.cpp` é a única camada que conhece os registradores do
 MCP23017. O expansor usa o endereço `0x20` e compartilha o barramento I2C de
-100 kHz. Somente `GPA7`, `GPA6` e `GPA5` são configurados como saída; os demais
+100 kHz. Somente `GPA7`, `GPA6`, `GPA5` e `GPA4` são configurados como saída; os demais
 pinos da porta A permanecem como entradas.
 
-O latch é preparado com `GPA7=LOW` e `GPA6/GPA5=HIGH` antes da mudança de
+O latch é preparado com `GPA4/GPA5=LOW` e `GPA7/GPA6=HIGH` antes da mudança de
 direção, evitando habilitar os NS8002 durante a inicialização. A tabela aplicada é:
 
-| Estado | GPA7: seleção | GPA6/GPA5: NS8002 |
-| --- | --- | --- |
-| Relógio/standby | LOW, lado FM | HIGH, mute |
-| Rádio FM | LOW, TEF6686 | LOW, habilitados |
-| Rádio Web/alarme digital | HIGH, DAC | LOW, habilitados |
-| DFPlayer, ligação direta | Preservado | LOW, habilitados |
-| Volume zero | Preserva a fonte | HIGH, mute |
-| Busca FM | LOW, TEF6686 | HIGH, mute |
+| Estado | GPA7/GPA6: NS8002 | GPA5: seleção | GPA4: TEF6686 |
+| --- | --- | --- | --- |
+| Relógio/standby | HIGH, mute | LOW, lado FM | LOW, desligado |
+| Rádio FM | LOW, habilitados | LOW, TEF6686 | HIGH, habilitado |
+| Rádio Web/alarme digital | LOW, habilitados | HIGH, DAC | LOW, desligado |
+| DFPlayer/chime, ligação direta | LOW, habilitados | Preservado | Preservado |
+| Volume zero | HIGH, mute | Preserva a fonte | Preservado |
+| Busca FM | HIGH, mute | LOW, TEF6686 | HIGH, habilitado |
 
-GPA6/GPA5 nunca são consultados para decidir o funcionamento do DAC ou das
+GPA7/GPA6 nunca são consultados para decidir o funcionamento do DAC ou das
 fontes; são somente enables ativos em LOW. Como os pinos voltam ao modo de
 entrada durante reset do MCP23017, o estado seguro anterior ao firmware requer
-pull-down em GPA7 e pull-ups em GPA6/GPA5.
+pull-down em GPA4/GPA5 e pull-ups em GPA7/GPA6.
+
+`radio_fm.cpp` eleva e confirma `GPA4` antes de inicializar o driver. Ao sair do
+FM, coloca o receptor em repouso, baixa `GPA4` e invalida a inicialização do
+driver, pois um novo ciclo de alimentação exige carregar novamente o firmware
+do TEF6686. A última frequência permanece em RAM e volta a ser sintonizada.
 
 As saídas `DAC_L` e `DAC_R` do DFPlayer chegam diretamente aos NS8002 e não
-passam pelo relé. Por isso, sua interface preserva o estado de GPA7 e modifica
-somente GPA6/GPA5 para habilitar ou silenciar os amplificadores.
+passam pelo relé. Por isso, sua interface preserva o estado de GPA5/GPA4 e modifica
+somente GPA7/GPA6 para habilitar ou silenciar os amplificadores.
 
 O `loop()` supervisiona a associação Wi-Fi. Se o ponto conectado estiver em
 `BSSIDS_WIFI_BLOQUEADOS`, a associação é rejeitada. Durante a conexão inicial ou
@@ -243,7 +251,7 @@ o giro percorre circularmente `Relógio → Rádio FM → Rádio Web → Relógi
 clique confirma. No Relógio, o primeiro giro já abre essa seleção e aplica todos
 os passos recebidos. Durante um alarme, o clique continua ignorado.
 
-Cada transição responde primeiro no OLED e depois administra os recursos da
+Cada transição responde primeiro no TFT e depois administra os recursos da
 fonte. Rádio Web mantém Wi-Fi, servidor e `AudioService`; Rádio FM destrói o
 decoder/I2S, desliga a rede e só então acorda o TEF6686; Relógio mantém o Wi-Fi
 e as duas fontes de áudio desligados. Ao sair de Rádio FM, o receptor é silenciado
@@ -315,12 +323,12 @@ intervalos 1, 2, 5, 10, 15, 30 e 60 para operação e testes. A conclusão é
 detectada pelo evento do DFPlayer ou pela borda do pino `BUSY`.
 
 Antes da reprodução, `dfplayer.cpp` fotografa diretamente o último estado
-confirmado de GPA7/GPA6/GPA5. Ele habilita os NS8002 preservando o relé e, ao
+confirmado de GPA7/GPA6/GPA5/GPA4. Ele habilita os NS8002 preservando GPA5/GPA4 e, ao
 terminar, restaura exatamente a fotografia, inclusive quando o estado anterior
 era Relógio/mute. Isso torna chime e prévia independentes de Rádio Web, Rádio FM
 ou Relógio. Durante a reprodução, o chaveamento dá prioridade temporária ao
 DFPlayer: atualizações de mute, busca FM ou ativação de fonte não podem elevar
-GPA6/GPA5. Alarmes e trocas manuais de fonte interrompem essas reproduções,
+GPA7/GPA6. Alarmes e trocas manuais de fonte interrompem essas reproduções,
 restauram a fotografia e então assumem o caminho de áudio.
 
 O estado Relógio não é um modo global de baixo consumo, mas o subsistema de

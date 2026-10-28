@@ -1,7 +1,7 @@
 # Projeto: encoders e resposta da interface
 
 Este documento registra o contrato dos dois encoders e o caminho de baixa
-latência entre a entrada física, o áudio e o OLED.
+latência entre a entrada física, o áudio e o TFT.
 
 ## Estado
 
@@ -66,20 +66,19 @@ nativos amplos da biblioteca, evitando saturação depois de uso prolongado.
   atômico conserva sempre o ajuste mais recente e a tarefa de áudio o aplica no
   próximo ciclo.
 - No caminho normal, com `DisplayService` ativa, as APIs do display não
-  transferem o framebuffer I2C no contexto do `loop()`. Elas atualizam o
+  transferem pixels SPI no contexto do `loop()`. Elas atualizam o
   modelo, marcam a tela como pendente e acordam a tarefa. Se a criação da
   tarefa falhar, o caminho de contingência faz a apresentação no chamador.
-- Notificações repetidas do OLED são consolidadas. Se o usuário girar rápido,
+- Notificações repetidas do TFT são consolidadas. Se o usuário girar rápido,
   a próxima imagem apresenta o estado mais novo em vez de transmitir todos os
   quadros intermediários.
-- Com a tarefa ativa, a transferência I2C ocorre fora do mutex do modelo.
-  Assim, uma nova leitura de encoder não espera o envio integral do framebuffer
-  do SSD1306.
+- Com a tarefa ativa, a transferência SPI ocorre fora do mutex do modelo.
+  Assim, uma nova leitura de encoder não espera o desenho no TFT.
 
 ## Volume no Relógio
 
 O giro do encoder 1 no Relógio altera o volume reservado para a próxima
-ativação da rádio. Na próxima apresentação, o rodapé do OLED mostra a barra
+ativação da rádio. Na próxima apresentação, o TFT mostra a barra
 e o valor; depois de `TEMPO_BARRA_VOLUME_MS`, a data volta automaticamente.
 
 ## Validação física obrigatória
@@ -89,7 +88,7 @@ e o valor; depois de `TEMPO_BARRA_VOLUME_MS`, a data volta automaticamente.
 2. Girar cada encoder rapidamente por pelo menos dez voltas, nos dois sentidos,
    e comparar a posição final com a quantidade de detentes aplicada.
 3. Ajustar volume enquanto nome e diagnóstico estão rolando; o som deve reagir
-   sem aguardar o OLED, e a tela deve convergir diretamente ao valor mais novo.
+   sem aguardar o TFT, e a tela deve convergir diretamente ao valor mais novo.
 4. Navegar por toda a lista, dar a volta nas duas extremidades e confirmar uma
    rádio diferente.
 5. Alternar repetidamente Rádio/Relógio pelo encoder 1, inclusive com Wi-Fi

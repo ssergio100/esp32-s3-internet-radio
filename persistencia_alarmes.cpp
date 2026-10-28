@@ -204,8 +204,15 @@ bool alarmeValido(JsonObjectConst alarme) {
     JsonVariantConst arquivo = alarme["arquivo"];
     JsonVariantConst radioId = alarme["radioId"];
     JsonVariantConst radioFm = alarme["radioFm"];
+    JsonVariantConst ultimaEstacaoWeb =
+        alarme["usarUltimaEstacaoWeb"];
+    JsonVariantConst somDfPlayer = alarme["somDfPlayer"];
+    JsonVariantConst duracaoMinutos = alarme["duracaoMinutos"];
     bool usaRadioFm =
         radioFm.is<bool>() && radioFm.as<bool>();
+    bool usaUltimaEstacaoWeb =
+        ultimaEstacaoWeb.is<bool>() &&
+        ultimaEstacaoWeb.as<bool>();
 
     if (!arquivo.isNull()) {
         return false;
@@ -229,9 +236,45 @@ bool alarmeValido(JsonObjectConst alarme) {
     }
 
     if (
-        (!arquivo.isNull() && !radioId.isNull()) ||
-        (usaRadioFm && !radioId.isNull())
+        !ultimaEstacaoWeb.isNull() &&
+        (
+            !ultimaEstacaoWeb.is<bool>() ||
+            !usaUltimaEstacaoWeb
+        )
     ) {
+        return false;
+    }
+
+    if (
+        !somDfPlayer.isNull() &&
+        (
+            !somDfPlayer.is<int>() ||
+            somDfPlayer.as<int>() < 1 ||
+            somDfPlayer.as<int>() > 255
+        )
+    ) {
+        return false;
+    }
+
+    if (
+        !duracaoMinutos.isNull() &&
+        (
+            !duracaoMinutos.is<int>() ||
+            duracaoMinutos.as<int>() < 1 ||
+            duracaoMinutos.as<int>() >
+                DURACAO_MAXIMA_CONFIGURAVEL_ALARME_MINUTOS
+        )
+    ) {
+        return false;
+    }
+
+    uint8_t quantidadeFontes = 0;
+    quantidadeFontes += usaRadioFm ? 1 : 0;
+    quantidadeFontes += radioId.is<uint32_t>() ? 1 : 0;
+    quantidadeFontes += usaUltimaEstacaoWeb ? 1 : 0;
+    quantidadeFontes += somDfPlayer.is<int>() ? 1 : 0;
+
+    if (quantidadeFontes > 1) {
         return false;
     }
 
@@ -251,6 +294,9 @@ bool configuracaoChimeValida(JsonVariantConst valor) {
     JsonVariantConst som = chime["som"];
     JsonVariantConst volume = chime["volume"];
     JsonVariantConst intervalo = chime["intervaloMinutos"];
+    JsonVariantConst silencioNoturno = chime["silencioNoturno"];
+    JsonVariantConst inicioSilencio = chime["inicioSilencioHora"];
+    JsonVariantConst fimSilencio = chime["fimSilencioHora"];
     int numeroSom = som | -1;
     int nivelVolume = volume | -1;
 
@@ -266,6 +312,26 @@ bool configuracaoChimeValida(JsonVariantConst valor) {
                 intervalo.is<int>() &&
                 intervalo.as<int>() >= 1 &&
                 intervalo.as<int>() <= 60
+            )
+        ) &&
+        (
+            silencioNoturno.isNull() ||
+            silencioNoturno.is<bool>()
+        ) &&
+        (
+            inicioSilencio.isNull() ||
+            (
+                inicioSilencio.is<int>() &&
+                inicioSilencio.as<int>() >= 0 &&
+                inicioSilencio.as<int>() <= 23
+            )
+        ) &&
+        (
+            fimSilencio.isNull() ||
+            (
+                fimSilencio.is<int>() &&
+                fimSilencio.as<int>() >= 0 &&
+                fimSilencio.as<int>() <= 23
             )
         );
 }
@@ -354,6 +420,9 @@ void criarDocumentoAlarmesVazio(JsonDocument& documento) {
     chime["som"] = 1;
     chime["volume"] = VOLUME_PADRAO;
     chime["intervaloMinutos"] = 60;
+    chime["silencioNoturno"] = false;
+    chime["inicioSilencioHora"] = 22;
+    chime["fimSilencioHora"] = 7;
     documento["alarmes"].to<JsonArray>();
 }
 

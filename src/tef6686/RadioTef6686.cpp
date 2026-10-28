@@ -38,6 +38,7 @@ constexpr uint8_t CMD_SET_INPUT = 12;
 constexpr uint8_t CMD_GET_QUALITY_STATUS = 128;
 constexpr uint8_t CMD_GET_QUALITY_DATA = 129;
 constexpr uint8_t CMD_GET_RDS_DATA = 131;
+constexpr uint8_t CMD_GET_SIGNAL_STATUS = 133;
 constexpr uint8_t CMD_SET_OPERATION_MODE = 1;
 constexpr uint8_t CMD_GET_OPERATION_STATUS = 128;
 constexpr uint8_t CMD_GET_IDENTIFICATION = 130;
@@ -569,6 +570,23 @@ Erro RadioTef6686::lerQualidade(Qualidade& qualidade) {
     qualidade.offset = static_cast<int16_t>(lerBe16(resposta + 8));
     qualidade.larguraBanda = lerBe16(resposta + 10);
     qualidade.modulacao = lerBe16(resposta + 12);
+    return sucesso();
+}
+
+Erro RadioTef6686::lerPilotoEstereo(bool& presente) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    if (banda_ != Banda::FM) return falhar(Erro::EstadoInvalido);
+
+    uint8_t resposta[2];
+    Erro erro = obterResposta(
+        MODULO_FM,
+        CMD_GET_SIGNAL_STATUS,
+        resposta,
+        sizeof(resposta)
+    );
+    if (erro != Erro::Nenhum) return erro;
+
+    presente = (lerBe16(resposta) & 0x8000U) != 0;
     return sucesso();
 }
 

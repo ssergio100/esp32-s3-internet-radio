@@ -82,6 +82,12 @@ namespace {
         documento["chimeVolume"] = configuracao.volume;
         documento["chimeIntervaloMinutos"] =
             configuracao.intervaloMinutos;
+        documento["chimeSilencioNoturno"] =
+            configuracao.silencioNoturno;
+        documento["chimeInicioSilencioHora"] =
+            configuracao.inicioSilencioHora;
+        documento["chimeFimSilencioHora"] =
+            configuracao.fimSilencioHora;
         documento["chimeExecutando"] =
             estado.uso == UsoDfPlayer::CHIME &&
             (

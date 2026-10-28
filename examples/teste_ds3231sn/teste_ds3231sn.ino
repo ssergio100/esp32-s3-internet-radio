@@ -7,8 +7,7 @@
  *   DS3231SN SDA -> GPIO17
  *   DS3231SN SCL -> GPIO18
  *
- * O RTC compartilha o barramento I2C com o OLED. O sketch usa somente a
- * porta serial e nao altera o display.
+ * O sketch usa somente a porta serial para validar o RTC e o barramento.
  */
 
 #include <Arduino.h>
@@ -51,8 +50,6 @@ void listarDispositivosI2C() {
 
         if (endereco == ENDERECO_DS3231) {
             Serial.print(" (DS3231SN esperado)");
-        } else if (endereco == 0x3C) {
-            Serial.print(" (OLED esperado)");
         }
 
         Serial.println();

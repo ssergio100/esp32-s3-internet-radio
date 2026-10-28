@@ -210,6 +210,7 @@ void iniciarControles() {
 }
 
 LeituraControles lerControles() {
+    static uint32_t proximaSequenciaNavegacao = 0;
     LeituraControles leitura;
     EventoBotao eventoBotaoNavegacao =
         detectarEventoBotaoConfirmado(
@@ -247,6 +248,16 @@ LeituraControles lerControles() {
     // A própria biblioteca informa o deslocamento acumulado e sua direção.
     leitura.deslocamentoEncoderNavegacao =
         encoderNavegacao.encoderChanged();
+
+    if (leitura.deslocamentoEncoderNavegacao != 0) {
+        leitura.momentoEncoderNavegacaoUs = micros();
+        ++proximaSequenciaNavegacao;
+        if (proximaSequenciaNavegacao == 0) {
+            ++proximaSequenciaNavegacao;
+        }
+        leitura.sequenciaEncoderNavegacao =
+            proximaSequenciaNavegacao;
+    }
 
     return leitura;
 }

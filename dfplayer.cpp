@@ -343,14 +343,14 @@ bool reproduzirSomDfPlayer(
         );
     }
 
-    // DAC_L/DAC_R chegam diretamente aos NS8002. O relé em GPA7 não participa;
-    // somente GPA6/GPA5, ativos em LOW, habilitam os amplificadores.
+    // DAC_L/DAC_R chegam diretamente aos NS8002. O relé em GPA5 não participa;
+    // somente GPA7/GPA6, ativos em LOW, habilitam os amplificadores.
     if (!saidaDfPlayerAtiva) {
         estadoSaidaAntesDfPlayer = obterEstadoSaidaAudio();
         if (DEBUG_CHIME) {
             Serial.printf(
                 "CHIME DEBUG saida antes do DFPlayer: valido=%u "
-                "GPA7/GPA6/GPA5=0x%02X.\n",
+                "portaA(GPA7..GPA5)=0x%02X.\n",
                 estadoSaidaAntesDfPlayer.valido ? 1U : 0U,
                 estadoSaidaAntesDfPlayer.valorPortaA
             );
@@ -366,7 +366,7 @@ bool reproduzirSomDfPlayer(
             estado.erro = ErroDfPlayer::SAIDA_AUDIO_INDISPONIVEL;
             Serial.println(
                 "CHIME DEBUG DFPlayer abortado: nao foi possivel confirmar "
-                "GPA6=LOW e GPA5=LOW."
+                "GPA7=LOW e GPA6=LOW."
             );
             return false;
         }
@@ -422,11 +422,13 @@ bool deslocarSomDfPlayer(
 }
 
 void pararDfPlayer() {
-    if (!estado.moduloRespondendo) {
-        return;
+    if (estado.moduloRespondendo) {
+        driverDfPlayer.stop();
     }
 
-    driverDfPlayer.stop();
+    // A saída física precisa ser liberada mesmo se a UART do módulo deixou
+    // de responder. Assim GPA7/GPA6 não permanecem ativos depois de uma
+    // prévia interrompida ou de uma falha do DFPlayer.
     desativarSaidaDfPlayer();
     estado.reproduzindo = false;
     estado.fase = estado.pronto

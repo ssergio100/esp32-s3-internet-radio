@@ -40,11 +40,11 @@ O sketch também inicializa o MCP23017 no mesmo barramento I2C do firmware
 principal (`SDA=GPIO16`, `SCL=GPIO17`, endereço `0x20`). Antes de tocar:
 
 - o DAC interno do DFPlayer é habilitado;
-- `GPA6=LOW` habilita o NS8002 direito;
-- `GPA5=LOW` habilita o NS8002 esquerdo.
+- `GPA6=LOW` habilita um canal NS8002;
+- `GPA7=LOW` habilita o outro canal NS8002.
 
-No standby ou em caso de erro, o DAC interno é desabilitado e GPA6/GPA5 voltam
-a HIGH para silenciar os amplificadores. `GPA7` não é configurado nem alterado
+No standby ou em caso de erro, o DAC interno é desabilitado e GPA7/GPA6 voltam
+a HIGH para silenciar os amplificadores. `GPA5` não é configurado nem alterado
 pelo teste, pois o DFPlayer não passa pelo relé.
 
 O encoder de volume continua na pinagem do aparelho:
