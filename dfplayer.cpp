@@ -4,6 +4,7 @@
 #include "configuracao.h"
 
 #include <DFRobotDFPlayerMini.h>
+#include <cmath>
 #include <cstdio>
 
 namespace {
@@ -21,6 +22,8 @@ bool saidaDfPlayerAtiva = false;
 EstadoSaidaAudio estadoSaidaAntesDfPlayer;
 bool nivelBusyConhecido = false;
 bool ultimoBusyAtivo = false;
+constexpr uint8_t ATENUACAO_MAXIMA_DB = 30;
+uint8_t atenuacaoDfPlayerDb = 0;
 
 void desativarSaidaDfPlayer() {
     if (!saidaDfPlayerAtiva && !estadoSaidaAntesDfPlayer.valido) {
@@ -57,10 +60,25 @@ uint8_t limitarVolumeEquipamento(uint8_t volume) {
 uint8_t converterVolumeParaModulo(uint8_t volumeEquipamento) {
     const uint16_t volumeLimitado =
         limitarVolumeEquipamento(volumeEquipamento);
-    return static_cast<uint8_t>(
+    const uint8_t volumeBase = static_cast<uint8_t>(
         (volumeLimitado * VOLUME_MAXIMO_DFPLAYER + VOLUME_MAXIMO / 2) /
         VOLUME_MAXIMO
     );
+    if (volumeBase == 0 || atenuacaoDfPlayerDb == 0) {
+        return volumeBase;
+    }
+
+    // O fabricante documenta apenas 30 níveis, sem equivalência em dB.
+    // Aplicamos o fator linear correspondente e usamos o nível mais próximo.
+    const float fator = powf(
+        10.0f,
+        -static_cast<float>(atenuacaoDfPlayerDb) / 20.0f
+    );
+    return static_cast<uint8_t>(constrain(
+        static_cast<int>(lroundf(volumeBase * fator)),
+        0,
+        static_cast<int>(VOLUME_MAXIMO_DFPLAYER)
+    ));
 }
 
 void limparRecepcaoSerial() {
@@ -448,6 +466,16 @@ void definirVolumeDfPlayer(uint8_t volumeEquipamento) {
 
     if (saidaDfPlayerAtiva) {
         configurarSaidaAudioDfPlayer(estado.volumeEquipamento == 0);
+    }
+}
+
+void configurarAtenuacaoDfPlayer(uint8_t atenuacaoDb) {
+    atenuacaoDfPlayerDb = min(atenuacaoDb, ATENUACAO_MAXIMA_DB);
+    estado.volumeModulo = converterVolumeParaModulo(
+        estado.volumeEquipamento
+    );
+    if (estado.moduloRespondendo) {
+        driverDfPlayer.volume(estado.volumeModulo);
     }
 }
 

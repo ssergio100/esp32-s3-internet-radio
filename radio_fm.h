@@ -39,6 +39,7 @@ bool iniciarRadioFm(int volumeInterface);
 bool ativarRadioFm(int volumeInterface);
 void desativarRadioFm();
 void ajustarVolumeRadioFm(int volumeInterface);
+void configurarAtenuacaoRadioFm(uint8_t atenuacaoDb);
 
 // Cada detente procura a estação seguinte (positivo) ou anterior (negativo).
 // As etapas ficam enfileiradas para movimentos rápidos não perderem passos.

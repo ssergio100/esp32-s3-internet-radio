@@ -9,6 +9,9 @@ struct ConfiguracoesUsuario {
     bool sincronizacaoAutomatica = true;
     uint16_t repousoTftMinutos = 0;
     TemaUiTft temaTft = TemaUiTft::LARANJA;
+    uint8_t atenuacaoFmDb = 0;
+    uint8_t atenuacaoRadioWebDb = 0;
+    uint8_t atenuacaoDfPlayerDb = 0;
 };
 
 // Preferências pequenas e independentes do catálogo e dos alarmes. São

@@ -93,6 +93,7 @@ bool deslocarSomDfPlayer(
 // GPA7/GPA6 são os enables; GPA5 é o relé e apenas é preservado/restaurado.
 void pararDfPlayer();
 void definirVolumeDfPlayer(uint8_t volumeEquipamento);
+void configurarAtenuacaoDfPlayer(uint8_t atenuacaoDb);
 EstadoDfPlayer obterEstadoDfPlayer();
 const char* obterTextoFaseDfPlayer(FaseDfPlayer fase);
 
