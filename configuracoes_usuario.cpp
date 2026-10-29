@@ -6,6 +6,11 @@ namespace {
 
 constexpr const char* ESPACO_NVS = "radio_ui";
 constexpr uint16_t REPOUSOS_VALIDOS[] = {0, 1, 2, 5, 10, 15, 30};
+constexpr uint8_t ATENUACAO_MAXIMA_DB = 30;
+
+uint8_t limitarAtenuacao(uint8_t atenuacaoDb) {
+    return min(atenuacaoDb, ATENUACAO_MAXIMA_DB);
+}
 
 bool repousoValido(uint16_t minutos) {
     for (uint16_t valor : REPOUSOS_VALIDOS) {
@@ -39,6 +44,16 @@ ConfiguracoesUsuario carregarConfiguracoesUsuario() {
         configuracoes.temaTft = static_cast<TemaUiTft>(tema);
     }
 
+    configuracoes.atenuacaoFmDb = limitarAtenuacao(
+        preferencias.getUChar("att_fm", 0)
+    );
+    configuracoes.atenuacaoRadioWebDb = limitarAtenuacao(
+        preferencias.getUChar("att_web", 0)
+    );
+    configuracoes.atenuacaoDfPlayerDb = limitarAtenuacao(
+        preferencias.getUChar("att_df", 0)
+    );
+
     preferencias.end();
     return configuracoes;
 }
@@ -63,6 +78,18 @@ bool salvarConfiguracoesUsuario(
     ok = preferencias.putUChar(
         "tema",
         static_cast<uint8_t>(configuracoes.temaTft)
+    ) == sizeof(uint8_t) && ok;
+    ok = preferencias.putUChar(
+        "att_fm",
+        limitarAtenuacao(configuracoes.atenuacaoFmDb)
+    ) == sizeof(uint8_t) && ok;
+    ok = preferencias.putUChar(
+        "att_web",
+        limitarAtenuacao(configuracoes.atenuacaoRadioWebDb)
+    ) == sizeof(uint8_t) && ok;
+    ok = preferencias.putUChar(
+        "att_df",
+        limitarAtenuacao(configuracoes.atenuacaoDfPlayerDb)
     ) == sizeof(uint8_t) && ok;
     preferencias.end();
     return ok;

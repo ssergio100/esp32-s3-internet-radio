@@ -54,6 +54,8 @@ enum class ModoInterface {
     CONFIGURACOES_TELA,
     CONFIGURAR_REPOUSO_TFT,
     CONFIGURAR_TEMA_TFT,
+    CONFIGURACOES_SOM,
+    CONFIGURAR_ATENUACAO_SOM,
     DETALHES_RADIO_FM,
     DETALHES_RADIO_WEB
 };
@@ -130,6 +132,7 @@ uint8_t campoHoraEmAjuste = 0;
 uint16_t repousoTftEmAjuste = 0;
 TemaUiTft temaTftEmAjuste = TemaUiTft::LARANJA;
 TemaUiTft temaTftAntesDaPrevia = TemaUiTft::LARANJA;
+uint8_t atenuacaoSomEmAjusteDb = 0;
 unsigned long momentoUltimaAtividadeTftMs = 0;
 bool tftEmRepouso = false;
 
@@ -255,6 +258,13 @@ void setup() {
     );
 
     configuracoesUsuario = carregarConfiguracoesUsuario();
+    configurarAtenuacaoRadioFm(configuracoesUsuario.atenuacaoFmDb);
+    configurarAtenuacaoRadioWeb(
+        configuracoesUsuario.atenuacaoRadioWebDb
+    );
+    configurarAtenuacaoDfPlayer(
+        configuracoesUsuario.atenuacaoDfPlayerDb
+    );
     iniciarDisplay();
     configurarTemaInterfaceTft(configuracoesUsuario.temaTft);
     iniciarControles();
@@ -1175,7 +1185,9 @@ void processarLeituraControles(
         modoInterface == ModoInterface::AJUSTE_HORA ||
         modoInterface == ModoInterface::CONFIGURACOES_TELA ||
         modoInterface == ModoInterface::CONFIGURAR_REPOUSO_TFT ||
-        modoInterface == ModoInterface::CONFIGURAR_TEMA_TFT
+        modoInterface == ModoInterface::CONFIGURAR_TEMA_TFT ||
+        modoInterface == ModoInterface::CONFIGURACOES_SOM ||
+        modoInterface == ModoInterface::CONFIGURAR_ATENUACAO_SOM
     ) {
         processarControlesConfiguracoes(leitura);
         return;
@@ -1499,6 +1511,64 @@ constexpr uint16_t OPCOES_REPOUSO_TFT[] = {
 };
 constexpr long QUANTIDADE_TEMAS_TFT =
     static_cast<long>(TemaUiTft::APENAS_LARANJA) + 1;
+constexpr uint8_t ATENUACAO_MAXIMA_FONTE_DB = 30;
+void salvarPreferenciasInterface();
+
+uint8_t obterAtenuacaoFonte(uint8_t indice) {
+    switch (indice) {
+        case 0:
+            return configuracoesUsuario.atenuacaoFmDb;
+        case 1:
+            return configuracoesUsuario.atenuacaoRadioWebDb;
+        default:
+            return configuracoesUsuario.atenuacaoDfPlayerDb;
+    }
+}
+
+void formatarAtenuacaoFonte(
+    uint8_t atenuacaoDb,
+    char* destino,
+    size_t tamanho
+) {
+    snprintf(
+        destino,
+        tamanho,
+        atenuacaoDb == 0 ? "0 dB" : "-%u dB",
+        static_cast<unsigned>(atenuacaoDb)
+    );
+}
+
+const char* nomeFonteAtenuacao(uint8_t indice) {
+    switch (indice) {
+        case 0:
+            return "RÁDIO FM";
+        case 1:
+            return "RÁDIO WEB";
+        default:
+            return "DFPLAYER";
+    }
+}
+
+void salvarAtenuacaoFonteSelecionada() {
+    switch (indiceConfiguracaoSelecionada) {
+        case 0:
+            configuracoesUsuario.atenuacaoFmDb = atenuacaoSomEmAjusteDb;
+            configurarAtenuacaoRadioFm(atenuacaoSomEmAjusteDb);
+            ajustarVolumeRadioFm(volumeAtual);
+            break;
+        case 1:
+            configuracoesUsuario.atenuacaoRadioWebDb =
+                atenuacaoSomEmAjusteDb;
+            configurarAtenuacaoRadioWeb(atenuacaoSomEmAjusteDb);
+            break;
+        default:
+            configuracoesUsuario.atenuacaoDfPlayerDb =
+                atenuacaoSomEmAjusteDb;
+            configurarAtenuacaoDfPlayer(atenuacaoSomEmAjusteDb);
+            break;
+    }
+    salvarPreferenciasInterface();
+}
 
 const char* nomeTemaTft(TemaUiTft tema) {
     switch (tema) {
@@ -1601,15 +1671,17 @@ void apresentarConfiguracoes() {
         indiceConfiguracaoSelecionada == 1;
     strlcpy(
         dados.indicadorTopoDireito,
-        ajusteDiretoSelecionado
-            ? "B: AJUSTA · CLIQUE VOLTA"
-            : "A: ENTRA · B: VOLTA",
+        modoInterface == ModoInterface::CONFIGURAR_ATENUACAO_SOM
+            ? "A: SALVA · B: CANCELA"
+            : ajusteDiretoSelecionado
+                ? "B: AJUSTA · CLIQUE VOLTA"
+                : "A: ENTRA · B: VOLTA",
         sizeof(dados.indicadorTopoDireito)
     );
 
     if (modoInterface == ModoInterface::LISTA_CONFIGURACOES) {
         strlcpy(dados.titulo, "CONFIGURAÇÕES", sizeof(dados.titulo));
-        dados.quantidadeItens = 2;
+        dados.quantidadeItens = 3;
         preencherItemConfiguracao(
             dados.itens[0],
             "RELÓGIO",
@@ -1620,6 +1692,12 @@ void apresentarConfiguracoes() {
             dados.itens[1],
             "TELA",
             "Repouso e cor da interface",
+            "ENTRAR"
+        );
+        preencherItemConfiguracao(
+            dados.itens[2],
+            "SOM",
+            "Atenuação individual das fontes",
             "ENTRAR"
         );
     } else if (modoInterface == ModoInterface::CONFIGURACOES_RELOGIO) {
@@ -1671,6 +1749,23 @@ void apresentarConfiguracoes() {
             "Paleta aplicada a todas as telas",
             nomeTemaTftCurto(configuracoesUsuario.temaTft)
         );
+    } else if (modoInterface == ModoInterface::CONFIGURACOES_SOM) {
+        strlcpy(dados.titulo, "SOM", sizeof(dados.titulo));
+        dados.quantidadeItens = 3;
+        char atenuacao[12];
+        for (uint8_t indice = 0; indice < 3; indice++) {
+            formatarAtenuacaoFonte(
+                obterAtenuacaoFonte(indice),
+                atenuacao,
+                sizeof(atenuacao)
+            );
+            preencherItemConfiguracao(
+                dados.itens[indice],
+                nomeFonteAtenuacao(indice),
+                "Redução adicional da fonte",
+                atenuacao
+            );
+        }
     } else {
         dados.vista = VistaConfiguracoes::VALOR;
         if (modoInterface == ModoInterface::AJUSTE_HORA) {
@@ -1707,7 +1802,9 @@ void apresentarConfiguracoes() {
                 "B gira: altera · A confirma",
                 sizeof(dados.ajuda)
             );
-        } else {
+        } else if (
+            modoInterface == ModoInterface::CONFIGURAR_TEMA_TFT
+        ) {
             strlcpy(dados.titulo, "COR DA INTERFACE", sizeof(dados.titulo));
             strlcpy(dados.rotulo, "PRÉVIA", sizeof(dados.rotulo));
             strlcpy(
@@ -1718,6 +1815,28 @@ void apresentarConfiguracoes() {
             strlcpy(
                 dados.ajuda,
                 "B gira: prévia · A confirma",
+                sizeof(dados.ajuda)
+            );
+        } else {
+            snprintf(
+                dados.titulo,
+                sizeof(dados.titulo),
+                "ATENUAÇÃO %s",
+                nomeFonteAtenuacao(indiceConfiguracaoSelecionada)
+            );
+            strlcpy(
+                dados.rotulo,
+                nomeFonteAtenuacao(indiceConfiguracaoSelecionada),
+                sizeof(dados.rotulo)
+            );
+            formatarAtenuacaoFonte(
+                atenuacaoSomEmAjusteDb,
+                dados.valor,
+                sizeof(dados.valor)
+            );
+            strlcpy(
+                dados.ajuda,
+                "B gira: ajusta · A salva",
                 sizeof(dados.ajuda)
             );
         }
@@ -1733,13 +1852,15 @@ void processarControlesConfiguracoes(
     const bool emLista =
         modoInterface == ModoInterface::LISTA_CONFIGURACOES ||
         modoInterface == ModoInterface::CONFIGURACOES_RELOGIO ||
-        modoInterface == ModoInterface::CONFIGURACOES_TELA;
+        modoInterface == ModoInterface::CONFIGURACOES_TELA ||
+        modoInterface == ModoInterface::CONFIGURACOES_SOM;
 
     if (leitura.cliqueNavegacaoDetectado) {
         if (modoInterface == ModoInterface::LISTA_CONFIGURACOES) {
             voltarAoMenuPrincipalPelasConfiguracoes();
         } else if (modoInterface == ModoInterface::CONFIGURACOES_RELOGIO ||
-                   modoInterface == ModoInterface::CONFIGURACOES_TELA) {
+                   modoInterface == ModoInterface::CONFIGURACOES_TELA ||
+                   modoInterface == ModoInterface::CONFIGURACOES_SOM) {
             modoInterface = ModoInterface::LISTA_CONFIGURACOES;
             indiceConfiguracaoSelecionada = 0;
             apresentarConfiguracoes();
@@ -1747,10 +1868,15 @@ void processarControlesConfiguracoes(
             if (modoInterface == ModoInterface::CONFIGURAR_TEMA_TFT) {
                 configurarTemaInterfaceTft(temaTftAntesDaPrevia);
             }
-            modoInterface =
-                modoInterface == ModoInterface::AJUSTE_HORA
-                    ? ModoInterface::CONFIGURACOES_RELOGIO
-                    : ModoInterface::CONFIGURACOES_TELA;
+            if (modoInterface == ModoInterface::AJUSTE_HORA) {
+                modoInterface = ModoInterface::CONFIGURACOES_RELOGIO;
+            } else if (
+                modoInterface == ModoInterface::CONFIGURAR_ATENUACAO_SOM
+            ) {
+                modoInterface = ModoInterface::CONFIGURACOES_SOM;
+            } else {
+                modoInterface = ModoInterface::CONFIGURACOES_TELA;
+            }
             apresentarConfiguracoes();
         }
         return;
@@ -1759,8 +1885,10 @@ void processarControlesConfiguracoes(
     if (emLista && leitura.deslocamentoEncoderVolume != 0) {
         const long quantidade =
             modoInterface == ModoInterface::LISTA_CONFIGURACOES
-                ? 2L
-                : 2L;
+                ? 3L
+                : modoInterface == ModoInterface::CONFIGURACOES_SOM
+                    ? 3L
+                    : 2L;
         long novo =
             (static_cast<long>(indiceConfiguracaoSelecionada) +
                 leitura.deslocamentoEncoderVolume) % quantidade;
@@ -1828,6 +1956,14 @@ void processarControlesConfiguracoes(
             if (tema < 0) tema += QUANTIDADE_TEMAS_TFT;
             temaTftEmAjuste = static_cast<TemaUiTft>(tema);
             configurarTemaInterfaceTft(temaTftEmAjuste);
+        } else if (
+            modoInterface == ModoInterface::CONFIGURAR_ATENUACAO_SOM
+        ) {
+            atenuacaoSomEmAjusteDb = static_cast<uint8_t>(constrain(
+                static_cast<long>(atenuacaoSomEmAjusteDb) + deslocamento,
+                0L,
+                static_cast<long>(ATENUACAO_MAXIMA_FONTE_DB)
+            ));
         }
         apresentarConfiguracoes();
     }
@@ -1837,10 +1973,13 @@ void processarControlesConfiguracoes(
     }
 
     if (modoInterface == ModoInterface::LISTA_CONFIGURACOES) {
-        modoInterface =
-            indiceConfiguracaoSelecionada == 0
-                ? ModoInterface::CONFIGURACOES_RELOGIO
-                : ModoInterface::CONFIGURACOES_TELA;
+        if (indiceConfiguracaoSelecionada == 0) {
+            modoInterface = ModoInterface::CONFIGURACOES_RELOGIO;
+        } else if (indiceConfiguracaoSelecionada == 1) {
+            modoInterface = ModoInterface::CONFIGURACOES_TELA;
+        } else {
+            modoInterface = ModoInterface::CONFIGURACOES_SOM;
+        }
         indiceConfiguracaoSelecionada = 0;
     } else if (modoInterface == ModoInterface::CONFIGURACOES_RELOGIO) {
         if (indiceConfiguracaoSelecionada == 0) {
@@ -1862,6 +2001,11 @@ void processarControlesConfiguracoes(
             temaTftAntesDaPrevia = configuracoesUsuario.temaTft;
             modoInterface = ModoInterface::CONFIGURAR_TEMA_TFT;
         }
+    } else if (modoInterface == ModoInterface::CONFIGURACOES_SOM) {
+        atenuacaoSomEmAjusteDb = obterAtenuacaoFonte(
+            indiceConfiguracaoSelecionada
+        );
+        modoInterface = ModoInterface::CONFIGURAR_ATENUACAO_SOM;
     } else if (modoInterface == ModoInterface::AJUSTE_HORA) {
         if (ajustarHoraLocalRelogio(horaEmAjuste, minutoEmAjuste)) {
             modoInterface = ModoInterface::CONFIGURACOES_RELOGIO;
@@ -1880,6 +2024,11 @@ void processarControlesConfiguracoes(
         salvarPreferenciasInterface();
         modoInterface = ModoInterface::CONFIGURACOES_TELA;
         indiceConfiguracaoSelecionada = 1;
+    } else if (
+        modoInterface == ModoInterface::CONFIGURAR_ATENUACAO_SOM
+    ) {
+        salvarAtenuacaoFonteSelecionada();
+        modoInterface = ModoInterface::CONFIGURACOES_SOM;
     }
     apresentarConfiguracoes();
 }

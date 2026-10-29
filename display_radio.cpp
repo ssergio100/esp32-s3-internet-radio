@@ -1,6 +1,7 @@
 #include "display_radio.h"
 #include "audio_radio.h"
 #include "alarmes.h"
+#include "chime.h"
 #include "configuracao.h"
 #include "relogio.h"
 #include "relogio_rtc.h"
@@ -158,6 +159,7 @@ namespace {
     StatusAlarmes statusAlarmesRelogio;
     bool rtcRelogioRespondendo = false;
     bool sincronizacaoNtpRelogioValida = false;
+    bool chimeAtivoRelogio = false;
 
 #if RADIO_UI_TFT_POC
     void copiarTextoTft(char* destino, size_t tamanho, const String& origem) {
@@ -472,6 +474,7 @@ namespace {
                     statusAlarmesRelogio.quantidade,
                     static_cast<size_t>(UINT8_MAX)
                 ));
+                estado.chimeAtivo = chimeAtivoRelogio;
                 break;
 
             case TelaDisplay::ALARME:
@@ -714,9 +717,13 @@ namespace {
         const bool ntpMudou = ntpAgora != sincronizacaoNtpRelogioValida;
         sincronizacaoNtpRelogioValida = ntpAgora;
 
+        const bool chimeAgora = obterConfiguracaoChime().ativo;
+        const bool chimeMudou = chimeAgora != chimeAtivoRelogio;
+        chimeAtivoRelogio = chimeAgora;
+
         if (
             forcarAtualizacao || horarioMudou || proximoMudou ||
-            statusMudou || rtcMudou || ntpMudou
+            statusMudou || rtcMudou || ntpMudou || chimeMudou
         ) {
             marcarModeloTftAlterado();
             return true;
@@ -1107,6 +1114,7 @@ void mostrarTelaRelogio() {
     // adicional durante a transição da interface.
     bool rtcRespondendo = relogioRtcDisponivel();
     bool ntpValido = ultimaSincronizacaoNtpValida();
+    bool chimeAtivo = obterConfiguracaoChime().ativo;
 
     BloqueioDisplay bloqueio;
 
@@ -1128,6 +1136,7 @@ void mostrarTelaRelogio() {
     statusAlarmesRelogio = statusAlarmes;
     rtcRelogioRespondendo = rtcRespondendo;
     sincronizacaoNtpRelogioValida = ntpValido;
+    chimeAtivoRelogio = chimeAtivo;
     exibindoVolumeNaBarraInferior = false;
     solicitarApresentacao();
 }

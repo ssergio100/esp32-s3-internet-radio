@@ -8,6 +8,8 @@
 #include "src/tef6686/RadioTef6686.h"
 
 namespace {
+    constexpr uint8_t ATENUACAO_MAXIMA_DB = 30;
+    uint8_t atenuacaoRadioFmDb = 0;
 
     tef6686::RadioTef6686 radio;
     StatusRadioFm status;
@@ -135,13 +137,17 @@ namespace {
         );
 
         constexpr int FAIXA_VOLUME_DB = 60;
-        return static_cast<int16_t>(
+        const int volumeDb =
             -FAIXA_VOLUME_DB +
             (
                 volume * FAIXA_VOLUME_DB +
                 VOLUME_MAXIMO / 2
-            ) / VOLUME_MAXIMO
-        );
+            ) / VOLUME_MAXIMO;
+        return static_cast<int16_t>(constrain(
+            volumeDb - atenuacaoRadioFmDb,
+            -FAIXA_VOLUME_DB,
+            0
+        ));
     }
 
     bool aplicarVolume(int volumeInterface) {
@@ -569,6 +575,10 @@ void ajustarVolumeRadioFm(int volumeInterface) {
             publicarErro("mute", erro);
         }
     }
+}
+
+void configurarAtenuacaoRadioFm(uint8_t atenuacaoDb) {
+    atenuacaoRadioFmDb = min(atenuacaoDb, ATENUACAO_MAXIMA_DB);
 }
 
 void navegarRadioFm(

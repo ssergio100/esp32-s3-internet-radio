@@ -2514,11 +2514,30 @@ namespace {
         ) {
             desenharTextoVisivel(
                 textoOuTraco(atual.titulo),
-                13, 8, 294, 18,
+                13, 8, 270, 18,
                 FONTE_AA_DESTAQUE,
                 paletaAtual.secundaria,
                 paletaAtual.fundo
             );
+            campos++;
+        }
+
+        if (
+            completo ||
+            atual.chimeAtivo != anterior->chimeAtivo
+        ) {
+            // O sino identifica o chime; a área é limpa também ao desativá-lo.
+            tft.fillRect(289, 7, 21, 20, paletaAtual.fundo);
+            if (atual.chimeAtivo) {
+                desenharIconeAlpha4(
+                    ICON_BELL_A4,
+                    ICON_BELL_W,
+                    ICON_BELL_H,
+                    293, 8,
+                    paletaAtual.primaria,
+                    paletaAtual.fundo
+                );
+            }
             campos++;
         }
 
@@ -2664,10 +2683,10 @@ namespace {
                     true
                 );
                 desenharIconeAlpha4(
-                    ICON_BELL_A4,
-                    ICON_BELL_W,
-                    ICON_BELL_H,
-                    268, 144,
+                    ICON_ALARM_CLOCK_A4,
+                    ICON_ALARM_CLOCK_W,
+                    ICON_ALARM_CLOCK_H,
+                    266, 144,
                     paletaAtual.primaria,
                     paletaAtual.superficie
                 );

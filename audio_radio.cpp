@@ -83,6 +83,27 @@ std::atomic<bool> decoderDacAtivo{false};
 std::atomic<bool> ultimaInicializacaoBemSucedida{false};
 std::atomic<uint8_t> volumeDesejado{VOLUME_PADRAO};
 std::atomic<bool> ajusteVolumePendente{false};
+std::atomic<uint8_t> atenuacaoRadioWebDb{0};
+
+constexpr uint8_t ATENUACAO_MAXIMA_DB = 30;
+
+float curvaVolumeRadioWeb(float proporcao) {
+    if (proporcao < 0.0f) proporcao = 0.0f;
+    if (proporcao > 1.0f) proporcao = 1.0f;
+
+    // Mesma curva padrão da versão instalada da ESP32-audioI2S, apenas com
+    // o deslocamento adicional escolhido para a fonte Rádio Web.
+    float volumeDb =
+        -112.0f * proporcao * proporcao * proporcao +
+        172.0f * proporcao * proporcao -
+        60.0f -
+        static_cast<float>(atenuacaoRadioWebDb.load(
+            std::memory_order_acquire
+        ));
+    if (volumeDb < -60.0f) volumeDb = -60.0f;
+    if (volumeDb > 0.0f) volumeDb = 0.0f;
+    return volumeDb;
+}
 
 StatusAudio statusAudio;
 
@@ -693,6 +714,7 @@ bool iniciarDecoderDacAgora(int volume) {
     }
 
     audio->setAudioTaskCore(NUCLEO_DECODIFICADOR_AUDIO);
+    audio->setVolumeCurve(curvaVolumeRadioWeb);
     audio->setMute(false);
     audio->setVolume(volume);
     decoderDacAtivo.store(true, std::memory_order_release);
@@ -1547,6 +1569,20 @@ void alterarVolumeAudio(int volume) {
         std::memory_order_release
     );
     ajusteVolumePendente.store(true, std::memory_order_release);
+}
+
+void configurarAtenuacaoRadioWeb(uint8_t atenuacaoDb) {
+    atenuacaoRadioWebDb.store(
+        min(atenuacaoDb, ATENUACAO_MAXIMA_DB),
+        std::memory_order_release
+    );
+
+    // A tarefa proprietária do objeto Audio reaplica o volume atual usando a
+    // nova atenuação; nenhuma chamada ao decoder parte da interface.
+    if (tarefaAudioHandle != nullptr) {
+        ajusteVolumePendente.store(true, std::memory_order_release);
+        xTaskNotifyGive(tarefaAudioHandle);
+    }
 }
 
 bool decoderDacEstaAtivo() {

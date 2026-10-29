@@ -106,6 +106,7 @@ struct EstadoUiTftPoc {
     bool rtcRespondendo = false;
     bool sincronizacaoNtpValida = false;
     uint8_t quantidadeAlarmes = 0;
+    bool chimeAtivo = false;
     int16_t volume = 0;
     bool volumeSobreposto = false;
     TemaUiTft tema = TemaUiTft::LARANJA;

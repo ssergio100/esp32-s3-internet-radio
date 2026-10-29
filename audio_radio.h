@@ -70,6 +70,7 @@ bool suspenderAudio();
 bool retomarAudio(int volume, bool paraPlayer = false);
 
 void alterarVolumeAudio(int volume);
+void configurarAtenuacaoRadioWeb(uint8_t atenuacaoDb);
 
 bool decoderDacEstaAtivo();
 
