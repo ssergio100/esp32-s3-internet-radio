@@ -7,20 +7,29 @@
 
 void iniciarDisplay();
 
-void mostrarConfiguracaoWifi();
+// Mantem a splash intacta durante o boot e libera a primeira tela somente
+// depois que os demais modulos terminarem a inicializacao.
+void finalizarSplashDisplay();
+
+void mostrarConfiguracaoWifi(
+    const String& nomeRede,
+    const String& endereco
+);
 
 void mostrarMensagem(const String& mensagem);
 
 void mostrarNomeRadio(
     const String& nome,
     int indiceAtual,
-    int quantidadeRadios
+    int quantidadeRadios,
+    uint8_t estrelas
 );
 
 void mostrarSelecaoRadio(
     const String& nome,
     int indiceSelecionado,
-    int quantidadeRadios
+    int quantidadeRadios,
+    uint8_t estrelas
 );
 
 void mostrarEstadoRadio(

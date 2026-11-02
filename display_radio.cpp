@@ -5,6 +5,7 @@
 #include "configuracao.h"
 #include "relogio.h"
 #include "relogio_rtc.h"
+#include "sensor_clima.h"
 #include "ui_tft_poc.h"
 #include "wifi_radio.h"
 
@@ -16,6 +17,7 @@ namespace {
     bool disponivel = false;
     SemaphoreHandle_t mutexDisplay = nullptr;
     TaskHandle_t tarefaDisplayHandle = nullptr;
+    volatile bool splashAtiva = false;
 
 #if RADIO_UI_TFT_POC
     bool tftPocDisponivel = false;
@@ -107,6 +109,8 @@ namespace {
     TelaDisplay telaAtual = TelaDisplay::MENSAGEM;
     bool atualizacaoPendente = false;
     String mensagemAtual = "Inicializando";
+    String nomeRedeConfiguracaoWifi = "RADIO-WEB";
+    String enderecoConfiguracaoWifi = "192.168.4.1";
     String nomeAlarmeAtual;
     int volumeAlarmeAtual = VOLUME_PADRAO;
     DadosDisplayConfiguracaoAlarmes dadosConfiguracaoAlarmesAtual;
@@ -126,6 +130,7 @@ namespace {
     String estadoRadioWebTftAtual;
     int indiceRadioAtual = 0;
     int quantidadeRadiosAtual = 0;
+    uint8_t estrelasRadioWebTftAtual = 0;
 
     uint16_t frequenciaRadioFm10kHz = 0;
     int16_t nivelRadioFmDecimosDbuv = 0;
@@ -160,6 +165,15 @@ namespace {
     bool rtcRelogioRespondendo = false;
     bool sincronizacaoNtpRelogioValida = false;
     bool chimeAtivoRelogio = false;
+    bool climaRelogioValido = false;
+    int16_t temperaturaRelogioDecimosC = 0;
+    uint8_t umidadeRelogioPercentual = 0;
+
+    uint8_t arredondarUmidadePercentual(uint16_t umidadeDecimosRh) {
+        const uint16_t percentual =
+            static_cast<uint16_t>((umidadeDecimosRh + 5U) / 10U);
+        return static_cast<uint8_t>(min(percentual, uint16_t{100}));
+    }
 
 #if RADIO_UI_TFT_POC
     void copiarTextoTft(char* destino, size_t tamanho, const String& origem) {
@@ -276,7 +290,16 @@ namespace {
             case TelaDisplay::CONFIGURACAO_WIFI:
                 estado.tela = TelaUiTftPoc::CONFIGURACAO_WIFI;
                 copiarTextoTft(estado.titulo, sizeof(estado.titulo), "CONFIGURAÇÃO WI-FI");
-                copiarTextoTft(estado.mensagem, sizeof(estado.mensagem), "RADIO-WEB  |  192.168.4.1");
+                copiarTextoTft(
+                    estado.wifiSsid,
+                    sizeof(estado.wifiSsid),
+                    nomeRedeConfiguracaoWifi
+                );
+                copiarTextoTft(
+                    estado.wifiIp,
+                    sizeof(estado.wifiIp),
+                    enderecoConfiguracaoWifi
+                );
                 break;
 
             case TelaDisplay::RADIO:
@@ -324,6 +347,7 @@ namespace {
                     sizeof(estado.estadoWeb),
                     estadoRadioWebTftAtual
                 );
+                estado.estrelasWeb = estrelasRadioWebTftAtual;
                 estado.dadosWebValidos =
                     modoFaixaCentral == ModoFaixaCentral::ROLAGEM &&
                     statusAudioTftDisponivel &&
@@ -475,6 +499,10 @@ namespace {
                     static_cast<size_t>(UINT8_MAX)
                 ));
                 estado.chimeAtivo = chimeAtivoRelogio;
+                estado.climaValido = climaRelogioValido;
+                estado.temperaturaDecimosC =
+                    temperaturaRelogioDecimosC;
+                estado.umidadePercentual = umidadeRelogioPercentual;
                 break;
 
             case TelaDisplay::ALARME:
@@ -721,9 +749,31 @@ namespace {
         const bool chimeMudou = chimeAgora != chimeAtivoRelogio;
         chimeAtivoRelogio = chimeAgora;
 
+        // O sensor e consultado pelo servico cooperativo no loop principal.
+        // A tarefa do display apenas copia a ultima amostra ja pronta.
+        const LeituraSensorClima leituraClima = obterLeituraSensorClima();
+        const bool climaValidoAgora =
+            leituraClima.disponivel && leituraClima.valida;
+        const int16_t temperaturaAgora = climaValidoAgora
+            ? leituraClima.temperaturaDecimosC
+            : 0;
+        const uint8_t umidadeAgora = climaValidoAgora
+            ? arredondarUmidadePercentual(leituraClima.umidadeDecimosRh)
+            : 0;
+        const bool climaMudou =
+            climaValidoAgora != climaRelogioValido ||
+            (climaValidoAgora && (
+                temperaturaAgora != temperaturaRelogioDecimosC ||
+                umidadeAgora != umidadeRelogioPercentual
+            ));
+        climaRelogioValido = climaValidoAgora;
+        temperaturaRelogioDecimosC = temperaturaAgora;
+        umidadeRelogioPercentual = umidadeAgora;
+
         if (
             forcarAtualizacao || horarioMudou || proximoMudou ||
-            statusMudou || rtcMudou || ntpMudou || chimeMudou
+            statusMudou || rtcMudou || ntpMudou || chimeMudou ||
+            climaMudou
         ) {
             marcarModeloTftAlterado();
             return true;
@@ -839,6 +889,7 @@ void iniciarDisplay() {
 #if RADIO_UI_TFT_POC
     tftPocDisponivel = iniciarUiTftPoc();
     disponivel = tftPocDisponivel;
+    splashAtiva = tftPocDisponivel;
     momentoAlteracaoModeloTftMs = millis();
 #else
     disponivel = false;
@@ -848,8 +899,6 @@ void iniciarDisplay() {
         Serial.println("Falha ao inicializar o display TFT.");
         return;
     }
-
-    mostrarMensagem("Inicializando");
 
     if (mutexDisplay == nullptr) {
         return;
@@ -882,6 +931,13 @@ void iniciarDisplay() {
     }
 }
 
+void finalizarSplashDisplay() {
+    splashAtiva = false;
+    if (tarefaDisplayHandle != nullptr) {
+        xTaskNotifyGive(tarefaDisplayHandle);
+    }
+}
+
 void mostrarMensagem(
     const String& mensagem
 ) {
@@ -904,7 +960,8 @@ void mostrarMensagem(
 void mostrarNomeRadio(
     const String& nome,
     int indiceAtual,
-    int quantidadeRadios
+    int quantidadeRadios,
+    uint8_t estrelas
 ) {
     BloqueioDisplay bloqueio;
     if (!bloqueio.foiAdquirido() || !disponivel) {
@@ -916,6 +973,7 @@ void mostrarNomeRadio(
     estadoRadioWebTftAtual = "REPRODUZINDO";
     indiceRadioAtual = indiceAtual;
     quantidadeRadiosAtual = quantidadeRadios;
+    estrelasRadioWebTftAtual = estrelas > 5 ? 5 : estrelas;
     telaAtual = TelaDisplay::RADIO;
     exibindoVolumeNaBarraInferior = false;
     modoFaixaCentral = ModoFaixaCentral::ROLAGEM;
@@ -925,13 +983,16 @@ void mostrarNomeRadio(
 void mostrarSelecaoRadio(
     const String& nome,
     int indiceSelecionado,
-    int quantidadeRadios
+    int quantidadeRadios,
+    uint8_t estrelas
 ) {
     BloqueioDisplay bloqueio;
 
     if (!bloqueio.foiAdquirido()) {
         return;
     }
+
+    estrelasRadioWebTftAtual = estrelas > 5 ? 5 : estrelas;
 
     mostrarTextoEstaticoNaFaixaCentral(
         nome,
@@ -1115,6 +1176,14 @@ void mostrarTelaRelogio() {
     bool rtcRespondendo = relogioRtcDisponivel();
     bool ntpValido = ultimaSincronizacaoNtpValida();
     bool chimeAtivo = obterConfiguracaoChime().ativo;
+    const LeituraSensorClima leituraClima = obterLeituraSensorClima();
+    const bool climaValido = leituraClima.disponivel && leituraClima.valida;
+    const int16_t temperaturaDecimosC = climaValido
+        ? leituraClima.temperaturaDecimosC
+        : 0;
+    const uint8_t umidadePercentual = climaValido
+        ? arredondarUmidadePercentual(leituraClima.umidadeDecimosRh)
+        : 0;
 
     BloqueioDisplay bloqueio;
 
@@ -1137,6 +1206,9 @@ void mostrarTelaRelogio() {
     rtcRelogioRespondendo = rtcRespondendo;
     sincronizacaoNtpRelogioValida = ntpValido;
     chimeAtivoRelogio = chimeAtivo;
+    climaRelogioValido = climaValido;
+    temperaturaRelogioDecimosC = temperaturaDecimosC;
+    umidadeRelogioPercentual = umidadePercentual;
     exibindoVolumeNaBarraInferior = false;
     solicitarApresentacao();
 }
@@ -1159,7 +1231,10 @@ void mostrarAlarme(const String& nome, int volume) {
     solicitarApresentacao();
 }
 
-void mostrarConfiguracaoWifi() {
+void mostrarConfiguracaoWifi(
+    const String& nomeRede,
+    const String& endereco
+) {
     BloqueioDisplay bloqueio;
 
     if (!bloqueio.foiAdquirido()) {
@@ -1170,6 +1245,8 @@ void mostrarConfiguracaoWifi() {
         return;
     }
 
+    nomeRedeConfiguracaoWifi = nomeRede;
+    enderecoConfiguracaoWifi = endereco;
     telaAtual = TelaDisplay::CONFIGURACAO_WIFI;
     exibindoVolumeNaBarraInferior = false;
     solicitarApresentacao();
@@ -1180,6 +1257,10 @@ void processarDisplay() {
         tarefaDisplayHandle != nullptr &&
         xTaskGetCurrentTaskHandle() != tarefaDisplayHandle
     ) {
+        return;
+    }
+
+    if (splashAtiva) {
         return;
     }
 

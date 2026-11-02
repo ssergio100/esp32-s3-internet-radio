@@ -45,6 +45,7 @@ void limparRadios() {
         radios[indice].nome = nullptr;
         radios[indice].url = nullptr;
         radios[indice].id = 0;
+        radios[indice].estrelas = 0;
     }
 }
 
@@ -155,6 +156,13 @@ void carregarRadios() {
         radios[quantidadeRadios].id =
             item["id"] |
             static_cast<uint32_t>(quantidadeRadios + 1);
+
+        radios[quantidadeRadios].estrelas =
+            static_cast<uint8_t>(constrain(
+                item["estrelas"] | 0,
+                0,
+                5
+            ));
 
         quantidadeRadios++;
     }

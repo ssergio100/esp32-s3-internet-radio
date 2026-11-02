@@ -23,6 +23,8 @@
 #include "indicador_led.h"
 #include "relogio.h"
 #include "relogio_rtc.h"
+#include "nixie.h"
+#include "sensor_clima.h"
 #include "servidor_web.h"
 #include "telemetria.h"
 #include "radio_fm.h"
@@ -56,7 +58,9 @@ enum class ModoInterface {
     CONFIGURAR_TEMA_TFT,
     CONFIGURACOES_SOM,
     CONFIGURAR_ATENUACAO_SOM,
-    DETALHES_RADIO_FM,
+    AJUSTES_RADIO_FM,
+    LARGURA_RADIO_FM,
+    AVANCADO_RADIO_FM,
     DETALHES_RADIO_WEB
 };
 
@@ -133,6 +137,9 @@ uint16_t repousoTftEmAjuste = 0;
 TemaUiTft temaTftEmAjuste = TemaUiTft::LARANJA;
 TemaUiTft temaTftAntesDaPrevia = TemaUiTft::LARANJA;
 uint8_t atenuacaoSomEmAjusteDb = 0;
+uint8_t indiceAjusteRadioFm = 0;
+uint8_t indiceLarguraRadioFm = 0;
+uint8_t indiceAvancadoRadioFm = 0;
 unsigned long momentoUltimaAtividadeTftMs = 0;
 bool tftEmRepouso = false;
 
@@ -197,6 +204,8 @@ void processarControlesChime(const LeituraControles& leitura);
 void entrarListaConfiguracoes();
 void apresentarConfiguracoes();
 void processarControlesConfiguracoes(const LeituraControles& leitura);
+void processarControlesAjustesRadioFm(const LeituraControles& leitura);
+void apresentarAjustesRadioFm();
 void processarRepousoTft();
 void entrarEstadoRelogio();
 void entrarEstadoRadioWeb();
@@ -248,6 +257,10 @@ void finalizarExecucaoAlarme(bool interrompidoPeloUsuario);
 
 void setup() {
     Serial.begin(115200);
+
+    // O TFT e a splash entram primeiro. A propria inicializacao dos demais
+    // modulos mantem a imagem visivel, sem acrescentar espera artificial.
+    iniciarDisplay();
     delay(1000);
 
     // Barramento dos periféricos I2C, independente do TFT (que usa SPI).
@@ -259,13 +272,13 @@ void setup() {
 
     configuracoesUsuario = carregarConfiguracoesUsuario();
     configurarAtenuacaoRadioFm(configuracoesUsuario.atenuacaoFmDb);
+    configurarAjustesRadioFm(configuracoesUsuario.radioFm);
     configurarAtenuacaoRadioWeb(
         configuracoesUsuario.atenuacaoRadioWebDb
     );
     configurarAtenuacaoDfPlayer(
         configuracoesUsuario.atenuacaoDfPlayerDb
     );
-    iniciarDisplay();
     configurarTemaInterfaceTft(configuracoesUsuario.temaTft);
     iniciarControles();
     momentoUltimaAtividadeTftMs = millis();
@@ -273,7 +286,12 @@ void setup() {
     // Antes de GPA7/GPA6/GPA5/GPA4 virarem saídas, o latch recebe o estado
     // seguro: GPA4=LOW desliga o TEF6686, GPA5 seleciona FM e GPA7/GPA6
     // ficam HIGH (mute dos NS8002).
-    iniciarChaveamentoAudio();
+    const bool chaveamentoAudioPronto = iniciarChaveamentoAudio();
+    if (!chaveamentoAudioPronto) {
+        mostrarMensagem("Falha no mute dos amplificadores");
+        finalizarSplashDisplay();
+        return;
+    }
 
     // O DFPlayer prepara somente a UART e o catálogo numérico. Seu DAC e os
     // NS8002 permanecem em mute até um futuro alarme, chime ou prévia.
@@ -286,14 +304,16 @@ void setup() {
 
     // O RTC fornece hora imediatamente; o NTP o corrige quando a rede entrar.
     iniciarRelogio();
+    iniciarSensorClima();
     configurarSincronizacaoAutomaticaRelogio(
         configuracoesUsuario.sincronizacaoAutomatica
     );
+    iniciarNixies();
 
     // O TEF6686 permanece sem alimentação no modo relógio. Ao selecionar FM,
     // GPA4 sobe antes de o driver ser inicializado; fora do FM volta a LOW.
 
-    prepararWifiEmStandby();
+    const bool wifiPossuiCredenciais = prepararWifiEmStandby();
 
     const bool armazenamentoPronto =
         iniciarArmazenamentoEServidorWeb(false);
@@ -301,11 +321,11 @@ void setup() {
         mostrarMensagem(
             "Erro no armazenamento"
         );
+        finalizarSplashDisplay();
         return;
     }
 
     // Os alarmes e as estações são carregados antes do serviço de áudio.
-    mostrarMensagem("Carregando dados");
     iniciarAlarmes();
     carregarConfiguracaoChime();
 
@@ -316,12 +336,27 @@ void setup() {
         mostrarMensagem(
             "Erro no audio"
         );
+        finalizarSplashDisplay();
         return;
     }
 
     indiceRadioAtual = 0;
     indiceRadioEmSelecao = indiceRadioAtual;
+
+    if (!wifiPossuiCredenciais) {
+        // Primeiro uso: a splash dá lugar às instruções do portal. Antes de
+        // ligar o Wi-Fi, GPA7/GPA6 são novamente confirmados em HIGH para que
+        // os dois NS8002 permaneçam em repouso durante toda a configuração.
+        configurarSaidaAudioStandby();
+        finalizarSplashDisplay();
+        conectarWifi();
+        configurarSaidaAudioStandby();
+    }
+
     entrarEstadoRelogio();
+    if (wifiPossuiCredenciais) {
+        finalizarSplashDisplay();
+    }
 }
 
 // =====================================================
@@ -337,9 +372,15 @@ void loop() {
         leituraControles.deslocamentoEncoderNavegacao != 0 ||
         leituraControles.cliqueVolumeDetectado ||
         leituraControles.cliqueNavegacaoDetectado;
+    const bool somenteGiroEncoderANoRepouso =
+        tftEmRepouso &&
+        leituraControles.deslocamentoEncoderVolume != 0 &&
+        leituraControles.deslocamentoEncoderNavegacao == 0 &&
+        !leituraControles.cliqueVolumeDetectado &&
+        !leituraControles.cliqueNavegacaoDetectado;
     if (houveAtividadeInterface) {
         momentoUltimaAtividadeTftMs = millis();
-        if (tftEmRepouso) {
+        if (tftEmRepouso && !somenteGiroEncoderANoRepouso) {
             tftEmRepouso = false;
             configurarTftLigado(true);
             // O primeiro evento apenas acorda a tela, sem alterar a opção
@@ -354,6 +395,8 @@ void loop() {
     // A interface física tem precedência sobre todos os serviços
     // cooperativos. Áudio e display continuam em suas tarefas dedicadas.
     processarRelogio();
+    processarSensorClima();
+    processarNixies();
     processarAgendamentoAlarmes();
     processarChimeHorario();
     processarPreviaChime();
@@ -1172,6 +1215,25 @@ void processarLeituraControles(
     const LeituraControles& leitura
 ) {
     if (
+        tftEmRepouso &&
+        leitura.deslocamentoEncoderVolume != 0
+    ) {
+        ajustarBrilhoNixie(
+            leitura.deslocamentoEncoderVolume
+        );
+        return;
+    }
+
+    if (
+        modoInterface == ModoInterface::AJUSTES_RADIO_FM ||
+        modoInterface == ModoInterface::LARGURA_RADIO_FM ||
+        modoInterface == ModoInterface::AVANCADO_RADIO_FM
+    ) {
+        processarControlesAjustesRadioFm(leitura);
+        return;
+    }
+
+    if (
         modoInterface == ModoInterface::LISTA_CHIME ||
         modoInterface == ModoInterface::CONFIGURAR_CHIME
     ) {
@@ -1213,7 +1275,7 @@ void processarLeituraControles(
             estadoEquipamento == EstadoEquipamento::RELOGIO &&
             !ativacaoRadioPendente
         ) {
-            entrarModoSelecaoFonte(
+            ajustarBrilhoNixie(
                 leitura.deslocamentoEncoderVolume
             );
         } else {
@@ -1247,11 +1309,9 @@ void processarLeituraControles(
 
     if (estadoEquipamento == EstadoEquipamento::RADIO_FM) {
         if (leitura.cliqueNavegacaoDetectado) {
-            modoInterface =
-                modoInterface == ModoInterface::DETALHES_RADIO_FM
-                    ? ModoInterface::REPOUSO
-                    : ModoInterface::DETALHES_RADIO_FM;
-            atualizarApresentacaoRadioFm(true);
+            modoInterface = ModoInterface::AJUSTES_RADIO_FM;
+            indiceAjusteRadioFm = 0;
+            apresentarAjustesRadioFm();
             return;
         }
 
@@ -1264,11 +1324,20 @@ void processarLeituraControles(
                 sequenciaNavegacaoFmDurantePowerDown =
                     leitura.sequenciaEncoderNavegacao;
             } else {
-                navegarRadioFm(
-                    leitura.deslocamentoEncoderNavegacao,
-                    leitura.momentoEncoderNavegacaoUs,
-                    leitura.sequenciaEncoderNavegacao
-                );
+                if (configuracoesUsuario.radioFm.sintoniaPorScanner) {
+                    navegarRadioFm(
+                        leitura.deslocamentoEncoderNavegacao,
+                        leitura.momentoEncoderNavegacaoUs,
+                        leitura.sequenciaEncoderNavegacao
+                    );
+                } else {
+                    sintonizarPassosRadioFm(
+                        leitura.deslocamentoEncoderNavegacao,
+                        configuracoesUsuario.radioFm.passoSintonia10kHz,
+                        leitura.momentoEncoderNavegacaoUs,
+                        leitura.sequenciaEncoderNavegacao
+                    );
+                }
                 atualizarApresentacaoRadioFm(true);
             }
         }
@@ -1512,7 +1581,243 @@ constexpr uint16_t OPCOES_REPOUSO_TFT[] = {
 constexpr long QUANTIDADE_TEMAS_TFT =
     static_cast<long>(TemaUiTft::APENAS_LARANJA) + 1;
 constexpr uint8_t ATENUACAO_MAXIMA_FONTE_DB = 30;
+constexpr uint8_t QUANTIDADE_AJUSTES_RADIO_FM = 12;
+constexpr uint8_t QUANTIDADE_AJUSTES_AVANCADOS_RADIO_FM = 5;
+constexpr uint16_t LARGURAS_RADIO_FM[] = {
+    0, 56, 64, 72, 84, 97, 114, 133, 151,
+    168, 184, 200, 217, 236, 254, 287, 311
+};
 void salvarPreferenciasInterface();
+void preencherItemConfiguracao(
+    ItemListaAlarmesDisplay& item,
+    const char* titulo,
+    const char* subtitulo,
+    const char* valor
+);
+
+uint8_t inicioJanelaLista(uint8_t selecionado, uint8_t total) {
+    uint8_t inicio = 0;
+    if (selecionado >= MAXIMO_ITENS_ALARMES_VISIVEIS) {
+        inicio = static_cast<uint8_t>(
+            selecionado - MAXIMO_ITENS_ALARMES_VISIVEIS + 1
+        );
+    }
+    if (
+        total > MAXIMO_ITENS_ALARMES_VISIVEIS &&
+        inicio + MAXIMO_ITENS_ALARMES_VISIVEIS > total
+    ) {
+        inicio = static_cast<uint8_t>(
+            total - MAXIMO_ITENS_ALARMES_VISIVEIS
+        );
+    }
+    return inicio;
+}
+
+void formatarTempoNixie(
+    uint32_t microssegundos,
+    char* destino,
+    size_t tamanho
+) {
+    if (microssegundos == 1000000) {
+        strlcpy(destino, "1 s", tamanho);
+    } else if (
+        microssegundos >= 1000 &&
+        microssegundos % 1000 == 0
+    ) {
+        snprintf(
+            destino,
+            tamanho,
+            "%lu ms",
+            static_cast<unsigned long>(microssegundos / 1000)
+        );
+    } else {
+        snprintf(
+            destino,
+            tamanho,
+            "%lu µs",
+            static_cast<unsigned long>(microssegundos)
+        );
+    }
+}
+
+uint8_t indiceLarguraFm(uint16_t larguraKHz) {
+    for (
+        uint8_t indice = 0;
+        indice < sizeof(LARGURAS_RADIO_FM) /
+            sizeof(LARGURAS_RADIO_FM[0]);
+        ++indice
+    ) {
+        if (LARGURAS_RADIO_FM[indice] == larguraKHz) {
+            return indice;
+        }
+    }
+    return 0;
+}
+
+const char* textoLigado(bool ligado) {
+    return ligado ? "ON" : "OFF";
+}
+
+bool aplicarAjusteRadioFmEPersistir(
+    AjusteRadioFm ajuste,
+    int32_t valor
+) {
+    if (!aplicarAjusteRadioFm(ajuste, valor)) {
+        Serial.println("Ajuste FM não aplicado; preferência preservada.");
+        return false;
+    }
+    salvarPreferenciasInterface();
+    return true;
+}
+
+void preencherAjustePrincipalRadioFm(
+    uint8_t indice,
+    ItemListaAlarmesDisplay& item
+) {
+    char valor[24] = {};
+    const AjustesRecepcaoRadioFm& fm = configuracoesUsuario.radioFm;
+    switch (indice) {
+        case 0:
+            preencherItemConfiguracao(
+                item,
+                "MODO DE SINTONIA",
+                "Scanner / Manual",
+                fm.sintoniaPorScanner ? "SCANNER" : "MANUAL"
+            );
+            break;
+        case 1:
+            if (fm.larguraBandaKHz == 0) {
+                strlcpy(valor, "AUTO >", sizeof(valor));
+            } else {
+                snprintf(
+                    valor,
+                    sizeof(valor),
+                    "%u kHz >",
+                    fm.larguraBandaKHz
+                );
+            }
+            preencherItemConfiguracao(
+                item, "LARGURA DE RECEPÇÃO", "Bandwidth", valor
+            );
+            break;
+        case 2:
+            preencherItemConfiguracao(
+                item, "ESTÉREO", "Stereo",
+                fm.stereoAutomatico ? "AUTO" : "MONO"
+            );
+            break;
+        case 3:
+            preencherItemConfiguracao(
+                item, "REDUÇÃO MULTIPERCURSO", "Multipath Suppression / iMS",
+                textoLigado(fm.multipath)
+            );
+            break;
+        case 4:
+            preencherItemConfiguracao(
+                item, "REDUÇÃO DE ESTALOS", "Noise Blanker",
+                textoLigado(fm.noiseBlanker)
+            );
+            break;
+        case 5:
+            preencherItemConfiguracao(
+                item, "SUAVIZAÇÃO DE SINAL FRACO", "Softmute",
+                textoLigado(fm.softmute)
+            );
+            break;
+        case 6:
+            preencherItemConfiguracao(
+                item, "CORTE DE AGUDOS", "HighCut",
+                fm.highcut ? "AUTO" : "OFF"
+            );
+            break;
+        case 7:
+            snprintf(
+                valor, sizeof(valor), "%u kHz",
+                static_cast<unsigned>(fm.passoSintonia10kHz * 10)
+            );
+            preencherItemConfiguracao(
+                item, "PASSO DE SINTONIA", "Tuning Step", valor
+            );
+            break;
+        case 8:
+            preencherItemConfiguracao(
+                item, "INFORMAÇÕES DA EMISSORA", "RDS",
+                textoLigado(fm.rds)
+            );
+            break;
+        case 9:
+            preencherItemConfiguracao(
+                item, "EQUALIZAÇÃO DE CANAL", "Channel Equalizer / CEQ",
+                textoLigado(fm.channelEqualizer)
+            );
+            break;
+        case 10:
+            snprintf(valor, sizeof(valor), "%u µs", fm.deemphasisUs);
+            preencherItemConfiguracao(
+                item, "DE-ÊNFASE FM", "De-emphasis", valor
+            );
+            break;
+        default:
+            preencherItemConfiguracao(
+                item, "AVANÇADO", "Parâmetros técnicos do TEF6686", ">"
+            );
+            break;
+    }
+}
+
+void preencherAjusteAvancadoRadioFm(
+    uint8_t indice,
+    ItemListaAlarmesDisplay& item
+) {
+    char valor[24] = {};
+    const AjustesRecepcaoRadioFm& fm = configuracoesUsuario.radioFm;
+    switch (indice) {
+        case 0:
+            snprintf(
+                valor, sizeof(valor), "%u.%u dBµV",
+                fm.rfAgcDecimosDbuv / 10,
+                fm.rfAgcDecimosDbuv % 10
+            );
+            preencherItemConfiguracao(
+                item, "CONTROLE DE GANHO", "RF AGC", valor
+            );
+            break;
+        case 1:
+            preencherItemConfiguracao(
+                item, "MISTURA ESTÉREO", "Stereo Blend",
+                fm.stereoBlend ? "AUTO" : "OFF"
+            );
+            break;
+        case 2:
+            preencherItemConfiguracao(
+                item, "AGUDOS EM ESTÉREO", "Stereo High Blend",
+                fm.stereoHighBlend ? "AUTO" : "OFF"
+            );
+            break;
+        case 3: {
+            const int16_t offset = fm.levelOffsetDecimosDb;
+            snprintf(
+                valor, sizeof(valor), "%s%d.%d dB",
+                offset > 0 ? "+" : "",
+                offset / 10,
+                abs(offset % 10)
+            );
+            preencherItemConfiguracao(
+                item, "AJUSTE DE NÍVEL", "Level Offset", valor
+            );
+            break;
+        }
+        default: {
+            const char* nome = fm.bandwidthOptions == 1
+                ? "IIR"
+                : fm.bandwidthOptions == 2 ? "DE-ÊNFASE" : "FIR";
+            preencherItemConfiguracao(
+                item, "OPÇÕES DE LARGURA", "Bandwidth Options", nome
+            );
+            break;
+        }
+    }
+}
 
 uint8_t obterAtenuacaoFonte(uint8_t indice) {
     switch (indice) {
@@ -1657,6 +1962,339 @@ void salvarPreferenciasInterface() {
 
 }
 
+void apresentarAjustesRadioFm() {
+    DadosDisplayConfiguracoes dados;
+    dados.vista = VistaConfiguracoes::LISTA;
+
+    if (modoInterface == ModoInterface::LARGURA_RADIO_FM) {
+        strlcpy(dados.titulo, "LARGURA FM", sizeof(dados.titulo));
+        strlcpy(
+            dados.indicadorTopoDireito,
+            "A: ESCOLHE · B: VOLTA",
+            sizeof(dados.indicadorTopoDireito)
+        );
+        constexpr uint8_t total = sizeof(LARGURAS_RADIO_FM) /
+            sizeof(LARGURAS_RADIO_FM[0]);
+        const uint8_t inicio = inicioJanelaLista(
+            indiceLarguraRadioFm,
+            total
+        );
+        for (
+            uint8_t indice = inicio;
+            indice < total &&
+                dados.quantidadeItens < MAXIMO_ITENS_ALARMES_VISIVEIS;
+            ++indice
+        ) {
+            char titulo[24];
+            if (LARGURAS_RADIO_FM[indice] == 0) {
+                strlcpy(titulo, "AUTOMÁTICA", sizeof(titulo));
+            } else {
+                snprintf(
+                    titulo,
+                    sizeof(titulo),
+                    "%u kHz",
+                    LARGURAS_RADIO_FM[indice]
+                );
+            }
+            preencherItemConfiguracao(
+                dados.itens[dados.quantidadeItens++],
+                titulo,
+                "Filtro de canal do TEF6686",
+                indice == indiceLarguraRadioFm ? "ATIVA" : ""
+            );
+        }
+        dados.itemSelecionado = indiceLarguraRadioFm - inicio;
+        mostrarConfiguracoes(dados);
+        return;
+    }
+
+    if (modoInterface == ModoInterface::AVANCADO_RADIO_FM) {
+        strlcpy(dados.titulo, "FM AVANÇADO", sizeof(dados.titulo));
+        strlcpy(
+            dados.indicadorTopoDireito,
+            "A: ITEM · B: AJUSTA/VOLTA",
+            sizeof(dados.indicadorTopoDireito)
+        );
+        const uint8_t inicio = inicioJanelaLista(
+            indiceAvancadoRadioFm,
+            QUANTIDADE_AJUSTES_AVANCADOS_RADIO_FM
+        );
+        for (
+            uint8_t indice = inicio;
+            indice < QUANTIDADE_AJUSTES_AVANCADOS_RADIO_FM &&
+                dados.quantidadeItens < MAXIMO_ITENS_ALARMES_VISIVEIS;
+            ++indice
+        ) {
+            preencherAjusteAvancadoRadioFm(
+                indice,
+                dados.itens[dados.quantidadeItens++]
+            );
+        }
+        dados.itemSelecionado = indiceAvancadoRadioFm - inicio;
+        mostrarConfiguracoes(dados);
+        return;
+    }
+
+    strlcpy(dados.titulo, "AJUSTES FM", sizeof(dados.titulo));
+    strlcpy(
+        dados.indicadorTopoDireito,
+        "A: ITEM · B: AJUSTA/VOLTA",
+        sizeof(dados.indicadorTopoDireito)
+    );
+    const uint8_t inicio = inicioJanelaLista(
+        indiceAjusteRadioFm,
+        QUANTIDADE_AJUSTES_RADIO_FM
+    );
+    for (
+        uint8_t indice = inicio;
+        indice < QUANTIDADE_AJUSTES_RADIO_FM &&
+            dados.quantidadeItens < MAXIMO_ITENS_ALARMES_VISIVEIS;
+        ++indice
+    ) {
+        preencherAjustePrincipalRadioFm(
+            indice,
+            dados.itens[dados.quantidadeItens++]
+        );
+    }
+    dados.itemSelecionado = indiceAjusteRadioFm - inicio;
+    mostrarConfiguracoes(dados);
+}
+
+void processarControlesAjustesRadioFm(
+    const LeituraControles& leitura
+) {
+    if (leitura.cliqueNavegacaoDetectado) {
+        if (modoInterface == ModoInterface::AJUSTES_RADIO_FM) {
+            modoInterface = ModoInterface::REPOUSO;
+            atualizarApresentacaoRadioFm(true);
+        } else {
+            modoInterface = ModoInterface::AJUSTES_RADIO_FM;
+            apresentarAjustesRadioFm();
+        }
+        return;
+    }
+
+    if (leitura.deslocamentoEncoderVolume != 0) {
+        uint8_t* selecionado = &indiceAjusteRadioFm;
+        long quantidade = QUANTIDADE_AJUSTES_RADIO_FM;
+        if (modoInterface == ModoInterface::LARGURA_RADIO_FM) {
+            selecionado = &indiceLarguraRadioFm;
+            quantidade = sizeof(LARGURAS_RADIO_FM) /
+                sizeof(LARGURAS_RADIO_FM[0]);
+        } else if (modoInterface == ModoInterface::AVANCADO_RADIO_FM) {
+            selecionado = &indiceAvancadoRadioFm;
+            quantidade = QUANTIDADE_AJUSTES_AVANCADOS_RADIO_FM;
+        }
+
+        long novo = (
+            static_cast<long>(*selecionado) +
+            leitura.deslocamentoEncoderVolume
+        ) % quantidade;
+        if (novo < 0) {
+            novo += quantidade;
+        }
+
+        if (modoInterface == ModoInterface::LARGURA_RADIO_FM) {
+            const uint8_t anterior = *selecionado;
+            const uint16_t larguraAnterior =
+                configuracoesUsuario.radioFm.larguraBandaKHz;
+            *selecionado = static_cast<uint8_t>(novo);
+            configuracoesUsuario.radioFm.larguraBandaKHz =
+                LARGURAS_RADIO_FM[*selecionado];
+            if (!aplicarAjusteRadioFmEPersistir(
+                    AjusteRadioFm::LARGURA_BANDA,
+                    configuracoesUsuario.radioFm.larguraBandaKHz
+                )) {
+                *selecionado = anterior;
+                configuracoesUsuario.radioFm.larguraBandaKHz =
+                    larguraAnterior;
+            }
+        } else {
+            *selecionado = static_cast<uint8_t>(novo);
+        }
+        apresentarAjustesRadioFm();
+    }
+
+    if (leitura.deslocamentoEncoderNavegacao != 0) {
+        const long deslocamento = leitura.deslocamentoEncoderNavegacao;
+        AjustesRecepcaoRadioFm anterior = configuracoesUsuario.radioFm;
+        AjusteRadioFm ajuste = AjusteRadioFm::LARGURA_BANDA;
+        int32_t valor = 0;
+        bool aplicarDriver = true;
+
+        if (modoInterface == ModoInterface::AJUSTES_RADIO_FM) {
+            switch (indiceAjusteRadioFm) {
+                case 0:
+                    configuracoesUsuario.radioFm.sintoniaPorScanner =
+                        deslocamento < 0;
+                    aplicarDriver = false;
+                    break;
+                case 2:
+                    ajuste = AjusteRadioFm::STEREO_AUTOMATICO;
+                    configuracoesUsuario.radioFm.stereoAutomatico =
+                        deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.stereoAutomatico;
+                    break;
+                case 3:
+                    ajuste = AjusteRadioFm::MULTIPATH;
+                    configuracoesUsuario.radioFm.multipath = deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.multipath;
+                    break;
+                case 4:
+                    ajuste = AjusteRadioFm::NOISE_BLANKER;
+                    configuracoesUsuario.radioFm.noiseBlanker =
+                        deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.noiseBlanker;
+                    break;
+                case 5:
+                    ajuste = AjusteRadioFm::SOFTMUTE;
+                    configuracoesUsuario.radioFm.softmute = deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.softmute;
+                    break;
+                case 6:
+                    ajuste = AjusteRadioFm::HIGHCUT;
+                    configuracoesUsuario.radioFm.highcut = deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.highcut;
+                    break;
+                case 7:
+                    {
+                        const uint8_t passos[] = {5, 10, 20};
+                        uint8_t indicePasso =
+                            configuracoesUsuario.radioFm
+                                    .passoSintonia10kHz == 5
+                                ? 0
+                                : configuracoesUsuario.radioFm
+                                          .passoSintonia10kHz == 20
+                                    ? 2
+                                    : 1;
+                        long novoPasso = (
+                            static_cast<long>(indicePasso) +
+                            deslocamento
+                        ) % 3L;
+                        if (novoPasso < 0) novoPasso += 3L;
+                        configuracoesUsuario.radioFm.passoSintonia10kHz =
+                            passos[novoPasso];
+                    }
+                    aplicarDriver = false;
+                    break;
+                case 8:
+                    ajuste = AjusteRadioFm::RDS;
+                    configuracoesUsuario.radioFm.rds = deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.rds;
+                    break;
+                case 9:
+                    ajuste = AjusteRadioFm::CHANNEL_EQUALIZER;
+                    configuracoesUsuario.radioFm.channelEqualizer =
+                        deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.channelEqualizer;
+                    break;
+                case 10:
+                    ajuste = AjusteRadioFm::DEEMPHASIS;
+                    configuracoesUsuario.radioFm.deemphasisUs =
+                        deslocamento > 0 ? 75 : 50;
+                    valor = configuracoesUsuario.radioFm.deemphasisUs;
+                    break;
+                default:
+                    aplicarDriver = false;
+                    break;
+            }
+        } else if (modoInterface == ModoInterface::AVANCADO_RADIO_FM) {
+            switch (indiceAvancadoRadioFm) {
+                case 0:
+                    ajuste = AjusteRadioFm::RF_AGC;
+                    configuracoesUsuario.radioFm.rfAgcDecimosDbuv =
+                        static_cast<uint16_t>(constrain(
+                            static_cast<long>(
+                                configuracoesUsuario.radioFm
+                                    .rfAgcDecimosDbuv
+                            ) + deslocamento * 10L,
+                            840L,
+                            920L
+                        ));
+                    valor = configuracoesUsuario.radioFm.rfAgcDecimosDbuv;
+                    break;
+                case 1:
+                    ajuste = AjusteRadioFm::STEREO_BLEND;
+                    configuracoesUsuario.radioFm.stereoBlend =
+                        deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.stereoBlend;
+                    break;
+                case 2:
+                    ajuste = AjusteRadioFm::STEREO_HIGH_BLEND;
+                    configuracoesUsuario.radioFm.stereoHighBlend =
+                        deslocamento > 0;
+                    valor = configuracoesUsuario.radioFm.stereoHighBlend;
+                    break;
+                case 3:
+                    ajuste = AjusteRadioFm::LEVEL_OFFSET;
+                    configuracoesUsuario.radioFm.levelOffsetDecimosDb =
+                        static_cast<int16_t>(constrain(
+                            static_cast<long>(
+                                configuracoesUsuario.radioFm
+                                    .levelOffsetDecimosDb
+                            ) + deslocamento * 10L,
+                            -480L,
+                            150L
+                        ));
+                    valor = configuracoesUsuario.radioFm
+                        .levelOffsetDecimosDb;
+                    break;
+                default: {
+                    ajuste = AjusteRadioFm::BANDWIDTH_OPTIONS;
+                    long modo = (
+                        static_cast<long>(
+                            configuracoesUsuario.radioFm.bandwidthOptions
+                        ) - 1L + deslocamento
+                    ) % 3L;
+                    if (modo < 0) modo += 3L;
+                    configuracoesUsuario.radioFm.bandwidthOptions =
+                        static_cast<uint8_t>(modo + 1L);
+                    valor = configuracoesUsuario.radioFm.bandwidthOptions;
+                    break;
+                }
+            }
+        } else {
+            aplicarDriver = false;
+        }
+
+        if (aplicarDriver) {
+            if (!aplicarAjusteRadioFmEPersistir(ajuste, valor)) {
+                configuracoesUsuario.radioFm = anterior;
+            }
+        } else if (
+            modoInterface == ModoInterface::AJUSTES_RADIO_FM &&
+            (
+                indiceAjusteRadioFm == 0 ||
+                indiceAjusteRadioFm == 7
+            )
+        ) {
+            salvarPreferenciasInterface();
+        }
+        apresentarAjustesRadioFm();
+    }
+
+    if (!leitura.cliqueVolumeDetectado) {
+        return;
+    }
+
+    if (
+        modoInterface == ModoInterface::AJUSTES_RADIO_FM &&
+        indiceAjusteRadioFm == 1
+    ) {
+        indiceLarguraRadioFm = indiceLarguraFm(
+            configuracoesUsuario.radioFm.larguraBandaKHz
+        );
+        modoInterface = ModoInterface::LARGURA_RADIO_FM;
+    } else if (
+        modoInterface == ModoInterface::AJUSTES_RADIO_FM &&
+        indiceAjusteRadioFm == QUANTIDADE_AJUSTES_RADIO_FM - 1
+    ) {
+        indiceAvancadoRadioFm = 0;
+        modoInterface = ModoInterface::AVANCADO_RADIO_FM;
+    }
+    apresentarAjustesRadioFm();
+}
+
 void entrarListaConfiguracoes() {
     modoInterface = ModoInterface::LISTA_CONFIGURACOES;
     indiceConfiguracaoSelecionada = 0;
@@ -1668,7 +2306,7 @@ void apresentarConfiguracoes() {
     dados.vista = VistaConfiguracoes::LISTA;
     const bool ajusteDiretoSelecionado =
         modoInterface == ModoInterface::CONFIGURACOES_RELOGIO &&
-        indiceConfiguracaoSelecionada == 1;
+        indiceConfiguracaoSelecionada >= 1;
     strlcpy(
         dados.indicadorTopoDireito,
         modoInterface == ModoInterface::CONFIGURAR_ATENUACAO_SOM
@@ -1702,9 +2340,19 @@ void apresentarConfiguracoes() {
         );
     } else if (modoInterface == ModoInterface::CONFIGURACOES_RELOGIO) {
         strlcpy(dados.titulo, "RELÓGIO", sizeof(dados.titulo));
-        dados.quantidadeItens = 2;
+        constexpr uint8_t QUANTIDADE_ITENS_RELOGIO = 5;
+        const uint8_t inicio = inicioJanelaLista(
+            indiceConfiguracaoSelecionada,
+            QUANTIDADE_ITENS_RELOGIO
+        );
+        dados.quantidadeItens = min(
+            static_cast<uint8_t>(MAXIMO_ITENS_ALARMES_VISIVEIS),
+            static_cast<uint8_t>(QUANTIDADE_ITENS_RELOGIO - inicio)
+        );
         struct tm dataHora = {};
         char horario[12] = "--:--";
+        char tempoNixie[16];
+        char ajudaNixie[48];
         if (obterDataHoraLocal(dataHora)) {
             snprintf(
                 horario,
@@ -1714,20 +2362,71 @@ void apresentarConfiguracoes() {
                 dataHora.tm_min
             );
         }
-        preencherItemConfiguracao(
-            dados.itens[0],
-            "AJUSTAR HORA",
-            "Preserva a data atual",
-            horario
-        );
-        preencherItemConfiguracao(
-            dados.itens[1],
-            "SINCRONIZAÇÃO AUTOMÁTICA",
-            "B gira para alterar",
-            configuracoesUsuario.sincronizacaoAutomatica
-                ? "LIGADA"
-                : "DESLIG."
-        );
+        for (
+            uint8_t local = 0;
+            local < dados.quantidadeItens;
+            local++
+        ) {
+            const uint8_t item = inicio + local;
+            if (item == 0) {
+                preencherItemConfiguracao(
+                    dados.itens[local],
+                    "AJUSTAR HORA",
+                    "Preserva a data atual",
+                    horario
+                );
+            } else if (item == 1) {
+                preencherItemConfiguracao(
+                    dados.itens[local],
+                    "SINCRONIZAÇÃO AUTOMÁTICA",
+                    "B gira para alterar",
+                    configuracoesUsuario.sincronizacaoAutomatica
+                        ? "LIGADA"
+                        : "DESLIG."
+                );
+            } else {
+                uint32_t valorAtual = 0;
+                uint32_t valorPadrao = 0;
+                const char* titulo = nullptr;
+                const char* explicacao = nullptr;
+                if (item == 2) {
+                    titulo = "VÁLVULA ACESA";
+                    explicacao = "Período ligado real";
+                    valorAtual = obterTempoAcesoNixieUs();
+                    valorPadrao = NIXIE_TEMPO_ACESO_US;
+                } else if (item == 3) {
+                    titulo = "TODAS APAGADAS";
+                    explicacao = "Período desligado real";
+                    valorAtual = obterTempoApagadoNixieUs();
+                    valorPadrao = NIXIE_TEMPO_APAGADO_US;
+                } else {
+                    titulo = "BCD ESTABILIZANDO";
+                    explicacao = "Após BCD, antes de ligar";
+                    valorAtual = obterIntervaloBcdNixieUs();
+                    valorPadrao = NIXIE_INTERVALO_BCD_ESTAVEL_US;
+                }
+                formatarTempoNixie(
+                    valorAtual,
+                    tempoNixie,
+                    sizeof(tempoNixie)
+                );
+                snprintf(
+                    ajudaNixie,
+                    sizeof(ajudaNixie),
+                    "%s · padrão %lu µs",
+                    explicacao,
+                    static_cast<unsigned long>(valorPadrao)
+                );
+                preencherItemConfiguracao(
+                    dados.itens[local],
+                    titulo,
+                    ajudaNixie,
+                    tempoNixie
+                );
+            }
+        }
+        dados.itemSelecionado =
+            indiceConfiguracaoSelecionada - inicio;
     } else if (modoInterface == ModoInterface::CONFIGURACOES_TELA) {
         strlcpy(dados.titulo, "TELA", sizeof(dados.titulo));
         dados.quantidadeItens = 2;
@@ -1842,7 +2541,9 @@ void apresentarConfiguracoes() {
         }
     }
 
-    dados.itemSelecionado = indiceConfiguracaoSelecionada;
+    if (modoInterface != ModoInterface::CONFIGURACOES_RELOGIO) {
+        dados.itemSelecionado = indiceConfiguracaoSelecionada;
+    }
     mostrarConfiguracoes(dados);
 }
 
@@ -1888,7 +2589,9 @@ void processarControlesConfiguracoes(
                 ? 3L
                 : modoInterface == ModoInterface::CONFIGURACOES_SOM
                     ? 3L
-                    : 2L;
+                    : modoInterface == ModoInterface::CONFIGURACOES_RELOGIO
+                        ? 5L
+                        : 2L;
         long novo =
             (static_cast<long>(indiceConfiguracaoSelecionada) +
                 leitura.deslocamentoEncoderVolume) % quantidade;
@@ -1907,21 +2610,34 @@ void processarControlesConfiguracoes(
 
     if (
         modoInterface == ModoInterface::CONFIGURACOES_RELOGIO &&
-        indiceConfiguracaoSelecionada == 1 &&
         leitura.deslocamentoEncoderNavegacao != 0
     ) {
-        const bool novaSincronizacao =
-            !configuracoesUsuario.sincronizacaoAutomatica;
-        if (
-            novaSincronizacao !=
-            configuracoesUsuario.sincronizacaoAutomatica
-        ) {
-            configuracoesUsuario.sincronizacaoAutomatica =
-                novaSincronizacao;
-            configurarSincronizacaoAutomaticaRelogio(
-                novaSincronizacao
+        if (indiceConfiguracaoSelecionada == 1) {
+            const bool novaSincronizacao =
+                !configuracoesUsuario.sincronizacaoAutomatica;
+            if (
+                novaSincronizacao !=
+                configuracoesUsuario.sincronizacaoAutomatica
+            ) {
+                configuracoesUsuario.sincronizacaoAutomatica =
+                    novaSincronizacao;
+                configurarSincronizacaoAutomaticaRelogio(
+                    novaSincronizacao
+                );
+                salvarPreferenciasInterface();
+            }
+        } else if (indiceConfiguracaoSelecionada == 2) {
+            ajustarTempoAcesoNixie(
+                leitura.deslocamentoEncoderNavegacao
             );
-            salvarPreferenciasInterface();
+        } else if (indiceConfiguracaoSelecionada == 3) {
+            ajustarTempoApagadoNixie(
+                leitura.deslocamentoEncoderNavegacao
+            );
+        } else if (indiceConfiguracaoSelecionada == 4) {
+            ajustarIntervaloBcdNixie(
+                leitura.deslocamentoEncoderNavegacao
+            );
         }
         apresentarConfiguracoes();
     }
@@ -2189,18 +2905,16 @@ void preencherItemChime(
             snprintf(
                 valor,
                 sizeof(valor),
-                "%u%%",
+                "%u / %u",
                 static_cast<unsigned>(
-                    (
-                        configuracaoChimeEmEdicao.volume * 100U +
-                        VOLUME_MAXIMO / 2
-                    ) / VOLUME_MAXIMO
-                )
+                    configuracaoChimeEmEdicao.volume
+                ),
+                static_cast<unsigned>(VOLUME_MAXIMO)
             );
             preencherItemConfiguracao(
                 item,
                 "VOLUME DO CHIME",
-                "Independente do áudio principal",
+                "Escala direta de 1 a 21",
                 valor
             );
             return;
@@ -2341,17 +3055,15 @@ void apresentarConfiguracaoChime() {
                 snprintf(
                     dados.valor,
                     sizeof(dados.valor),
-                    "%u%%",
+                    "%u / %u",
                     static_cast<unsigned>(
-                        (
-                            configuracaoChimeEmEdicao.volume * 100U +
-                            VOLUME_MAXIMO / 2
-                        ) / VOLUME_MAXIMO
-                    )
+                        configuracaoChimeEmEdicao.volume
+                    ),
+                    static_cast<unsigned>(VOLUME_MAXIMO)
                 );
                 strlcpy(
                     dados.ajuda,
-                    "B gira: ajusta durante a prévia",
+                    "B gira: nível 1 a 21 durante a prévia",
                     sizeof(dados.ajuda)
                 );
                 break;
@@ -3666,7 +4378,7 @@ void entrarEstadoRadioWeb() {
 
     if (!wifiConectado()) {
         mostrarMensagem(
-            "ÁUDIO PRONTO · CONECTANDO WI-FI..."
+            "CONECTANDO AO WI-FI..."
         );
     }
 
@@ -3767,11 +4479,20 @@ void processarAtivacaoRadioFm() {
         saidaFmConfirmada &&
         navegacaoFmDurantePowerDown != 0
     ) {
-        navegarRadioFm(
-            navegacaoFmDurantePowerDown,
-            momentoNavegacaoFmDurantePowerDownUs,
-            sequenciaNavegacaoFmDurantePowerDown
-        );
+        if (configuracoesUsuario.radioFm.sintoniaPorScanner) {
+            navegarRadioFm(
+                navegacaoFmDurantePowerDown,
+                momentoNavegacaoFmDurantePowerDownUs,
+                sequenciaNavegacaoFmDurantePowerDown
+            );
+        } else {
+            sintonizarPassosRadioFm(
+                navegacaoFmDurantePowerDown,
+                configuracoesUsuario.radioFm.passoSintonia10kHz,
+                momentoNavegacaoFmDurantePowerDownUs,
+                sequenciaNavegacaoFmDurantePowerDown
+            );
+        }
     }
 
     navegacaoFmDurantePowerDown = 0;
@@ -3847,7 +4568,8 @@ void entrarModoSelecaoRadio() {
         mostrarSelecaoRadio(
             radio->nome,
             indiceRadioEmSelecao,
-            obterQuantidadeRadios()
+            obterQuantidadeRadios(),
+            radio->estrelas
         );
     }
 
@@ -4035,7 +4757,8 @@ void processarNavegacaoRadios(
         mostrarSelecaoRadio(
             radio->nome,
             indiceRadioEmSelecao,
-            quantidadeRadios
+            quantidadeRadios,
+            radio->estrelas
         );
 
         Serial.println(
@@ -4098,7 +4821,8 @@ void restaurarBarraAposTempoVolume() {
                 mostrarSelecaoRadio(
                     radio->nome,
                     indiceRadioEmSelecao,
-                    obterQuantidadeRadios()
+                    obterQuantidadeRadios(),
+                    radio->estrelas
                 );
             }
         } else {
@@ -4188,7 +4912,8 @@ void mostrarRadioNoDisplay(int indiceRadio) {
     mostrarNomeRadio(
         radio->nome,
         indiceRadio,
-        obterQuantidadeRadios()
+        obterQuantidadeRadios(),
+        radio->estrelas
     );
 }
 
@@ -4268,10 +4993,7 @@ void atualizarApresentacaoRadioFm(
 
     if (
         estadoEquipamento != EstadoEquipamento::RADIO_FM ||
-        (
-            modoInterface != ModoInterface::REPOUSO &&
-            modoInterface != ModoInterface::DETALHES_RADIO_FM
-        )
+        modoInterface != ModoInterface::REPOUSO
     ) {
         return;
     }
@@ -4364,8 +5086,7 @@ void atualizarApresentacaoRadioFm(
     dados.larguraBandaDecimosKHz = status.larguraBandaDecimosKHz;
     dados.pilotoEstereo = status.pilotoEstereo;
     dados.pilotoEstereoValido = status.pilotoEstereoValido;
-    dados.detalhesTecnicos =
-        modoInterface == ModoInterface::DETALHES_RADIO_FM;
+    dados.detalhesTecnicos = false;
     dados.sequenciaEventoEncoder = status.sequenciaEventoEncoder;
     dados.momentoEventoEncoderUs = status.momentoEventoEncoderUs;
     mostrarRadioFm(dados);

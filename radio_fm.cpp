@@ -10,11 +10,13 @@
 namespace {
     constexpr uint8_t ATENUACAO_MAXIMA_DB = 30;
     uint8_t atenuacaoRadioFmDb = 0;
+    AjustesRecepcaoRadioFm ajustesRecepcao;
 
     tef6686::RadioTef6686 radio;
     StatusRadioFm status;
     bool inicializado = false;
     bool ativo = false;
+    bool rdsAtivo = true;
     long buscasPendentes = 0;
     int8_t direcaoBuscaAtual = 0;
     unsigned long ultimaLeituraQualidadeMs = 0;
@@ -303,6 +305,22 @@ namespace {
     }
 
     bool processarRds() {
+        if (!rdsAtivo) {
+            bool mudou =
+                status.nomeEstacaoValido ||
+                status.radioTextoValido ||
+                status.nomeEstacao[0] != '\0' ||
+                status.radioTexto[0] != '\0';
+            status.nomeEstacaoValido = false;
+            status.radioTextoValido = false;
+            status.nomeEstacao[0] = '\0';
+            status.radioTexto[0] = '\0';
+            if (mudou) {
+                incrementarRevisao();
+            }
+            return mudou;
+        }
+
         unsigned long agoraMs = millis();
 
         if (
@@ -346,6 +364,144 @@ namespace {
         status.nomeEstacaoValido = rds.psValido;
         status.radioTextoValido = rds.textoValido;
         incrementarRevisao();
+        return true;
+    }
+
+    tef6686::Erro aplicarAjusteNoDriver(
+        AjusteRadioFm ajuste,
+        int32_t valor
+    ) {
+        switch (ajuste) {
+            case AjusteRadioFm::LARGURA_BANDA:
+                return radio.definirLarguraBanda(
+                    static_cast<uint16_t>(valor)
+                );
+            case AjusteRadioFm::STEREO_AUTOMATICO:
+                return radio.definirStereoAutomatico(valor != 0);
+            case AjusteRadioFm::MULTIPATH:
+                return radio.definirSupressaoMultipath(valor != 0);
+            case AjusteRadioFm::NOISE_BLANKER:
+                return radio.definirNoiseBlanker(valor != 0);
+            case AjusteRadioFm::SOFTMUTE:
+                return radio.definirSoftmute(valor != 0);
+            case AjusteRadioFm::HIGHCUT:
+                return radio.definirHighcut(valor != 0);
+            case AjusteRadioFm::RDS:
+                return radio.definirRds(valor != 0);
+            case AjusteRadioFm::CHANNEL_EQUALIZER:
+                return radio.definirChannelEqualizer(valor != 0);
+            case AjusteRadioFm::DEEMPHASIS:
+                return radio.definirDeemphasis(
+                    static_cast<uint16_t>(valor)
+                );
+            case AjusteRadioFm::RF_AGC:
+                return radio.definirRfAgc(static_cast<uint16_t>(valor));
+            case AjusteRadioFm::STEREO_BLEND:
+                return radio.definirStereoBlend(valor != 0);
+            case AjusteRadioFm::STEREO_HIGH_BLEND:
+                return radio.definirStereoHighBlend(valor != 0);
+            case AjusteRadioFm::LEVEL_OFFSET:
+                return radio.definirLevelOffset(static_cast<int16_t>(valor));
+            case AjusteRadioFm::BANDWIDTH_OPTIONS:
+                return radio.definirBandwidthOptions(
+                    static_cast<uint8_t>(valor)
+                );
+        }
+        return tef6686::Erro::ArgumentoInvalido;
+    }
+
+    void guardarAjusteAplicado(AjusteRadioFm ajuste, int32_t valor) {
+        switch (ajuste) {
+            case AjusteRadioFm::LARGURA_BANDA:
+                ajustesRecepcao.larguraBandaKHz =
+                    static_cast<uint16_t>(valor);
+                break;
+            case AjusteRadioFm::STEREO_AUTOMATICO:
+                ajustesRecepcao.stereoAutomatico = valor != 0;
+                break;
+            case AjusteRadioFm::MULTIPATH:
+                ajustesRecepcao.multipath = valor != 0;
+                break;
+            case AjusteRadioFm::NOISE_BLANKER:
+                ajustesRecepcao.noiseBlanker = valor != 0;
+                break;
+            case AjusteRadioFm::SOFTMUTE:
+                ajustesRecepcao.softmute = valor != 0;
+                break;
+            case AjusteRadioFm::HIGHCUT:
+                ajustesRecepcao.highcut = valor != 0;
+                break;
+            case AjusteRadioFm::RDS:
+                ajustesRecepcao.rds = valor != 0;
+                rdsAtivo = valor != 0;
+                break;
+            case AjusteRadioFm::CHANNEL_EQUALIZER:
+                ajustesRecepcao.channelEqualizer = valor != 0;
+                break;
+            case AjusteRadioFm::DEEMPHASIS:
+                ajustesRecepcao.deemphasisUs =
+                    static_cast<uint16_t>(valor);
+                break;
+            case AjusteRadioFm::RF_AGC:
+                ajustesRecepcao.rfAgcDecimosDbuv =
+                    static_cast<uint16_t>(valor);
+                break;
+            case AjusteRadioFm::STEREO_BLEND:
+                ajustesRecepcao.stereoBlend = valor != 0;
+                break;
+            case AjusteRadioFm::STEREO_HIGH_BLEND:
+                ajustesRecepcao.stereoHighBlend = valor != 0;
+                break;
+            case AjusteRadioFm::LEVEL_OFFSET:
+                ajustesRecepcao.levelOffsetDecimosDb =
+                    static_cast<int16_t>(valor);
+                break;
+            case AjusteRadioFm::BANDWIDTH_OPTIONS:
+                ajustesRecepcao.bandwidthOptions =
+                    static_cast<uint8_t>(valor);
+                break;
+        }
+    }
+
+    bool aplicarTodosAjustes() {
+        struct ComandoAjuste {
+            AjusteRadioFm ajuste;
+            int32_t valor;
+        };
+        const ComandoAjuste comandos[] = {
+            {AjusteRadioFm::LARGURA_BANDA,
+             ajustesRecepcao.larguraBandaKHz},
+            {AjusteRadioFm::STEREO_AUTOMATICO,
+             ajustesRecepcao.stereoAutomatico},
+            {AjusteRadioFm::MULTIPATH, ajustesRecepcao.multipath},
+            {AjusteRadioFm::NOISE_BLANKER, ajustesRecepcao.noiseBlanker},
+            {AjusteRadioFm::SOFTMUTE, ajustesRecepcao.softmute},
+            {AjusteRadioFm::HIGHCUT, ajustesRecepcao.highcut},
+            {AjusteRadioFm::RDS, ajustesRecepcao.rds},
+            {AjusteRadioFm::CHANNEL_EQUALIZER,
+             ajustesRecepcao.channelEqualizer},
+            {AjusteRadioFm::DEEMPHASIS, ajustesRecepcao.deemphasisUs},
+            {AjusteRadioFm::RF_AGC, ajustesRecepcao.rfAgcDecimosDbuv},
+            {AjusteRadioFm::STEREO_BLEND, ajustesRecepcao.stereoBlend},
+            {AjusteRadioFm::STEREO_HIGH_BLEND,
+             ajustesRecepcao.stereoHighBlend},
+            {AjusteRadioFm::LEVEL_OFFSET,
+             ajustesRecepcao.levelOffsetDecimosDb},
+            {AjusteRadioFm::BANDWIDTH_OPTIONS,
+             ajustesRecepcao.bandwidthOptions}
+        };
+
+        for (const ComandoAjuste& comando : comandos) {
+            tef6686::Erro erro = aplicarAjusteNoDriver(
+                comando.ajuste,
+                comando.valor
+            );
+            if (erro != tef6686::Erro::Nenhum) {
+                publicarErro("ajustes", erro);
+                return false;
+            }
+        }
+        rdsAtivo = ajustesRecepcao.rds;
         return true;
     }
 
@@ -433,6 +589,12 @@ bool iniciarRadioFm(int volumeInterface) {
     }
 
     inicializado = true;
+
+    if (!aplicarTodosAjustes()) {
+        inicializado = false;
+        configurarHabilitacaoRadioFm(false);
+        return false;
+    }
 
     erro = radio.sintonizar(
         tef6686::Banda::FM,
@@ -579,6 +741,100 @@ void ajustarVolumeRadioFm(int volumeInterface) {
 
 void configurarAtenuacaoRadioFm(uint8_t atenuacaoDb) {
     atenuacaoRadioFmDb = min(atenuacaoDb, ATENUACAO_MAXIMA_DB);
+}
+
+void configurarAjustesRadioFm(const AjustesRecepcaoRadioFm& ajustes) {
+    ajustesRecepcao = ajustes;
+    rdsAtivo = ajustes.rds;
+}
+
+bool aplicarAjusteRadioFm(AjusteRadioFm ajuste, int32_t valor) {
+    if (!inicializado || !ativo) {
+        return false;
+    }
+
+    tef6686::Erro erro = aplicarAjusteNoDriver(ajuste, valor);
+    if (erro != tef6686::Erro::Nenhum) {
+        publicarErro("ajuste", erro);
+        return false;
+    }
+    if (
+        ajuste == AjusteRadioFm::STEREO_AUTOMATICO &&
+        valor != 0
+    ) {
+        erro = radio.definirStereoBlend(ajustesRecepcao.stereoBlend);
+        if (erro == tef6686::Erro::Nenhum) {
+            erro = radio.definirStereoHighBlend(
+                ajustesRecepcao.stereoHighBlend
+            );
+        }
+        if (erro != tef6686::Erro::Nenhum) {
+            publicarErro("blends stereo", erro);
+            return false;
+        }
+    }
+    guardarAjusteAplicado(ajuste, valor);
+    limparErro();
+    return true;
+}
+
+void sintonizarPassosRadioFm(
+    long deslocamento,
+    uint8_t passo10kHz,
+    uint32_t momentoEventoEncoderUs,
+    uint32_t sequenciaEventoEncoder
+) {
+    if (!inicializado || !ativo || deslocamento == 0) {
+        return;
+    }
+    if (
+        passo10kHz != 5 &&
+        passo10kHz != 10 &&
+        passo10kHz != 20
+    ) {
+        passo10kHz = 10;
+    }
+
+    if (radio.buscaAtiva()) {
+        radio.cancelarBusca(false);
+    }
+    buscasPendentes = 0;
+    direcaoBuscaAtual = 0;
+
+    const int32_t minimo = radio.configuracao().fmMin10kHz;
+    const int32_t maximo = radio.configuracao().fmMax10kHz;
+    const int32_t frequenciaAtual = radio.frequencia();
+    // Preserva a grade da frequência atual. Isso é importante em 200 kHz:
+    // partindo de 100,1 MHz, os próximos canais são 100,3; 100,5; ...,
+    // sem deslocar a sintonia para a grade par de 100,0 MHz.
+    const int32_t fase = (frequenciaAtual - minimo) % passo10kHz;
+    const int32_t primeiro = minimo + fase;
+    const int32_t ultimo = primeiro +
+        ((maximo - primeiro) / passo10kHz) * passo10kHz;
+    const int32_t quantidade = (ultimo - primeiro) / passo10kHz + 1;
+    int64_t indiceAtual =
+        (frequenciaAtual - primeiro) /
+        passo10kHz;
+    int64_t indiceNovo =
+        (indiceAtual + deslocamento) % quantidade;
+    if (indiceNovo < 0) {
+        indiceNovo += quantidade;
+    }
+    const uint16_t frequencia = static_cast<uint16_t>(
+        primeiro + indiceNovo * passo10kHz
+    );
+
+    tef6686::Erro erro = radio.sintonizar(tef6686::Banda::FM, frequencia);
+    if (erro != tef6686::Erro::Nenhum) {
+        publicarErro("sintonia manual", erro);
+        return;
+    }
+
+    status.sequenciaEventoEncoder = sequenciaEventoEncoder;
+    status.momentoEventoEncoderUs = momentoEventoEncoderUs;
+    limparErro();
+    atualizarFrequenciaPublicada();
+    publicarEstado(EstadoRadioFm::ATIVO);
 }
 
 void navegarRadioFm(

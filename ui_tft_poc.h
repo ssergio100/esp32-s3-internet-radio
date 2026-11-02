@@ -46,6 +46,7 @@ struct EstadoUiTftPoc {
     char faixa[128] = {};
     char codec[16] = {};
     char estadoWeb[48] = {};
+    uint8_t estrelasWeb = 0;
     char data[64] = {};
     VistaAlarmesUiTft vistaAlarmes = VistaAlarmesUiTft::LISTA;
     ItemAlarmesUiTft itensAlarmes[MAXIMO_ITENS_ALARMES_UI_TFT];
@@ -107,6 +108,9 @@ struct EstadoUiTftPoc {
     bool sincronizacaoNtpValida = false;
     uint8_t quantidadeAlarmes = 0;
     bool chimeAtivo = false;
+    bool climaValido = false;
+    int16_t temperaturaDecimosC = 0;
+    uint8_t umidadePercentual = 0;
     int16_t volume = 0;
     bool volumeSobreposto = false;
     TemaUiTft tema = TemaUiTft::LARANJA;

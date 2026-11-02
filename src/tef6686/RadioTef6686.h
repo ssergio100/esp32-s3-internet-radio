@@ -165,6 +165,19 @@ public:
 
     // Stereo + StHiBlend do TEF6686. Nao usa FMSI do TEF6687/6689.
     Erro definirStereoAutomatico(bool automatico);
+    Erro definirSupressaoMultipath(bool ativa);
+    Erro definirNoiseBlanker(bool ativo);
+    Erro definirSoftmute(bool ativo);
+    Erro definirHighcut(bool ativo);
+    Erro definirRds(bool ativo);
+    Erro definirChannelEqualizer(bool ativo);
+    Erro definirDeemphasis(uint16_t microssegundos);
+    Erro definirRfAgc(uint16_t inicioDecimosDbuv);
+    Erro definirStereoBlend(bool ativo);
+    Erro definirStereoHighBlend(bool ativo);
+    Erro definirLevelOffset(int16_t offsetDecimosDb);
+    // 1=IIR, 2=de-emphasis, 3=FIR, conforme Set_Bandwidth_Options.
+    Erro definirBandwidthOptions(uint8_t modo);
     Erro configurarRecepcaoRobusta();
 
     // Scanner nao-bloqueante: uma etapa por chamada de processarBusca().

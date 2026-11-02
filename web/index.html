@@ -230,6 +230,10 @@
             display: flex;
         }
 
+        #modalRadio {
+            z-index: 1010;
+        }
+
         .modal-conteudo {
             width: 100%;
             max-width: 500px;
@@ -308,6 +312,7 @@
 
         .modal-rodape {
             display: flex;
+            flex-wrap: wrap;
             justify-content: flex-end;
             gap: 10px;
             padding: 16px 22px;
@@ -690,8 +695,20 @@
                         Cancelar
                     </button>
 
-                    <button type="submit" class="btn-adicionar">
+                    <button
+                        type="submit"
+                        class="btn-adicionar"
+                        data-fechar-modal="false"
+                    >
                         Adicionar
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="btn-adicionar"
+                        data-fechar-modal="true"
+                    >
+                        Adicionar e fechar
                     </button>
                 </div>
             </form>
@@ -836,6 +853,7 @@
     let radios = [];
     let radiosEncontradas = [];
     let indicePreview = -1;
+    let adicionandoResultadoPesquisa = false;
 
     function escaparHtml(texto) {
         const elemento = document.createElement("div");
@@ -944,11 +962,12 @@
         }
     }
 
-    function abrirModal(nome, url) {
+    function abrirModal(nome, url, origemPesquisa) {
         formRadio.reset();
 
         estrelasSelecionadas = 3;
         atualizarSeletorEstrelas();
+        adicionandoResultadoPesquisa = Boolean(origemPesquisa);
 
         campoNome.value = nome || "";
         campoUrl.value = url || "";
@@ -959,6 +978,7 @@
 
     function fecharModal() {
         modalRadio.classList.remove("aberto");
+        adicionandoResultadoPesquisa = false;
     }
 
     function atualizarSeletorEstrelas() {
@@ -1220,8 +1240,8 @@
         const nome = (radio.name || "").trim().slice(0, 50);
         const url = obterUrlRadio(radio);
 
-        fecharPesquisa();
-        abrirModal(nome, url);
+        pararPreview();
+        abrirModal(nome, url, true);
     }
 
     async function adicionarRadio(nome, url) {
@@ -1395,25 +1415,54 @@
                 return;
             }
 
-            const botaoAdicionar = formRadio.querySelector(
+            const botaoAcionado = evento.submitter;
+            const deveFecharModal =
+                !botaoAcionado ||
+                botaoAcionado.dataset.fecharModal === "true";
+            const origemPesquisa = adicionandoResultadoPesquisa;
+            const botoesAdicionar = formRadio.querySelectorAll(
                 ".btn-adicionar"
             );
+            const textosBotoes = Array.from(botoesAdicionar).map(
+                function (botao) {
+                    return botao.textContent;
+                }
+            );
 
-            botaoAdicionar.disabled = true;
-            botaoAdicionar.setAttribute("aria-busy", "true");
-            botaoAdicionar.textContent = "Adicionando...";
+            botoesAdicionar.forEach(function (botao) {
+                botao.disabled = true;
+            });
+            if (botaoAcionado) {
+                botaoAcionado.setAttribute("aria-busy", "true");
+                botaoAcionado.textContent = "Adicionando...";
+            }
 
             try {
                 await adicionarRadio(nome, url);
 
-                fecharModal();
                 await carregarRadios();
+
+                if (deveFecharModal) {
+                    fecharModal();
+                    if (origemPesquisa) {
+                        fecharPesquisa();
+                    }
+                } else if (origemPesquisa) {
+                    fecharModal();
+                } else {
+                    formRadio.reset();
+                    estrelasSelecionadas = 3;
+                    atualizarSeletorEstrelas();
+                    campoNome.focus();
+                }
             } catch (erro) {
                 alert(erro.message);
             } finally {
-                botaoAdicionar.disabled = false;
-                botaoAdicionar.removeAttribute("aria-busy");
-                botaoAdicionar.textContent = "Adicionar";
+                botoesAdicionar.forEach(function (botao, indice) {
+                    botao.disabled = false;
+                    botao.removeAttribute("aria-busy");
+                    botao.textContent = textosBotoes[indice];
+                });
             }
         }
     );
@@ -1442,8 +1491,11 @@
 
     document.addEventListener("keydown", function (evento) {
         if (evento.key === "Escape") {
-            fecharModal();
-            fecharPesquisa();
+            if (modalRadio.classList.contains("aberto")) {
+                fecharModal();
+            } else {
+                fecharPesquisa();
+            }
         }
     });
 

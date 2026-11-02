@@ -8,6 +8,7 @@ struct Radio {
     const char* nome;
     const char* url;
     uint32_t id = 0;
+    uint8_t estrelas = 0;
 };
 
 constexpr size_t QUANTIDADE_MAXIMA_RADIOS = 50;

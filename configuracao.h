@@ -139,16 +139,64 @@ constexpr uint32_t TIMEOUT_DFPLAYER_MS = 800;
 // As quatro linhas BCD são compartilhadas pelo driver. A, B, C e D possuem,
 // respectivamente, os pesos binários 1, 2, 4 e 8.
 constexpr int PIN_NIXIE_BCD_A = 4;  // peso 1
-constexpr int PIN_NIXIE_BCD_B = 5;  // peso 2
-constexpr int PIN_NIXIE_BCD_C = 6;  // peso 4
-constexpr int PIN_NIXIE_BCD_D = 7;  // peso 8
+constexpr int PIN_NIXIE_BCD_B = 6;  // peso 2
+constexpr int PIN_NIXIE_BCD_C = 7;  // peso 4
+constexpr int PIN_NIXIE_BCD_D = 5;  // peso 8
 
-// Uma linha independente seleciona o cátodo de cada válvula. A polaridade
-// ativa será definida no driver quando o estágio elétrico estiver confirmado.
-constexpr int PIN_NIXIE_CATODO_1 = 11;
-constexpr int PIN_NIXIE_CATODO_2 = 12;
-constexpr int PIN_NIXIE_CATODO_3 = 13;
-constexpr int PIN_NIXIE_CATODO_4 = 14;
+// Uma linha independente chaveia cada válvula por meio de optoacoplador.
+// HIGH ativa a válvula selecionada; LOW mantém a válvula desligada.
+// A ordem abaixo também é a ordem percorrida pela multiplexação.
+constexpr int PIN_NIXIE_CATODO_1 = 14;  // unidade de minuto
+constexpr int PIN_NIXIE_CATODO_2 = 13;  // dezena de minuto
+constexpr int PIN_NIXIE_CATODO_3 = 12;  // unidade de hora
+constexpr int PIN_NIXIE_CATODO_4 = 11;  // dezena de hora
+
+// Temporização da multiplexação das Nixies, em microssegundos.
+// O ciclo utilizado pelo driver é:
+// 1. Mantém somente a válvula atual acesa por NIXIE_TEMPO_ACESO_US no brilho
+//    máximo. Em níveis menores, ela é desligada antes do fim desse período.
+// 2. Coloca todas as seleções em LOW, força o BCD em 15 (apagado) e mantém
+//    todas as válvulas desligadas por, no mínimo, NIXIE_TEMPO_APAGADO_US.
+// 3. Escreve no BCD o valor do próximo dígito e aguarda
+//    NIXIE_INTERVALO_BCD_ESTAVEL_US antes de habilitar seu optoacoplador.
+// 4. Acende a próxima válvula e repete o ciclo.
+//
+// A ISR verifica as fases a cada NIXIE_INTERVALO_FASE_US. Por isso, o tempo
+// aceso deve ser um múltiplo exato desse intervalo. O tempo apagado é mínimo:
+// a próxima verificação pode acrescentar até uma fase antes do acionamento.
+constexpr uint32_t NIXIE_INTERVALO_FASE_US = 227;
+// Tempo em que a válvula selecionada fica ligada no brilho máximo.
+constexpr uint32_t NIXIE_TEMPO_ACESO_US = 2497;
+// Tempo mínimo com todas as válvulas desligadas entre dois dígitos.
+constexpr uint32_t NIXIE_TEMPO_APAGADO_US = 1000;
+// Espera após escrever o novo BCD e antes de ligar a próxima válvula.
+constexpr uint32_t NIXIE_INTERVALO_BCD_ESTAVEL_US = 15;
+
+// Faixas usadas pelo ajuste experimental em Configurações > Relógio.
+// Não são persistidas: cada reinicialização recupera os padrões acima.
+// Os tempos aceso e apagado podem ser testados até um segundo. O tempo aceso
+// usa passos de 1 us abaixo de uma fase completa; perto dos valores normais o
+// encoder usa a resolução de uma fase; acima disso, passos progressivamente
+// maiores permitem alcançar um segundo sem milhares de giros.
+// A estabilização fica abaixo de meia fase para não ocupar a maior parte da
+// ISR com espera ativa.
+constexpr uint32_t NIXIE_TEMPO_ACESO_MINIMO_US = 1;
+constexpr uint32_t NIXIE_TEMPO_ACESO_MAXIMO_US = 1000000;
+constexpr uint32_t NIXIE_TEMPO_ACESO_PASSO_SUBFASE_US = 1;
+constexpr uint32_t NIXIE_TEMPO_ACESO_PASSO_US =
+    NIXIE_INTERVALO_FASE_US;
+constexpr uint32_t NIXIE_TEMPO_APAGADO_MINIMO_US = 0;
+constexpr uint32_t NIXIE_TEMPO_APAGADO_MAXIMO_US = 1000000;
+constexpr uint32_t NIXIE_TEMPO_APAGADO_PASSO_US =
+    NIXIE_INTERVALO_FASE_US;
+constexpr uint32_t NIXIE_TEMPO_LIMITE_AJUSTE_FINO_US = 10000;
+constexpr uint32_t NIXIE_TEMPO_LIMITE_AJUSTE_MEDIO_US = 100000;
+constexpr uint32_t NIXIE_TEMPO_PASSO_MEDIO_US = 10000;
+constexpr uint32_t NIXIE_TEMPO_PASSO_GROSSO_US = 100000;
+constexpr uint32_t NIXIE_INTERVALO_BCD_MINIMO_US = 0;
+constexpr uint32_t NIXIE_INTERVALO_BCD_MAXIMO_US =
+    NIXIE_INTERVALO_FASE_US / 2;
+constexpr uint32_t NIXIE_INTERVALO_BCD_PASSO_US = 1;
 
 // =====================================================
 // Comportamento ajustável pelo usuário

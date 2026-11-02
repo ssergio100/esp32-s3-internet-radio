@@ -5,9 +5,12 @@ namespace tef6686 {
 namespace {
 constexpr uint8_t CMD_TUNE_TO = 1;
 constexpr uint8_t CMD_SET_BANDWIDTH = 10;
+constexpr uint8_t CMD_SET_RF_AGC = 11;
 constexpr uint8_t CMD_SET_MPH_SUPPRESSION = 20;
 constexpr uint8_t CMD_SET_CHANNEL_EQUALIZER = 22;
 constexpr uint8_t CMD_SET_NOISE_BLANKER = 23;
+constexpr uint8_t CMD_SET_DEEMPHASIS = 31;
+constexpr uint8_t CMD_SET_LEVEL_OFFSET = 39;
 constexpr uint8_t CMD_SET_SOFTMUTE_TIME = 40;
 constexpr uint8_t CMD_SET_SOFTMUTE_LEVEL = 42;
 constexpr uint8_t CMD_SET_SOFTMUTE_NOISE = 43;
@@ -32,6 +35,7 @@ constexpr uint8_t CMD_SET_STHIBLEND_MPH = 74;
 constexpr uint8_t CMD_SET_STHIBLEND_MAX = 75;
 constexpr uint8_t CMD_SET_STHIBLEND_MIN = 76;
 constexpr uint8_t CMD_SET_RDS = 81;
+constexpr uint8_t CMD_SET_BANDWIDTH_OPTIONS = 86;
 constexpr uint8_t CMD_SET_VOLUME = 10;
 constexpr uint8_t CMD_SET_MUTE = 11;
 constexpr uint8_t CMD_SET_INPUT = 12;
@@ -666,27 +670,15 @@ Erro RadioTef6686::definirStereoAutomatico(bool automatico) {
     if (!iniciado_) return falhar(Erro::NaoIniciado);
     Erro erro;
     if (!automatico) {
-        // Desabilita apenas o tratamento dinamico de stereo. Nao forca mono.
-        const uint16_t off3[] = {0, 0, 100};
-        erro = enviarComando(MODULO_FM, CMD_SET_STEREO_LEVEL, off3, 3);
-        if (erro != Erro::Nenhum) return erro;
-        erro = enviarComando(MODULO_FM, CMD_SET_STEREO_NOISE, off3, 3);
-        if (erro != Erro::Nenhum) return erro;
-        erro = enviarComando(MODULO_FM, CMD_SET_STEREO_MPH, off3, 3);
-        if (erro != Erro::Nenhum) return erro;
-        const uint16_t stereoMaxOff[] = {0};
-        erro = enviarComando(MODULO_FM, CMD_SET_STEREO_MAX, stereoMaxOff, 1);
-        if (erro != Erro::Nenhum) return erro;
-        erro = enviarComando(MODULO_FM, CMD_SET_STHIBLEND_LEVEL, off3, 3);
-        if (erro != Erro::Nenhum) return erro;
-        erro = enviarComando(MODULO_FM, CMD_SET_STHIBLEND_NOISE, off3, 3);
-        if (erro != Erro::Nenhum) return erro;
-        erro = enviarComando(MODULO_FM, CMD_SET_STHIBLEND_MPH, off3, 3);
-        if (erro != Erro::Nenhum) return erro;
-        const uint16_t hiBlendMaxOff[] = {0, 4000};
-        erro = enviarComando(MODULO_FM, CMD_SET_STHIBLEND_MAX, hiBlendMaxOff, 2);
-        if (erro != Erro::Nenhum) return erro;
-        return sucesso();
+        // Mode 2 de Set_Stereo_Min força mono. Não confundir com desligar
+        // apenas os blends, o que ainda permitiria áudio estéreo.
+        const uint16_t stereoMinMono[] = {2, 200};
+        return enviarComando(
+            MODULO_FM,
+            CMD_SET_STEREO_MIN,
+            stereoMinMono,
+            2
+        );
     }
     // TEF6686: tratamento padrao Stereo + Stereo High Blend.
     // Nao usar CMD 32/FMSI: esse recurso pertence ao TEF6687/6689.
@@ -728,6 +720,105 @@ Erro RadioTef6686::definirStereoAutomatico(bool automatico) {
     erro = enviarComando(MODULO_FM, CMD_SET_STHIBLEND_MIN, hiBlendMin, 2);
     if (erro != Erro::Nenhum) return erro;
     return sucesso();
+}
+
+Erro RadioTef6686::definirSupressaoMultipath(bool ativa) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {static_cast<uint16_t>(ativa ? 1 : 0)};
+    return enviarComando(MODULO_FM, CMD_SET_MPH_SUPPRESSION, parametros, 1);
+}
+
+Erro RadioTef6686::definirNoiseBlanker(bool ativo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {
+        static_cast<uint16_t>(ativo ? 1 : 0), 1000
+    };
+    return enviarComando(MODULO_FM, CMD_SET_NOISE_BLANKER, parametros, 2);
+}
+
+Erro RadioTef6686::definirSoftmute(bool ativo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {
+        static_cast<uint16_t>(ativo ? 1 : 0), 200
+    };
+    return enviarComando(MODULO_FM, CMD_SET_SOFTMUTE_MAX, parametros, 2);
+}
+
+Erro RadioTef6686::definirHighcut(bool ativo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {
+        static_cast<uint16_t>(ativo ? 1 : 0), 2400
+    };
+    return enviarComando(MODULO_FM, CMD_SET_HIGHCUT_MAX, parametros, 2);
+}
+
+Erro RadioTef6686::definirRds(bool ativo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {
+        static_cast<uint16_t>(ativo ? 1 : 0), 2, 0
+    };
+    reiniciarRds();
+    return enviarComando(MODULO_FM, CMD_SET_RDS, parametros, 3);
+}
+
+Erro RadioTef6686::definirChannelEqualizer(bool ativo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {static_cast<uint16_t>(ativo ? 1 : 0)};
+    return enviarComando(MODULO_FM, CMD_SET_CHANNEL_EQUALIZER, parametros, 1);
+}
+
+Erro RadioTef6686::definirDeemphasis(uint16_t microssegundos) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    if (microssegundos != 50 && microssegundos != 75) {
+        return falhar(Erro::ArgumentoInvalido);
+    }
+    const uint16_t parametros[] = {
+        static_cast<uint16_t>(microssegundos * 10)
+    };
+    return enviarComando(MODULO_FM, CMD_SET_DEEMPHASIS, parametros, 1);
+}
+
+Erro RadioTef6686::definirRfAgc(uint16_t inicioDecimosDbuv) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    if (inicioDecimosDbuv < 840 || inicioDecimosDbuv > 920) {
+        return falhar(Erro::ArgumentoInvalido);
+    }
+    const uint16_t parametros[] = {inicioDecimosDbuv, 0};
+    return enviarComando(MODULO_FM, CMD_SET_RF_AGC, parametros, 2);
+}
+
+Erro RadioTef6686::definirStereoBlend(bool ativo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {static_cast<uint16_t>(ativo ? 1 : 0)};
+    return enviarComando(MODULO_FM, CMD_SET_STEREO_MAX, parametros, 1);
+}
+
+Erro RadioTef6686::definirStereoHighBlend(bool ativo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    const uint16_t parametros[] = {
+        static_cast<uint16_t>(ativo ? 1 : 0), 4000
+    };
+    return enviarComando(MODULO_FM, CMD_SET_STHIBLEND_MAX, parametros, 2);
+}
+
+Erro RadioTef6686::definirLevelOffset(int16_t offsetDecimosDb) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    if (offsetDecimosDb < -480 || offsetDecimosDb > 150) {
+        return falhar(Erro::ArgumentoInvalido);
+    }
+    const uint16_t parametros[] = {
+        static_cast<uint16_t>(offsetDecimosDb)
+    };
+    return enviarComando(MODULO_FM, CMD_SET_LEVEL_OFFSET, parametros, 1);
+}
+
+Erro RadioTef6686::definirBandwidthOptions(uint8_t modo) {
+    if (!iniciado_) return falhar(Erro::NaoIniciado);
+    if (modo < 1 || modo > 3) {
+        return falhar(Erro::ArgumentoInvalido);
+    }
+    const uint16_t parametros[] = {modo};
+    return enviarComando(MODULO_FM, CMD_SET_BANDWIDTH_OPTIONS, parametros, 1);
 }
 
 Erro RadioTef6686::configurarRecepcaoRobusta() {
@@ -798,11 +889,7 @@ Erro RadioTef6686::configurarRecepcaoRobusta() {
 }
 
 Erro RadioTef6686::configurarRds() {
-    if (!iniciado_) return falhar(Erro::NaoIniciado);
-    // Decoder de grupos, reinicio automatico apos sintonia e sem pino DAVN.
-    const uint16_t parametros[] = {1, 2, 0};
-    reiniciarRds();
-    return enviarComando(MODULO_FM, CMD_SET_RDS, parametros, 3);
+    return definirRds(true);
 }
 
 bool RadioTef6686::estacaoValidaParaBusca(const Qualidade& q) const {

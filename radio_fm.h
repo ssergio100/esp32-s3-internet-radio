@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 
+#include "configuracoes_usuario.h"
+
 enum class EstadoRadioFm : uint8_t {
     INDISPONIVEL,
     REPOUSO,
@@ -40,6 +42,36 @@ bool ativarRadioFm(int volumeInterface);
 void desativarRadioFm();
 void ajustarVolumeRadioFm(int volumeInterface);
 void configurarAtenuacaoRadioFm(uint8_t atenuacaoDb);
+void configurarAjustesRadioFm(const AjustesRecepcaoRadioFm& ajustes);
+
+enum class AjusteRadioFm : uint8_t {
+    LARGURA_BANDA,
+    STEREO_AUTOMATICO,
+    MULTIPATH,
+    NOISE_BLANKER,
+    SOFTMUTE,
+    HIGHCUT,
+    RDS,
+    CHANNEL_EQUALIZER,
+    DEEMPHASIS,
+    RF_AGC,
+    STEREO_BLEND,
+    STEREO_HIGH_BLEND,
+    LEVEL_OFFSET,
+    BANDWIDTH_OPTIONS
+};
+
+// Aplica um único ajuste no receptor já ativo. Não grava NVS.
+bool aplicarAjusteRadioFm(AjusteRadioFm ajuste, int32_t valor);
+
+// Sintonia manual: cada detente avança o passo informado (5=50 kHz,
+// 10=100 kHz ou 20=200 kHz), sem executar o scanner de emissoras.
+void sintonizarPassosRadioFm(
+    long deslocamento,
+    uint8_t passo10kHz,
+    uint32_t momentoEventoEncoderUs = 0,
+    uint32_t sequenciaEventoEncoder = 0
+);
 
 // Cada detente procura a estação seguinte (positivo) ou anterior (negativo).
 // As etapas ficam enfileiradas para movimentos rápidos não perderem passos.

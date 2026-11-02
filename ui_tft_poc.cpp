@@ -7,6 +7,7 @@
 #include <SPI.h>
 
 #include "icones_bitmap.h"
+#include "splash_creeper.h"
 #include "ui_tft_fontes_aa.h"
 #include "ui_tft_paleta.h"
 
@@ -71,6 +72,44 @@ namespace {
     constexpr size_t MAXIMO_GLIFOS_CAMPO = 96;
     GlifoPosicionado glifosCampo[MAXIMO_GLIFOS_CAMPO];
     uint16_t linhaCampo[TFT_LARGURA];
+
+    static_assert(
+        SPLASH_CREEPER_W == TFT_LARGURA &&
+        SPLASH_CREEPER_H == TFT_ALTURA,
+        "A splash deve ocupar exatamente os 320x240 pixels do TFT."
+    );
+    static_assert(
+        sizeof(SPLASH_CREEPER) / sizeof(SPLASH_CREEPER[0]) ==
+            SPLASH_CREEPER_W * SPLASH_CREEPER_H,
+        "Quantidade de pixels invalida na splash."
+    );
+
+    void desenharSplashCreeper() {
+        tft.startWrite();
+        tft.setAddrWindow(
+            0,
+            0,
+            SPLASH_CREEPER_W,
+            SPLASH_CREEPER_H
+        );
+
+        for (uint16_t y = 0; y < SPLASH_CREEPER_H; y++) {
+            const size_t inicioLinha =
+                static_cast<size_t>(y) * SPLASH_CREEPER_W;
+            for (uint16_t x = 0; x < SPLASH_CREEPER_W; x++) {
+                linhaCampo[x] = pgm_read_word(
+                    &SPLASH_CREEPER[inicioLinha + x]
+                );
+            }
+            tft.writePixels(
+                linhaCampo,
+                SPLASH_CREEPER_W,
+                true
+            );
+        }
+
+        tft.endWrite();
+    }
 
     uint32_t calcularPercentil95(const HistoricoLatencia& historico) {
         if (historico.quantidade == 0) {
@@ -508,6 +547,44 @@ namespace {
             tft.writePixels(linhaCampo, largura, true);
         }
         tft.endWrite();
+    }
+
+    void desenharAvaliacaoEstrelas(
+        int x,
+        int y,
+        int largura,
+        int altura,
+        uint8_t estrelas
+    ) {
+        constexpr uint8_t QUANTIDADE_ESTRELAS = 5;
+        constexpr int LARGURA_AVALIACAO =
+            QUANTIDADE_ESTRELAS * ICON_STAR_W +
+            (QUANTIDADE_ESTRELAS - 1) * ICON_STAR_GAP;
+        const int inicioX = x + (largura - LARGURA_AVALIACAO) / 2;
+        const int inicioY = y + (altura - ICON_STAR_H) / 2;
+        const uint8_t preenchidas = estrelas > 5 ? 5 : estrelas;
+
+        tft.fillRect(x, y, largura, altura, paletaAtual.fundo);
+        for (
+            uint8_t indice = 0;
+            indice < QUANTIDADE_ESTRELAS;
+            indice++
+        ) {
+            const bool preenchida = indice < preenchidas;
+            desenharIconeAlpha4(
+                preenchida
+                    ? ICON_STAR_FILLED_A4
+                    : ICON_STAR_OUTLINE_A4,
+                ICON_STAR_W,
+                ICON_STAR_H,
+                inicioX + indice * (ICON_STAR_W + ICON_STAR_GAP),
+                inicioY,
+                preenchida
+                    ? paletaAtual.primaria
+                    : paletaAtual.atenuada,
+                paletaAtual.fundo
+            );
+        }
     }
 
     uint8_t coberturaRetanguloArredondado(
@@ -1984,29 +2061,47 @@ namespace {
             );
             campos++;
         }
-        if (completo || strcmp(atual.faixa, anterior->faixa) != 0) {
-            desenharTexto(
-                textoOuTraco(atual.faixa),
-                12, 70, 296, 19,
-                FONTE_AA_PEQUENA,
-                paletaAtual.atenuada,
-                paletaAtual.fundo,
-                true
-            );
+        if (
+            completo ||
+            strcmp(atual.faixa, anterior->faixa) != 0 ||
+            atual.selecaoWeb != anterior->selecaoWeb ||
+            atual.estrelasWeb != anterior->estrelasWeb
+        ) {
+            if (atual.selecaoWeb) {
+                desenharAvaliacaoEstrelas(
+                    12, 70, 296, 19, atual.estrelasWeb
+                );
+            } else {
+                desenharTexto(
+                    textoOuTraco(atual.faixa),
+                    12, 70, 296, 19,
+                    FONTE_AA_PEQUENA,
+                    paletaAtual.atenuada,
+                    paletaAtual.fundo,
+                    true
+                );
+            }
             campos++;
         }
         if (
             completo ||
-            strcmp(atual.estadoWeb, anterior->estadoWeb) != 0
+            strcmp(atual.estadoWeb, anterior->estadoWeb) != 0 ||
+            atual.estrelasWeb != anterior->estrelasWeb
         ) {
-            desenharTexto(
-                textoOuTraco(atual.estadoWeb),
-                12, 91, 296, 18,
-                FONTE_AA_PEQUENA,
-                paletaAtual.secundaria,
-                paletaAtual.fundo,
-                true
-            );
+            if (strcmp(atual.estadoWeb, "REPRODUZINDO") == 0) {
+                desenharAvaliacaoEstrelas(
+                    12, 91, 296, 18, atual.estrelasWeb
+                );
+            } else {
+                desenharTexto(
+                    textoOuTraco(atual.estadoWeb),
+                    12, 91, 296, 18,
+                    FONTE_AA_PEQUENA,
+                    paletaAtual.secundaria,
+                    paletaAtual.fundo,
+                    true
+                );
+            }
             campos++;
         }
         if (
@@ -2514,8 +2609,8 @@ namespace {
         ) {
             desenharTextoVisivel(
                 textoOuTraco(atual.titulo),
-                13, 8, 270, 18,
-                FONTE_AA_DESTAQUE,
+                13, 7, 126, 19,
+                FONTE_AA_NORMAL,
                 paletaAtual.secundaria,
                 paletaAtual.fundo
             );
@@ -2524,16 +2619,115 @@ namespace {
 
         if (
             completo ||
+            atual.climaValido != anterior->climaValido ||
+            atual.temperaturaDecimosC !=
+                anterior->temperaturaDecimosC ||
+            atual.umidadePercentual != anterior->umidadePercentual
+        ) {
+            constexpr int Y_ICONE = 15;
+            constexpr int ALTURA_CAMPO = 24;
+            constexpr int X_ICONE_TEMPERATURA = 140;
+            constexpr int X_TEXTO_TEMPERATURA = 168;
+            constexpr int LARGURA_TEXTO_TEMPERATURA = 49;
+            constexpr int X_ICONE_UMIDADE = 230;
+            constexpr int X_TEXTO_UMIDADE = 258;
+            constexpr int LARGURA_TEXTO_UMIDADE = 31;
+
+            // Uma unica regiao reservada aos dois indicadores impede que a
+            // atualizacao parcial apague a data ou o sino do chime.
+            tft.fillRect(140, 14, 161, 26, paletaAtual.fundo);
+            desenharIconeAlpha4(
+                ICON_TEMPERATURA_24_A4,
+                ICON_CLIMA_W,
+                ICON_CLIMA_H,
+                X_ICONE_TEMPERATURA,
+                Y_ICONE,
+                paletaAtual.primaria,
+                paletaAtual.fundo
+            );
+            desenharIconeAlpha4(
+                ICON_UMIDADE_24_A4,
+                ICON_CLIMA_W,
+                ICON_CLIMA_H,
+                X_ICONE_UMIDADE,
+                Y_ICONE,
+                paletaAtual.secundaria,
+                paletaAtual.fundo
+            );
+
+            char temperatura[12];
+            char umidade[8];
+            if (atual.climaValido) {
+                const int32_t temperaturaDecimos =
+                    atual.temperaturaDecimosC;
+                const uint32_t temperaturaAbsoluta =
+                    temperaturaDecimos < 0
+                        ? static_cast<uint32_t>(-temperaturaDecimos)
+                        : static_cast<uint32_t>(temperaturaDecimos);
+                snprintf(
+                    temperatura,
+                    sizeof(temperatura),
+                    "%s%lu.%lu°C",
+                    temperaturaDecimos < 0 ? "-" : "",
+                    static_cast<unsigned long>(temperaturaAbsoluta / 10U),
+                    static_cast<unsigned long>(temperaturaAbsoluta % 10U)
+                );
+                snprintf(
+                    umidade,
+                    sizeof(umidade),
+                    "%u%%",
+                    atual.umidadePercentual
+                );
+            } else {
+                snprintf(temperatura, sizeof(temperatura), "--°C");
+                snprintf(umidade, sizeof(umidade), "--%%");
+            }
+
+            desenharTexto(
+                temperatura,
+                X_TEXTO_TEMPERATURA,
+                Y_ICONE,
+                LARGURA_TEXTO_TEMPERATURA,
+                ALTURA_CAMPO,
+                maiorFonteTexto(
+                    temperatura,
+                    LARGURA_TEXTO_TEMPERATURA,
+                    ALTURA_CAMPO
+                ),
+                paletaAtual.secundaria,
+                paletaAtual.fundo
+            );
+            desenharTexto(
+                umidade,
+                X_TEXTO_UMIDADE,
+                Y_ICONE,
+                LARGURA_TEXTO_UMIDADE,
+                ALTURA_CAMPO,
+                maiorFonteTexto(
+                    umidade,
+                    LARGURA_TEXTO_UMIDADE,
+                    ALTURA_CAMPO
+                ),
+                paletaAtual.secundaria,
+                paletaAtual.fundo
+            );
+            tft.drawFastVLine(223, 15, 24, paletaAtual.atenuada);
+            tft.drawFastVLine(295, 15, 24, paletaAtual.atenuada);
+            campos += 7;
+        }
+
+        if (
+            completo ||
             atual.chimeAtivo != anterior->chimeAtivo
         ) {
             // O sino identifica o chime; a área é limpa também ao desativá-lo.
-            tft.fillRect(289, 7, 21, 20, paletaAtual.fundo);
+            tft.fillRect(301, 14, 19, 26, paletaAtual.fundo);
             if (atual.chimeAtivo) {
                 desenharIconeAlpha4(
                     ICON_BELL_A4,
                     ICON_BELL_W,
                     ICON_BELL_H,
-                    293, 8,
+                    302, 18,
                     paletaAtual.primaria,
                     paletaAtual.fundo
                 );
@@ -2547,8 +2741,8 @@ namespace {
         ) {
             desenharTextoVisivel(
                 textoOuTraco(atual.data),
-                13, 30, 294, 14,
-                FONTE_AA_NORMAL,
+                13, 30, 126, 14,
+                FONTE_AA_PEQUENA,
                 paletaAtual.atenuada,
                 paletaAtual.fundo
             );
@@ -2827,18 +3021,97 @@ namespace {
             return 0;
         }
         const char* texto = textoOuTraco(atual.mensagem);
+        const bool mensagemConexaoRadioWeb =
+            strcmp(texto, "CONECTANDO À ESTAÇÃO...") == 0 ||
+            strcmp(texto, "CONECTANDO AO WI-FI...") == 0 ||
+            strcmp(texto, "BUFFERIZANDO ÁUDIO...") == 0;
+        const FonteAa& fonte =
+            mensagemConexaoRadioWeb
+                ? FONTE_AA_NORMAL
+                : maiorFonteTexto(texto, 300, 52);
         desenharTexto(
             texto,
             10,
             82,
             300,
             52,
-            maiorFonteTexto(texto, 300, 52),
+            fonte,
             paletaAtual.primaria,
             paletaAtual.fundo,
             true
         );
         return 1;
+    }
+
+    uint32_t desenharConfiguracaoWifi(
+        const EstadoUiTftPoc& atual,
+        const EstadoUiTftPoc* anterior,
+        bool completo
+    ) {
+        const bool redeMudou =
+            completo ||
+            strcmp(atual.wifiSsid, anterior->wifiSsid) != 0;
+        const bool enderecoMudou =
+            completo ||
+            strcmp(atual.wifiIp, anterior->wifiIp) != 0;
+        uint32_t campos = 0;
+
+        if (completo) {
+            desenharTexto(
+                "CONECTE-SE À REDE",
+                10, 46, 300, 22,
+                FONTE_AA_NORMAL,
+                paletaAtual.atenuada,
+                paletaAtual.fundo,
+                true
+            );
+            desenharTexto(
+                "NO NAVEGADOR, ACESSE",
+                10, 126, 300, 22,
+                FONTE_AA_NORMAL,
+                paletaAtual.atenuada,
+                paletaAtual.fundo,
+                true
+            );
+            desenharTexto(
+                "AGUARDANDO CONFIGURAÇÃO",
+                8,
+                TOPO_RODAPE,
+                TFT_LARGURA - 16,
+                TFT_ALTURA - TOPO_RODAPE,
+                FONTE_AA_PEQUENA,
+                paletaAtual.atenuada,
+                paletaAtual.superficie,
+                true
+            );
+            campos += 3;
+        }
+
+        if (redeMudou) {
+            desenharTexto(
+                textoOuTraco(atual.wifiSsid),
+                10, 72, 300, 40,
+                FONTE_AA_DESTAQUE,
+                paletaAtual.primaria,
+                paletaAtual.fundo,
+                true
+            );
+            campos++;
+        }
+
+        if (enderecoMudou) {
+            desenharTexto(
+                textoOuTraco(atual.wifiIp),
+                10, 152, 300, 40,
+                FONTE_AA_DESTAQUE,
+                paletaAtual.primaria,
+                paletaAtual.fundo,
+                true
+            );
+            campos++;
+        }
+
+        return campos;
     }
 
 }
@@ -2852,7 +3125,7 @@ bool iniciarUiTftPoc() {
     tft.setSPISpeed(FREQUENCIA_SPI_TFT_HZ);
     tft.setRotation(1);
     tft.setTextWrap(false);
-    tft.fillScreen(paletaAtual.fundo);
+    desenharSplashCreeper();
 
     disponivel = tft.width() == TFT_LARGURA && tft.height() == TFT_ALTURA;
     metricas.disponivel = disponivel;
@@ -3007,9 +3280,15 @@ void processarUiTftPoc(const EstadoUiTftPoc& estado) {
             );
             break;
         case TelaUiTftPoc::MENSAGEM:
-        case TelaUiTftPoc::CONFIGURACAO_WIFI:
         case TelaUiTftPoc::ALARME:
             campos += desenharMensagem(estado, &estadoAnterior, completo);
+            break;
+        case TelaUiTftPoc::CONFIGURACAO_WIFI:
+            campos += desenharConfiguracaoWifi(
+                estado,
+                &estadoAnterior,
+                completo
+            );
             break;
     }
 

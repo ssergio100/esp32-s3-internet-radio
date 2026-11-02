@@ -2,8 +2,9 @@
 #define WIFI_RADIO_H
 
 void conectarWifi();
-// Carrega as credenciais persistidas e deixa o rádio Wi-Fi desligado.
-void prepararWifiEmStandby();
+// Carrega as credenciais persistidas, deixa o rádio Wi-Fi desligado e
+// informa se existe uma rede previamente cadastrada.
+bool prepararWifiEmStandby();
 bool iniciarReconexaoWifiSalvo();
 void desligarWifi();
 void supervisionarWifi();

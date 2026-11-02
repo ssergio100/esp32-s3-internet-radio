@@ -130,8 +130,9 @@ por DS3231, MCP23017 (`0x20`) e TEF6686 (`0x64`);
 `BCK=GPIO21`, `LRCK=GPIO45` e `DIN=GPIO47` para I2S; `GPIO2/1/42` para o
 encoder 1; `GPIO41/40/39` para o encoder 2; e `GPIO20/19/38` para
 RX/TX/BUSY do DFPlayer. O cartão do DFPlayer é acessado pelo próprio módulo,
-não pelo barramento SPI do ESP32. Para o futuro driver das Nixies, ficam reservados
-`GPIO4/5/6/7` para BCD A/B/C/D e `GPIO11/12/13/14` para os quatro cátodos.
+não pelo barramento SPI do ESP32. O driver das Nixies usa
+`GPIO4/6/7/5` para BCD A/B/C/D e `GPIO11/12/13/14` para chavear, em nível HIGH, os optoacopladores
+das quatro válvulas.
 
 O teste independente
 `examples/teste_dfplayer_encoder_volume/teste_dfplayer_encoder_volume.ino`

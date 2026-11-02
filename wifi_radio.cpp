@@ -11,6 +11,8 @@ namespace {
 
 constexpr unsigned long INTERVALO_RECONEXAO_WIFI_MS =
     10000;
+constexpr char NOME_PORTAL_CONFIGURACAO_WIFI[] = "RADIO-WEB";
+constexpr char IP_PADRAO_PORTAL_CONFIGURACAO_WIFI[] = "192.168.4.1";
 
 String ssidSalvo;
 String senhaSalva;
@@ -243,19 +245,25 @@ void conectarWifi() {
     wifiManager.setConnectTimeout(20);
 
     wifiManager.setAPCallback([](WiFiManager *gerenciador) {
+        const String nomeRede = gerenciador->getConfigPortalSSID();
+        String enderecoPortal = WiFi.softAPIP().toString();
+        if (
+            enderecoPortal.isEmpty() ||
+            enderecoPortal == "0.0.0.0"
+        ) {
+            enderecoPortal = IP_PADRAO_PORTAL_CONFIGURACAO_WIFI;
+        }
+
         Serial.println();
         Serial.println("Portal de configuração iniciado.");
 
         Serial.print("Rede: ");
-        Serial.println(
-            gerenciador->getConfigPortalSSID()
-        );
+        Serial.println(nomeRede);
 
-        Serial.println(
-            "Endereço: http://192.168.4.1"
-        );
+        Serial.print("Endereço: http://");
+        Serial.println(enderecoPortal);
 
-       mostrarConfiguracaoWifi();
+        mostrarConfiguracaoWifi(nomeRede, enderecoPortal);
     });
 
     wifiManager.setCustomHeadElement(
@@ -276,7 +284,7 @@ void conectarWifi() {
     wifiManager.setConfigPortalBlocking(false);
 
     bool conectado = wifiManager.autoConnect(
-        "RADIO-WEB"
+        NOME_PORTAL_CONFIGURACAO_WIFI
     );
 
     WiFi.setAutoReconnect(false);
@@ -286,7 +294,7 @@ void conectarWifi() {
 
         // O WiFiManager considerou as credenciais válidas antes de o filtro
         // rejeitar o ponto. Reabre o portal para não prender o rádio nessa rede.
-        wifiManager.startConfigPortal("RADIO-WEB");
+        wifiManager.startConfigPortal(NOME_PORTAL_CONFIGURACAO_WIFI);
     }
 
     while (!conectado) {
@@ -335,10 +343,12 @@ void conectarWifi() {
     mostrarMensagem("Wi-Fi conectado");
 }
 
-void prepararWifiEmStandby() {
+bool prepararWifiEmStandby() {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
 
+    ssidSalvo = "";
+    senhaSalva = "";
     WiFiManager leitorCredenciais;
     if (leitorCredenciais.getWiFiIsSaved()) {
         ssidSalvo = leitorCredenciais.getWiFiSSID(true);
@@ -355,6 +365,8 @@ void prepararWifiEmStandby() {
         "Wi-Fi preparado em standby; credenciais salvas: %s.\n",
         ssidSalvo.isEmpty() ? "nao" : "sim"
     );
+
+    return !ssidSalvo.isEmpty();
 }
 
 bool iniciarReconexaoWifiSalvo() {
